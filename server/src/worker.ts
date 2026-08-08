@@ -912,9 +912,89 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
   }
 }
 
+const PRIVACY_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Versed — Privacy Policy</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 16px/1.6 -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px;
+    margin: 0 auto; padding: 32px 20px 64px; color: #1a2233; background: #fff; }
+  @media (prefers-color-scheme: dark) { body { color: #e6ecff; background: #0b1220; } a { color: #7c9cf5; } }
+  h1 { font-size: 28px; } h2 { font-size: 19px; margin-top: 28px; }
+  .muted { opacity: .7; font-size: 14px; }
+  code { background: rgba(127,127,127,.15); padding: 1px 5px; border-radius: 4px; }
+</style></head><body>
+<h1>Versed — Privacy Policy</h1>
+<p class="muted">Last updated: 8 August 2026</p>
+
+<p>Versed is a Bible-verse memorization app. This policy explains what data the app handles and why.
+We keep it minimal on purpose.</p>
+
+<h2>No account required</h2>
+<p>Versed does not ask for your name, email, or phone number to work. When you first open the app it
+generates a random, anonymous device ID (a “transfer code”) stored on your phone. You may optionally
+enter a display name so people you choose to grow with can recognize you.</p>
+
+<h2>What stays on your device</h2>
+<p>Your verse library, memorization progress, streaks, review schedule, and personal notes are stored
+locally on your phone. This data is not sent anywhere unless you use the optional features below.</p>
+
+<h2>Circles (optional shared groups)</h2>
+<p>If you create or join a “circle” with a friend or small group, the following is stored on our server
+(Cloudflare) so others in that circle can see it: your display name, the verses/plans/prayers/notes/
+challenges you choose to share into the circle, and progress counters (e.g. verses memorized, streak).
+Only people who have your circle’s 6-character invite code can see it. You can delete shared items or
+leave a circle at any time.</p>
+
+<h2>Cloud backup (optional)</h2>
+<p>So you don’t lose your data if you change phones, the app can back up a copy of your library and
+progress to our server, keyed to your anonymous transfer code. Only someone who enters your transfer
+code can restore it. You can trigger or skip this in Settings.</p>
+
+<h2>AI study features (optional)</h2>
+<p>When you request an AI study brief, memory hook, or verse suggestions, the app sends the passage
+<em>reference</em> (e.g. “John 3:16”) to an AI provider (OpenAI/Anthropic) to generate original
+commentary. We do not send the biblical text itself, and we do not send your personal notes.</p>
+
+<h2>Notifications (optional)</h2>
+<p>If you enable reminders or circle notifications, the app stores a push token so we can deliver them.
+You can turn this off in your device settings.</p>
+
+<h2>What we do NOT do</h2>
+<p>No advertising. No third-party analytics or tracking. We do not sell or share your data with anyone,
+and there are no ads or trackers embedded in the app.</p>
+
+<h2>Data retention & deletion</h2>
+<p>Local data is removed when you uninstall the app or use “Reset all data” in Settings. Shared circle
+data can be removed by deleting items or leaving the circle. To request deletion of any server-stored
+data tied to your transfer code, contact us at the email below.</p>
+
+<h2>Children</h2>
+<p>Versed is not directed at children under 13 and does not knowingly collect personal information from
+them.</p>
+
+<h2>Contact</h2>
+<p>Questions or deletion requests: <a href="mailto:gospel.e.tgb@gmail.com">gospel.e.tgb@gmail.com</a></p>
+</body></html>`;
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+    // Public GET pages (privacy policy for the app stores; a tiny landing page).
+    if (request.method === 'GET') {
+      const p = new URL(request.url).pathname.replace(/\/$/, '');
+      if (p === '/privacy') {
+        return new Response(PRIVACY_HTML, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+      }
+      if (p === '' || p === '/') {
+        return new Response('Versed API. See /privacy for the privacy policy.', {
+          headers: { 'content-type': 'text/plain; charset=utf-8' },
+        });
+      }
+      return json({ error: 'Not found.' }, 404);
+    }
+
     if (request.method !== 'POST') return json({ error: 'POST only' }, 405);
 
     if (env.APP_SHARED_SECRET) {
