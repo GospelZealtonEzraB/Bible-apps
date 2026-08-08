@@ -1,0 +1,12 @@
+name = "engraved-server"
+main = "src/worker.ts"
+compatibility_date = "2024-11-01"
+
+# Secrets are NOT set here — never commit keys. Set them after deploy with:
+#   wrangler secret put ANTHROPIC_API_KEY
+#   wrangler secret put ESV_API_KEY        # optional, only if you use ESV
+#   wrangler secret put APP_SHARED_SECRET  # optional abuse protection
+#
+# Non-secret config can go here:
+[vars]
+AI_MODEL = "claude-haiku-4-5"

@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, Pressable, Alert, Platform } from 'react-native';
+import { View, Text, Pressable, Alert, Platform, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
 import { Card, Chip, SectionTitle, Button } from '@/components/ui';
-import { useTheme, spacing, font } from '@/theme';
+import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore, useSettings, useStats } from '@/store/useStore';
 import { TRANSLATIONS } from '@/data/bibleApi';
 import {
@@ -95,7 +95,7 @@ export default function SettingsScreen() {
             })}
           </View>
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
-            Applies to verses you add next. More translations (incl. ESV) are coming.
+            Applies to verses you add next. ESV needs the server (see AI &amp; Server below).
           </Text>
         </Card>
       </View>
@@ -151,6 +151,37 @@ export default function SettingsScreen() {
               />
             ))}
           </View>
+        </Card>
+      </View>
+
+      {/* AI & Server */}
+      <View>
+        <SectionTitle>AI &amp; Server</SectionTitle>
+        <Card>
+          <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
+            Paste your deployed server URL to unlock AI memory hooks, verse explanations,
+            build-a-pack, and the ESV translation. See server/README.md to deploy one.
+          </Text>
+          <TextInput
+            value={settings.serverUrl ?? ''}
+            onChangeText={(t) => setSettings({ serverUrl: t.trim() ? t.trim() : null })}
+            placeholder="https://engraved-server.you.workers.dev"
+            placeholderTextColor={colors.textFaint}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            style={{
+              color: colors.text,
+              fontSize: font.sizes.md,
+              backgroundColor: colors.surfaceAlt,
+              borderRadius: radius.md,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.md,
+            }}
+          />
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
+            {settings.serverUrl ? 'AI features and ESV are enabled.' : 'Optional — the app works fully without it.'}
+          </Text>
         </Card>
       </View>
 

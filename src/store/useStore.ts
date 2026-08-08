@@ -48,6 +48,8 @@ interface StoreState {
 
   setSettings: (patch: Partial<Settings>) => void;
   setDailyGoal: (goal: number) => void;
+  /** Cache AI-generated content (memory hook / explanation) on a verse. */
+  setVerseAi: (id: string, patch: { memoryHook?: string; explanation?: string }) => void;
   clearCelebration: () => void;
   resetAll: () => void;
 }
@@ -108,6 +110,7 @@ const defaultSettings: Settings = {
   translation: 'web',
   reminderTime: null,
   theme: 'system',
+  serverUrl: null,
 };
 
 function statusFromSrs(
@@ -354,6 +357,13 @@ export const useStore = create<StoreState>()(
         set((state) => ({
           stats: { ...state.stats, dailyGoal: Math.max(1, Math.min(50, Math.round(goal))) },
         })),
+
+      setVerseAi: (id, patch) =>
+        set((state) => {
+          const v = state.verses[id];
+          if (!v) return {};
+          return { verses: { ...state.verses, [id]: { ...v, ...patch } } };
+        }),
 
       resetAll: () =>
         set({

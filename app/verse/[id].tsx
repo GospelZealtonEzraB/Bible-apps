@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Speech from 'expo-speech';
@@ -8,8 +8,9 @@ import { Screen, Header } from '@/components/layout';
 import { Card, StatusBadge, Button, SectionTitle, EmptyState } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useVerse } from '@/store/useStore';
+import { useVerse, useStore, useSettings } from '@/store/useStore';
 import { isLatinTranslation } from '@/data/bibleApi';
+import { fetchMemoryHook, fetchExplanation } from '@/data/aiClient';
 import { relativeDueLabel } from '@/utils/date';
 import type { DrillMode } from '@/types';
 
@@ -26,7 +27,39 @@ export default function VerseDetailScreen() {
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === 'string' ? decodeURIComponent(params.id) : '';
   const verse = useVerse(id);
+  const serverUrl = useSettings((s) => s.serverUrl);
+  const setVerseAi = useStore((s) => s.setVerseAi);
   const [speaking, setSpeaking] = useState(false);
+  const [aiLoading, setAiLoading] = useState<null | 'hook' | 'explain'>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const runHook = async () => {
+    if (!verse || verse.memoryHook) return;
+    setAiLoading('hook');
+    setAiError(null);
+    try {
+      const text = await fetchMemoryHook(serverUrl, verse);
+      setVerseAi(verse.id, { memoryHook: text });
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : 'Failed to generate.');
+    } finally {
+      setAiLoading(null);
+    }
+  };
+
+  const runExplain = async () => {
+    if (!verse || verse.explanation) return;
+    setAiLoading('explain');
+    setAiError(null);
+    try {
+      const text = await fetchExplanation(serverUrl, verse);
+      setVerseAi(verse.id, { explanation: text });
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : 'Failed to generate.');
+    } finally {
+      setAiLoading(null);
+    }
+  };
 
   if (!verse) {
     return (
@@ -72,6 +105,12 @@ export default function VerseDetailScreen() {
           "{verse.text}"
         </Text>
 
+        {verse.translation === 'esv' ? (
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
+            Scripture quotations are from the ESV® Bible, © Crossway.
+          </Text>
+        ) : null}
+
         <View
           style={{
             flexDirection: 'row',
@@ -115,6 +154,73 @@ export default function VerseDetailScreen() {
           </View>
         </View>
       </Card>
+
+      {/* AI insights */}
+      <View>
+        <SectionTitle>Insights</SectionTitle>
+        {!serverUrl ? (
+          <Card>
+            <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>
+              Add your Server URL in Settings to unlock AI memory hooks and plain-English
+              explanations for any verse.
+            </Text>
+            <View style={{ marginTop: spacing.md }}>
+              <Button
+                title="Open Settings"
+                variant="secondary"
+                onPress={() => router.push('/settings')}
+              />
+            </View>
+          </Card>
+        ) : (
+          <View style={{ gap: spacing.md }}>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <Button
+                title="Memory hook"
+                variant="secondary"
+                style={{ flex: 1 }}
+                loading={aiLoading === 'hook'}
+                disabled={aiLoading !== null || !!verse.memoryHook}
+                icon={<Ionicons name="sparkles" size={16} color={colors.text} />}
+                onPress={runHook}
+              />
+              <Button
+                title="Explain"
+                variant="secondary"
+                style={{ flex: 1 }}
+                loading={aiLoading === 'explain'}
+                disabled={aiLoading !== null || !!verse.explanation}
+                icon={<Ionicons name="bulb" size={16} color={colors.text} />}
+                onPress={runExplain}
+              />
+            </View>
+
+            {aiError ? <Text style={{ color: colors.danger }}>{aiError}</Text> : null}
+
+            {verse.memoryHook ? (
+              <Card style={{ gap: 4 }}>
+                <Text style={{ color: colors.accent, fontWeight: '800', fontSize: font.sizes.xs }}>
+                  ✨ MEMORY HOOK
+                </Text>
+                <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }}>
+                  {verse.memoryHook}
+                </Text>
+              </Card>
+            ) : null}
+
+            {verse.explanation ? (
+              <Card style={{ gap: 4 }}>
+                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.xs }}>
+                  💡 MEANING & CONTEXT
+                </Text>
+                <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }}>
+                  {verse.explanation}
+                </Text>
+              </Card>
+            ) : null}
+          </View>
+        )}
+      </View>
 
       <View>
         <SectionTitle>Practice</SectionTitle>

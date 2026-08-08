@@ -103,8 +103,24 @@ algorithms are provably correct independent of the UI.
 
 ---
 
+## 🤖 AI features & ESV (optional server)
+
+Memory hooks, plain-English explanations, AI build-a-pack, and the **ESV** translation are
+powered by a tiny server that holds the secret API keys (an LLM/ESV key can't ship inside
+the app). Everything else works without it; these features stay off until you deploy the
+server and paste its URL into **Settings → AI & Server**.
+
+- The server is a **Cloudflare Worker** in [`server/`](./server) — see
+  [`server/README.md`](./server/README.md) for the deploy steps and the (free) accounts/keys
+  you'll need (Cloudflare + Anthropic, plus an optional free ESV key).
+- The AI never generates Scripture text — build-a-pack returns references only, and the app
+  always fetches real verses from the trusted Bible providers.
+- Default model is **Claude Haiku 4.5** (cheapest); results are cached per verse so you pay
+  only once per hook/explanation.
+
 ## 📜 Scripture text & licensing
 
-Verse text is fetched from **bible-api.com** using public-domain translations, so no
-API key or license is required. The bundled offline fixtures use the **World English
-Bible (WEB)**, which is in the public domain.
+Verse text is fetched from public sources: **bible-api.com** (public-domain English/Latin),
+**bolls.life** (public-domain Tamil), and — via your server — **ESV** (© Crossway; the app
+shows the required attribution). Bundled offline fixtures use the **World English Bible
+(WEB)**, public domain. NKJV is not included (no free/legal source).

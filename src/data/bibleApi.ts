@@ -30,6 +30,7 @@ export const TRANSLATIONS: TranslationInfo[] = [
   { id: 'webbe', name: 'WEB British Edition', language: 'en', provider: 'bible-api' },
   { id: 'clementine', name: 'Clementine Latin Vulgate', language: 'la', provider: 'bible-api' },
   { id: 'tamil', name: 'தமிழ் (Tamil)', language: 'ta', provider: 'bolls', providerCode: 'TAOVBSI' },
+  { id: 'esv', name: 'English Standard Version', language: 'en', provider: 'esv' },
 ];
 
 const LATIN_LANGS = new Set(['en', 'la']);
@@ -194,11 +195,32 @@ async function fetchFromBolls(
   };
 }
 
-async function fetchFromEsv(): Promise<FetchedVerse> {
-  // ESV is copyrighted: its API key must live on a server (added in Phase 3).
-  throw new Error(
-    'ESV needs a one-time setup and will be available in a coming update.',
-  );
+async function fetchFromEsv(
+  ref: string,
+  info: TranslationInfo,
+  serverUrl?: string | null,
+): Promise<FetchedVerse> {
+  // ESV is copyrighted: its key lives on the user's server. Route through it.
+  if (!serverUrl || !serverUrl.trim()) {
+    throw new Error('ESV needs a Server URL — add it in Settings → AI & Server.');
+  }
+  const base = serverUrl.trim().replace(/\/+$/, '');
+  const res = await fetch(`${base}/esv`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ reference: ref }),
+  });
+  const data: { reference?: string; text?: string; error?: string } = await res
+    .json()
+    .catch(() => ({}));
+  if (!res.ok || !data.text) throw new Error(data.error || `ESV request failed (${res.status}).`);
+  return {
+    reference: data.reference ? displayReference(data.reference) : ref,
+    text: cleanText(data.text),
+    translation: info.id,
+    translationName: info.name,
+    offline: false,
+  };
 }
 
 // ---- Public API -----------------------------------------------------------
@@ -211,6 +233,7 @@ async function fetchFromEsv(): Promise<FetchedVerse> {
 export async function getVerse(
   reference: string,
   translation = 'web',
+  opts: { serverUrl?: string | null } = {},
 ): Promise<FetchedVerse> {
   const ref = displayReference(reference);
   const info = translationInfo(translation) ?? TRANSLATIONS[0];
@@ -222,7 +245,7 @@ export async function getVerse(
       case 'getbible':
         return await fetchFromGetBible(ref, info);
       case 'esv':
-        return await fetchFromEsv();
+        return await fetchFromEsv(ref, info, opts.serverUrl);
       case 'bible-api':
       default:
         return await fetchFromBibleApi(ref, info);
@@ -241,7 +264,7 @@ export async function getVerse(
         };
       }
     }
-    if (err instanceof Error && /needs a one-time setup|enter a reference/.test(err.message)) {
+    if (err instanceof Error && /Server URL|enter a reference/.test(err.message)) {
       throw err; // already a friendly message
     }
     const detail = err instanceof Error ? ` (${err.message})` : '';

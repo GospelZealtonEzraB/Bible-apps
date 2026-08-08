@@ -30,6 +30,10 @@ export interface Verse {
   srs: SRSState;
   /** 0..100 confidence derived from drills and reviews. */
   mastery: number;
+  /** Cached AI memory hook for this verse (generated once, on demand). */
+  memoryHook?: string;
+  /** Cached AI plain-English meaning + context. */
+  explanation?: string;
 }
 
 export interface Stats {
@@ -76,4 +80,6 @@ export interface Settings {
   /** 'HH:MM' 24h local time for the daily reminder, or null if disabled. */
   reminderTime: string | null;
   theme: ThemePreference;
+  /** Deployed Worker URL that powers AI features + ESV, or null if unset. */
+  serverUrl: string | null;
 }

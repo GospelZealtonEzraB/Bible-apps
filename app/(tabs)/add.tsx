@@ -8,12 +8,14 @@ import { Card, Button, SectionTitle } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore, useSettings } from '@/store/useStore';
 import { getVerse, verseId, isLatinTranslation, type FetchedVerse } from '@/data/bibleApi';
+import { suggestPack } from '@/data/aiClient';
 import { STARTER_PACKS, type StarterPack } from '@/data/packs';
 
 export default function AddScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const translation = useSettings((s) => s.translation);
+  const serverUrl = useSettings((s) => s.serverUrl);
   const addFetchedVerse = useStore((s) => s.addFetchedVerse);
   const hasVerse = useStore((s) => s.hasVerse);
 
@@ -29,7 +31,7 @@ export default function AddScreen() {
     setError(null);
     setPreview(null);
     try {
-      const result = await getVerse(ref, translation);
+      const result = await getVerse(ref, translation, { serverUrl });
       setPreview(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong.');
@@ -135,12 +137,15 @@ export default function AddScreen() {
         ) : null}
       </Card>
 
+      {/* AI build-a-pack */}
+      <AiPackCard translation={translation} serverUrl={serverUrl} />
+
       {/* Starter packs */}
       <View>
         <SectionTitle>Starter packs</SectionTitle>
         <View style={{ gap: spacing.md }}>
           {STARTER_PACKS.map((pack) => (
-            <PackCard key={pack.id} pack={pack} translation={translation} />
+            <PackCard key={pack.id} pack={pack} translation={translation} serverUrl={serverUrl} />
           ))}
         </View>
       </View>
@@ -148,7 +153,15 @@ export default function AddScreen() {
   );
 }
 
-function PackCard({ pack, translation }: { pack: StarterPack; translation: string }) {
+function PackCard({
+  pack,
+  translation,
+  serverUrl,
+}: {
+  pack: StarterPack;
+  translation: string;
+  serverUrl: string | null;
+}) {
   const { colors } = useTheme();
   const addFetchedVerse = useStore((s) => s.addFetchedVerse);
   const [adding, setAdding] = useState(false);
@@ -159,7 +172,7 @@ function PackCard({ pack, translation }: { pack: StarterPack; translation: strin
     try {
       for (const ref of pack.references) {
         try {
-          const v = await getVerse(ref, translation);
+          const v = await getVerse(ref, translation, { serverUrl });
           addFetchedVerse(v, pack.id);
         } catch {
           // Skip verses that can't be fetched; keep adding the rest.
@@ -209,6 +222,136 @@ function PackCard({ pack, translation }: { pack: StarterPack; translation: strin
           )}
         </Pressable>
       </View>
+    </Card>
+  );
+}
+
+function AiPackCard({
+  translation,
+  serverUrl,
+}: {
+  translation: string;
+  serverUrl: string | null;
+}) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const addFetchedVerse = useStore((s) => s.addFetchedVerse);
+  const [theme, setTheme] = useState('');
+  const [refs, setRefs] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSuggest = async () => {
+    const t = theme.trim();
+    if (!t) return;
+    setLoading(true);
+    setError(null);
+    setRefs(null);
+    try {
+      const suggestions = await suggestPack(serverUrl, t);
+      if (suggestions.length === 0) setError('No suggestions — try describing the theme differently.');
+      setRefs(suggestions);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onAddAll = async () => {
+    if (!refs) return;
+    setAdding(true);
+    const packId = `ai:${theme.trim().slice(0, 40)}`;
+    try {
+      for (const ref of refs) {
+        try {
+          const v = await getVerse(ref, translation, { serverUrl });
+          addFetchedVerse(v, packId);
+        } catch {
+          // Skip any that fail to fetch.
+        }
+      }
+      setRefs(null);
+      setTheme('');
+      router.push('/library');
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  return (
+    <Card>
+      <SectionTitle>✨ Build a pack with AI</SectionTitle>
+      <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
+        Describe a theme and Ember suggests verses to memorize.
+      </Text>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.sm,
+          backgroundColor: colors.surfaceAlt,
+          borderRadius: radius.md,
+          paddingHorizontal: spacing.md,
+        }}
+      >
+        <Ionicons name="sparkles-outline" size={18} color={colors.textFaint} />
+        <TextInput
+          value={theme}
+          onChangeText={setTheme}
+          placeholder="e.g. courage in hard times"
+          placeholderTextColor={colors.textFaint}
+          returnKeyType="go"
+          onSubmitEditing={onSuggest}
+          style={{ flex: 1, color: colors.text, fontSize: font.sizes.md, paddingVertical: spacing.md }}
+        />
+      </View>
+      <View style={{ marginTop: spacing.md }}>
+        <Button
+          title={loading ? 'Thinking…' : 'Suggest verses'}
+          onPress={onSuggest}
+          loading={loading}
+          disabled={!theme.trim()}
+        />
+      </View>
+
+      {error ? (
+        <Text style={{ color: colors.danger, marginTop: spacing.md }}>{error}</Text>
+      ) : null}
+
+      {refs && refs.length > 0 ? (
+        <View
+          style={{
+            marginTop: spacing.lg,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            paddingTop: spacing.lg,
+          }}
+        >
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginBottom: spacing.md }}>
+            {refs.map((r) => (
+              <View
+                key={r}
+                style={{
+                  paddingVertical: 4,
+                  paddingHorizontal: spacing.md,
+                  borderRadius: radius.pill,
+                  backgroundColor: colors.surfaceAlt,
+                }}
+              >
+                <Text style={{ color: colors.text, fontSize: font.sizes.sm, fontWeight: '600' }}>{r}</Text>
+              </View>
+            ))}
+          </View>
+          <Button
+            title={adding ? 'Adding…' : `Add all ${refs.length}`}
+            onPress={onAddAll}
+            loading={adding}
+            icon={<Ionicons name="bookmark" size={18} color={colors.onPrimary} />}
+          />
+        </View>
+      ) : null}
     </Card>
   );
 }
