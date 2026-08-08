@@ -3,7 +3,16 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Circle, CircleSnapshot, Profile, Settings, Stats, Verse, VerseStatus } from '@/types';
+import type {
+  Circle,
+  CircleGoal,
+  CircleSnapshot,
+  Profile,
+  Settings,
+  Stats,
+  Verse,
+  VerseStatus,
+} from '@/types';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import * as circleApi from '@/data/circleClient';
 import type { MemberSnapshotInput } from '@/data/circleClient';
@@ -15,6 +24,7 @@ import {
   verseId,
   type FetchedVerse,
 } from '@/data/bibleApi';
+import { versesDoneFrom } from '@/utils/circleProgress';
 import { dayKey, daysBetweenKeys } from '@/utils/date';
 import {
   xpForPractice,
@@ -70,6 +80,10 @@ interface StoreState {
   refreshCircle: (code: string) => Promise<void>;
   /** Push my progress + pull the board for a circle. */
   syncCircle: (code: string) => Promise<void>;
+  /** Add a verse reference to a circle's shared list (optionally "for" a member). */
+  addSharedVerse: (code: string, reference: string, forMemberId?: string) => Promise<void>;
+  /** Set the circle's shared goal (or clear it with null). */
+  setCircleGoal: (code: string, goal: CircleGoal | null) => Promise<void>;
   /** Leave a circle (removes my member record + local cache). */
   leaveCircle: (code: string) => Promise<void>;
   /** Set the partnership covenant (agreed rhythm + goal). */
@@ -142,13 +156,13 @@ const defaultSettings: Settings = {
 const defaultProfile: Profile = { memberId: '', displayName: '', backupCode: '' };
 
 /** Build the progress snapshot this device pushes up to a circle. */
-function myMemberSnapshot(state: StoreState): MemberSnapshotInput {
+function myMemberSnapshot(state: StoreState, sharedRefs: string[] = []): MemberSnapshotInput {
   return {
     memberId: state.profile.memberId,
     displayName: state.profile.displayName,
     memorizedCount: memorizedCount(state.verses),
     streak: state.stats.streak,
-    versesDone: [], // Phase 3 fills this from the shared verse list.
+    versesDone: versesDoneFrom(state.verses, sharedRefs),
     planDone: [],
     lastActiveDay: state.stats.lastActiveDay,
     lastActivity: null,
@@ -455,7 +469,26 @@ export const useStore = create<StoreState>()(
 
       syncCircle: async (code) => {
         const s = get();
-        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s));
+        const sharedRefs = (s.circles[code]?.sharedVerses ?? []).map((v) => v.reference);
+        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs));
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      addSharedVerse: async (code, reference, forMemberId) => {
+        const s = get();
+        const snap = await circleApi.addSharedVerse(
+          s.settings.serverUrl,
+          code,
+          { memberId: s.profile.memberId, displayName: s.profile.displayName },
+          reference.trim(),
+          forMemberId,
+        );
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      setCircleGoal: async (code, goal) => {
+        const s = get();
+        const snap = await circleApi.setGoal(s.settings.serverUrl, code, s.profile.memberId, goal);
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 

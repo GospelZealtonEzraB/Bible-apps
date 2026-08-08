@@ -243,6 +243,39 @@ function normCode(code: unknown): string {
 function str(v: unknown, max: number): string {
   return String(v ?? '').slice(0, max);
 }
+/** Normalized reference key (lowercase, single-spaced) — stable per-verse key. */
+function normRef(reference: string): string {
+  return String(reference ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Whole-day difference b - a for two YYYY-MM-DD keys (NaN if unparseable). */
+function dayDiff(a: string, b: string): number {
+  const pa = Date.parse(a + 'T00:00:00Z');
+  const pb = Date.parse(b + 'T00:00:00Z');
+  if (isNaN(pa) || isNaN(pb)) return NaN;
+  return Math.round((pb - pa) / 86400000);
+}
+
+/**
+ * Advance the circle's "together streak" when every member was active on the
+ * same most-recent day. Returns the updated fields, or null if nothing changes.
+ * Server is effectively the single writer here (called during join/sync).
+ */
+function recomputeTogether(
+  meta: any,
+  members: any[],
+): { togetherStreak: number; lastTogetherDay: string } | null {
+  const days = members.map((m) => m.lastActiveDay).filter(Boolean) as string[];
+  if (days.length === 0 || days.length !== members.length) return null;
+  if (!days.every((d) => d === days[0])) return null; // not everyone on the same day
+  const togetherDay = days[0];
+  if (meta.lastTogetherDay === togetherDay) return null; // already counted today
+  const consecutive = meta.lastTogetherDay && dayDiff(meta.lastTogetherDay, togetherDay) === 1;
+  return {
+    togetherStreak: consecutive ? (meta.togetherStreak ?? 0) + 1 : 1,
+    lastTogetherDay: togetherDay,
+  };
+}
 
 /** Persist a member's own progress snapshot (only that member writes this key). */
 async function writeMember(kv: KVNamespaceLike, code: string, member: any): Promise<void> {
@@ -272,8 +305,17 @@ async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | n
     if (m) members.push(m);
   }
   members.sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
-  // Later phases populate these from their own key families.
-  return { meta, members, sharedVerses: [], plans: [], prayers: [], challenges: [], cheersFor: {} };
+
+  const verseKeys = await kvListKeys(kv, `circle:${code}:verse:`);
+  const sharedVerses: any[] = [];
+  for (const key of verseKeys) {
+    const v = await kvGetJson<any>(kv, key);
+    if (v) sharedVerses.push(v);
+  }
+  sharedVerses.sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0));
+
+  // Later phases populate plans/prayers/challenges from their own key families.
+  return { meta, members, sharedVerses, plans: [], prayers: [], challenges: [], cheersFor: {} };
 }
 
 async function handleCircle(req: Request, env: Env): Promise<Response> {
@@ -316,9 +358,50 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
     case 'sync': {
       const code = normCode(body.code);
       if (!memberId) return json({ error: 'Missing member.' }, 400);
-      const meta = await kvGetJson(kv, `circle:${code}:meta`);
+      const meta = await kvGetJson<any>(kv, `circle:${code}:meta`);
       if (!meta) return json({ error: 'No circle with that code.' }, 404);
       await writeMember(kv, code, member);
+      const snapshot = await buildSnapshot(kv, code);
+      // Advance the together streak when everyone is active on the same day.
+      const upd = recomputeTogether(snapshot.meta, snapshot.members);
+      if (upd) {
+        snapshot.meta = { ...snapshot.meta, ...upd };
+        await kvPutJson(kv, `circle:${code}:meta`, snapshot.meta);
+      }
+      return json({ snapshot });
+    }
+
+    case 'addVerse': {
+      const code = normCode(body.code);
+      const meta = await kvGetJson(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      const reference = str(body.reference, 60).trim();
+      if (!reference) return json({ error: 'Missing reference.' }, 400);
+      const rec = {
+        reference,
+        addedBy: memberId,
+        addedByName: str(body.displayName, 40),
+        addedAt: Date.now(),
+        forMemberId: body.forMemberId ? String(body.forMemberId) : undefined,
+      };
+      await kvPutJson(kv, `circle:${code}:verse:${normRef(reference)}`, rec);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'setGoal': {
+      const code = normCode(body.code);
+      const meta = await kvGetJson<any>(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      const goal = body.goal ?? null;
+      meta.goal = goal
+        ? {
+            kind: String(goal.kind ?? 'memorizeCount'),
+            target: Math.max(0, Math.min(9999, Number(goal.target ?? 0) || 0)),
+            label: goal.label ? str(goal.label, 60) : undefined,
+          }
+        : null;
+      meta.version = (meta.version ?? 1) + 1;
+      await kvPutJson(kv, `circle:${code}:meta`, meta);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

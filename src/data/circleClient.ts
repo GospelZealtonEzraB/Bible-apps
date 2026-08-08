@@ -58,6 +58,32 @@ export function getCircle(serverUrl: string | null, code: string): Promise<Circl
   return circleCall(serverUrl, { action: 'get', code });
 }
 
+export function addSharedVerse(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  reference: string,
+  forMemberId?: string,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, {
+    action: 'addVerse',
+    code,
+    memberId: member.memberId,
+    displayName: member.displayName,
+    reference,
+    forMemberId,
+  });
+}
+
+export function setGoal(
+  serverUrl: string | null,
+  code: string,
+  memberId: string,
+  goal: CircleGoal | null,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'setGoal', code, memberId, goal });
+}
+
 export function setCovenant(
   serverUrl: string | null,
   code: string,
