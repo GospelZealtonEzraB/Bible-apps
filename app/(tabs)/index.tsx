@@ -213,12 +213,12 @@ export default function TodayScreen() {
       {verseCount > 0 ? (
         <View>
           <SectionTitle>
-            Achievements · {stats.earnedBadges.length}/{BADGES.length}
+            Achievements · {(stats.earnedBadges ?? []).length}/{BADGES.length}
           </SectionTitle>
           <Card>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
               {BADGES.map((b) => {
-                const earned = stats.earnedBadges.includes(b.id);
+                const earned = (stats.earnedBadges ?? []).includes(b.id);
                 return (
                   <View key={b.id} style={{ alignItems: 'center', width: 84, opacity: earned ? 1 : 0.35 }}>
                     <Text style={{ fontSize: 28 }}>{earned ? b.emoji : '🔒'}</Text>

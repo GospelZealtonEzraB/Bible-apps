@@ -300,13 +300,27 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'engraved-store-v1',
+      version: 2,
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         verses: state.verses,
         stats: state.stats,
         settings: state.settings,
       }),
-      onRehydrateStorage: () => (state) => {
+      // Merge persisted data over current defaults so state saved by an older
+      // version (missing newer fields like stats.earnedBadges) is always
+      // backfilled — otherwise those undefined fields crash the UI.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<StoreState>;
+        return {
+          ...current,
+          ...p,
+          stats: { ...defaultStats, ...(p.stats ?? {}) },
+          settings: { ...defaultSettings, ...(p.settings ?? {}) },
+          verses: p.verses ?? {},
+        };
+      },
+      onRehydrateStorage: () => () => {
         useStore.setState({ hydrated: true });
       },
     },

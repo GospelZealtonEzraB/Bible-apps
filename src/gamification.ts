@@ -17,7 +17,7 @@ export interface LevelInfo {
 
 /** Level 1 starts at 0 XP; each level takes XP_PER_LEVEL more. */
 export function levelInfo(xp: number): LevelInfo {
-  const safe = Math.max(0, Math.floor(xp));
+  const safe = Math.max(0, Math.floor(Number.isFinite(xp) ? xp : 0));
   const level = Math.floor(safe / XP_PER_LEVEL) + 1;
   const inLevel = safe % XP_PER_LEVEL;
   return {
