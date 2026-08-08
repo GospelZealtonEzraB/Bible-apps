@@ -30,7 +30,10 @@ export const TRANSLATIONS: TranslationInfo[] = [
   { id: 'webbe', name: 'WEB British Edition', language: 'en', provider: 'bible-api' },
   { id: 'clementine', name: 'Clementine Latin Vulgate', language: 'la', provider: 'bible-api' },
   { id: 'tamil', name: 'தமிழ் (Tamil)', language: 'ta', provider: 'bolls', providerCode: 'TAOVBSI' },
-  { id: 'esv', name: 'English Standard Version', language: 'en', provider: 'esv' },
+  // ESV is disabled for now (needs a separate Crossway API key). Re-enable by
+  // uncommenting this entry, the /esv handler + route in server/src/worker.ts,
+  // and setting the ESV_API_KEY secret.
+  // { id: 'esv', name: 'English Standard Version', language: 'en', provider: 'esv' },
 ];
 
 const LATIN_LANGS = new Set(['en', 'la']);

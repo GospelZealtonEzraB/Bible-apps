@@ -95,7 +95,7 @@ export default function SettingsScreen() {
             })}
           </View>
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
-            Applies to verses you add next. ESV needs the server (see AI &amp; Server below).
+            Applies to verses you add next.
           </Text>
         </Card>
       </View>
@@ -160,7 +160,7 @@ export default function SettingsScreen() {
         <Card>
           <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
             Paste your deployed server URL to unlock AI memory hooks, verse explanations,
-            build-a-pack, and the ESV translation. See server/README.md to deploy one.
+            and build-a-pack. See server/README.md to deploy one.
           </Text>
           <TextInput
             value={settings.serverUrl ?? ''}
@@ -180,7 +180,7 @@ export default function SettingsScreen() {
             }}
           />
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
-            {settings.serverUrl ? 'AI features and ESV are enabled.' : 'Optional — the app works fully without it.'}
+            {settings.serverUrl ? 'AI features are enabled.' : 'Optional — the app works fully without it.'}
           </Text>
         </Card>
       </View>

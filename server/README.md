@@ -1,24 +1,27 @@
 # Engraved server (Cloudflare Worker)
 
-A tiny server that holds the secret API keys the app can't ship, and proxies:
+A tiny server that holds the secret AI key the app can't ship, and proxies:
 
-- `POST /ai` — AI verse tools (memory hooks, plain-English meaning, build-a-pack) via Claude
-- `POST /esv` — ESV verse text via the Crossway API
+- `POST /ai` — AI verse tools (memory hooks, plain-English meaning, build-a-pack)
 
-The app talks only to this server; your keys never leave it. Everything is optional —
-the app works fully without it, and turns these features on once you paste the deployed
-URL into **Settings → AI & Server** in the app.
+It works with **OpenAI** or **Anthropic** — whichever key you set. The app talks only to
+this server; your key never leaves it. Everything is optional — the app works fully without
+it, and turns these features on once you paste the deployed URL into
+**Settings → AI & Server** in the app.
 
-## What you'll need (all free to start)
+> ESV is currently disabled (it needs a separate free Crossway key). The code is in place
+> but commented out — see the note at the bottom to turn it on later.
+
+## What you'll need (free to start)
 
 1. A **Cloudflare** account — https://dash.cloudflare.com/sign-up
-2. An **Anthropic API key** — https://console.anthropic.com → Billing (add a card and set a
-   small monthly spend cap, e.g. $5) → API Keys → Create Key. Starts with `sk-ant-…`.
-3. *(Optional, only for ESV)* a free **ESV API key** — https://api.esv.org → create an
-   account → create an API key.
+2. An **OpenAI API key** — https://platform.openai.com/api-keys (set a monthly usage limit
+   under Billing → Limits). Starts with `sk-…`.
+   - *(Or an **Anthropic** key instead — https://console.anthropic.com — the server auto-uses
+     whichever key is present.)*
 
-> 🔐 Never paste these keys into the app, into git, or into chat. They go **only** into the
-> Worker's secrets below.
+> 🔐 Never paste the key into the app, into git, or into chat. It goes **only** into the
+> Worker's secret below.
 
 ## Deploy
 
@@ -27,10 +30,8 @@ cd server
 npm install -g wrangler        # one time
 wrangler login                 # opens the browser
 
-# Set your secrets (each command prompts you to paste the value)
-wrangler secret put ANTHROPIC_API_KEY
-wrangler secret put ESV_API_KEY          # optional — only if using ESV
-wrangler secret put APP_SHARED_SECRET    # optional — any random string, extra protection
+wrangler secret put OPENAI_API_KEY       # paste your sk-… key when prompted
+wrangler secret put APP_SHARED_SECRET    # optional — any random string
 
 wrangler deploy
 ```
@@ -38,14 +39,21 @@ wrangler deploy
 `wrangler deploy` prints your URL, e.g. `https://engraved-server.<you>.workers.dev`.
 Paste that into the app: **Settings → AI & Server → Server URL**.
 
-## Change the model / cost
+## Model / cost
 
-Edit `AI_MODEL` in `wrangler.toml` (default `claude-haiku-4-5`, the cheapest). `claude-sonnet-5`
-gives richer explanations for a bit more. Results are cached per verse in the app, so you
-pay only the first time you generate a hook or explanation for a given verse.
+The model is set by `AI_MODEL` in `wrangler.toml` (default **`gpt-5.4-mini`**). Change it to
+any exact model id your key can use. Results are cached per verse in the app, so you pay
+only the first time you generate a hook or explanation for a given verse.
+
+- OpenAI default: `gpt-5.4-mini`
+- Anthropic (if you use a Claude key instead): set `AI_MODEL = "claude-haiku-4-5"`
 
 ## Notes
 
 - The AI never generates Scripture text — `pack` returns references only, and the app fetches
   the real verses from the trusted Bible providers.
-- ESV text is © Crossway; the app shows the required attribution wherever ESV verses appear.
+
+### Re-enabling ESV later
+1. Uncomment `handleEsv` and the `/esv` route in `src/worker.ts`.
+2. Uncomment the `esv` entry in the app's `src/data/bibleApi.ts` `TRANSLATIONS`.
+3. Get a free key at https://api.esv.org and `wrangler secret put ESV_API_KEY`, then redeploy.

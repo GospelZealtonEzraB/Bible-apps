@@ -103,24 +103,27 @@ algorithms are provably correct independent of the UI.
 
 ---
 
-## 🤖 AI features & ESV (optional server)
+## 🤖 AI features (optional server)
 
-Memory hooks, plain-English explanations, AI build-a-pack, and the **ESV** translation are
-powered by a tiny server that holds the secret API keys (an LLM/ESV key can't ship inside
-the app). Everything else works without it; these features stay off until you deploy the
-server and paste its URL into **Settings → AI & Server**.
+Memory hooks, plain-English explanations, and AI build-a-pack are powered by a tiny server
+that holds the secret AI key (an LLM key can't ship inside the app). Everything else works
+without it; these features stay off until you deploy the server and paste its URL into
+**Settings → AI & Server**.
 
 - The server is a **Cloudflare Worker** in [`server/`](./server) — see
   [`server/README.md`](./server/README.md) for the deploy steps and the (free) accounts/keys
-  you'll need (Cloudflare + Anthropic, plus an optional free ESV key).
+  you'll need (Cloudflare + an **OpenAI** or **Anthropic** key).
+- Works with **OpenAI** (default `gpt-5.4-mini`) or **Anthropic** — the server uses whichever
+  key you set.
 - The AI never generates Scripture text — build-a-pack returns references only, and the app
   always fetches real verses from the trusted Bible providers.
-- Default model is **Claude Haiku 4.5** (cheapest); results are cached per verse so you pay
-  only once per hook/explanation.
+- Results are cached per verse, so you pay only once per hook/explanation.
+- *(ESV is coded but disabled — it needs a separate free Crossway key; see server/README.md
+  to turn it on.)*
 
 ## 📜 Scripture text & licensing
 
-Verse text is fetched from public sources: **bible-api.com** (public-domain English/Latin),
-**bolls.life** (public-domain Tamil), and — via your server — **ESV** (© Crossway; the app
-shows the required attribution). Bundled offline fixtures use the **World English Bible
-(WEB)**, public domain. NKJV is not included (no free/legal source).
+Verse text is fetched from public sources: **bible-api.com** (public-domain English/Latin)
+and **bolls.life** (public-domain Tamil). Bundled offline fixtures use the **World English
+Bible (WEB)**, public domain. ESV (© Crossway) is supported via your own server but off by
+default; NKJV is not included (no free/legal source).
