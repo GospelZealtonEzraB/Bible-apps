@@ -4,7 +4,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
-import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
+import { Card, Button, Chip, SectionTitle, EmptyState, SpeechBubble } from '@/components/ui';
+import { Ember } from '@/components/Ember';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStudySession, useApplication, useStore } from '@/store/useStore';
 import { fetchStudyBrief } from '@/data/studyClient';
@@ -49,11 +50,9 @@ export default function StudyBriefScreen() {
       <Header title={passage} subtitle="Study brief" back />
 
       {loading ? (
-        <Card>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={{ color: colors.textMuted }}>Setting the scene…</Text>
-          </View>
+        <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          <Ember mood="thinking" size={64} />
+          <SpeechBubble>Setting the scene — reading what comes before, the people, and the place…</SpeechBubble>
         </Card>
       ) : null}
 

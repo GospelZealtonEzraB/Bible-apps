@@ -13,6 +13,19 @@ import { useTheme } from '@/theme';
 import { radius, spacing, font } from '@/theme';
 import type { VerseStatus } from '@/types';
 
+/** Darken (pct<0) or lighten (pct>0) a hex color — used for the 3D button lip. */
+export function shade(hex: string, pct: number): string {
+  const h = hex.replace('#', '');
+  const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+  const n = parseInt(full, 16);
+  const f = 1 + pct;
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const r = clamp(((n >> 16) & 255) * f);
+  const g = clamp(((n >> 8) & 255) * f);
+  const b = clamp((n & 255) * f);
+  return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+}
+
 // ---- Card -----------------------------------------------------------------
 export function Card({
   children,
@@ -23,19 +36,25 @@ export function Card({
   style?: StyleProp<ViewStyle>;
   onPress?: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, dark } = useTheme();
   const base: ViewStyle = {
     backgroundColor: colors.surface,
-    borderRadius: radius.lg,
+    borderRadius: radius.xl,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     padding: spacing.lg,
+    // Soft elevation for a friendly, tactile feel.
+    shadowColor: '#000',
+    shadowOpacity: dark ? 0.28 : 0.07,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
   };
   if (onPress) {
     return (
       <Pressable
         onPress={onPress}
-        style={({ pressed }) => [base, style, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [base, style, pressed && { transform: [{ scale: 0.985 }], opacity: 0.95 }]}
       >
         {children}
       </Pressable>
@@ -79,7 +98,15 @@ export function Button({
     ghost: colors.primary,
     danger: '#fff',
   };
+  // The darker "lip" beneath the button — the Duolingo-style press depth.
+  const edge: Record<ButtonVariant, string> = {
+    primary: shade(colors.primary, -0.26),
+    secondary: colors.border,
+    ghost: 'transparent',
+    danger: shade(colors.danger, -0.26),
+  };
   const isDisabled = disabled || loading;
+  const flat = variant === 'ghost';
   return (
     <Pressable
       onPress={onPress}
@@ -87,16 +114,19 @@ export function Button({
       style={({ pressed }) => [
         {
           backgroundColor: bg[variant],
-          borderRadius: radius.pill,
-          paddingVertical: small ? spacing.sm : spacing.md + 2,
+          borderRadius: 16,
+          paddingVertical: small ? 9 : 15,
           paddingHorizontal: spacing.xl,
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
           gap: spacing.sm,
-          borderWidth: variant === 'ghost' ? StyleSheet.hairlineWidth : 0,
+          borderWidth: flat ? StyleSheet.hairlineWidth : 0,
           borderColor: colors.border,
-          opacity: isDisabled ? 0.5 : pressed ? 0.9 : 1,
+          borderBottomWidth: flat ? StyleSheet.hairlineWidth : pressed ? 2 : 4,
+          borderBottomColor: flat ? colors.border : edge[variant],
+          transform: [{ translateY: !flat && pressed ? 2 : 0 }],
+          opacity: isDisabled ? 0.55 : 1,
         },
         style,
       ]}
@@ -109,8 +139,9 @@ export function Button({
           <Text
             style={{
               color: fg[variant],
-              fontWeight: '700',
+              fontWeight: '800',
               fontSize: small ? font.sizes.sm : font.sizes.md,
+              letterSpacing: 0.2,
             }}
           >
             {title}
@@ -217,6 +248,32 @@ export function SectionTitle({
     >
       {children}
     </Text>
+  );
+}
+
+/** A rounded speech bubble for Ember's coach voice, with a little tail. */
+export function SpeechBubble({ children, tail = 'left' }: { children: React.ReactNode; tail?: 'left' | 'none' }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flex: 1 }}>
+      <View
+        style={{
+          backgroundColor: colors.surfaceAlt,
+          borderRadius: radius.lg,
+          borderTopLeftRadius: tail === 'left' ? 4 : radius.lg,
+          paddingVertical: spacing.sm + 2,
+          paddingHorizontal: spacing.md,
+        }}
+      >
+        {typeof children === 'string' ? (
+          <Text style={{ color: colors.text, fontSize: font.sizes.sm, fontFamily: font.serif, fontStyle: 'italic', lineHeight: 20 }}>
+            {children}
+          </Text>
+        ) : (
+          children
+        )}
+      </View>
+    </View>
   );
 }
 

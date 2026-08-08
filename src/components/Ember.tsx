@@ -1,5 +1,5 @@
-import React from 'react';
-import { View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, Easing } from 'react-native';
 import Svg, {
   Path,
   Circle,
@@ -16,7 +16,9 @@ export type EmberMood =
   | 'celebrating'
   | 'proud'
   | 'worried'
-  | 'sleeping';
+  | 'sleeping'
+  | 'excited'
+  | 'thinking';
 
 const FLAME_3 = '#E0592B';
 const FLAME_2 = '#F5A623';
@@ -34,13 +36,36 @@ const TEAR = '#7FD7FF';
 export function Ember({
   mood = 'content',
   size = 96,
+  animated = true,
 }: {
   mood?: EmberMood;
   size?: number;
+  animated?: boolean;
 }) {
   const width = size * (200 / 240);
+  const bob = useRef(new Animated.Value(0)).current;
+  const excited = mood === 'celebrating' || mood === 'excited';
+
+  useEffect(() => {
+    if (!animated) return;
+    bob.setValue(0);
+    const dur = excited ? 600 : 2200;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(bob, { toValue: 1, duration: dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(bob, { toValue: 0, duration: dur, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [animated, excited, bob]);
+
+  const translateY = bob.interpolate({ inputRange: [0, 1], outputRange: [0, excited ? -9 : -4] });
+  const scale = bob.interpolate({ inputRange: [0, 1], outputRange: [1, excited ? 1.05 : 1.015] });
+  const rotate = bob.interpolate({ inputRange: [0, 1], outputRange: ['0deg', excited ? '3deg' : '1deg'] });
+
   return (
-    <View style={{ width, height: size }}>
+    <Animated.View style={{ width, height: size, transform: [{ translateY }, { scale }, { rotate }] }}>
       <Svg width={width} height={size} viewBox="0 0 200 240">
         <Defs>
           <LinearGradient id="flameBody" x1="0" y1="0" x2="0" y2="1">
@@ -71,7 +96,7 @@ export function Ember({
 
         <Face mood={mood} />
       </Svg>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -115,6 +140,31 @@ function Face({ mood }: { mood: EmberMood }) {
           <Circle cx="100" cy="150" r="4" fill={EYE} />
           <SvgText x="132" y="88" fontSize="20" fill={EYE} opacity={0.5}>z</SvgText>
           <SvgText x="148" y="74" fontSize="26" fill={EYE} opacity={0.5}>Z</SvgText>
+        </G>
+      );
+    case 'excited':
+      return (
+        <G>
+          {/* wide sparkly eyes + big open smile */}
+          <Circle cx="86" cy="131" r="6.5" fill={EYE} />
+          <Circle cx="114" cy="131" r="6.5" fill={EYE} />
+          <Circle cx="88.5" cy="128.5" r="2" fill="#fff" />
+          <Circle cx="116.5" cy="128.5" r="2" fill="#fff" />
+          <Path d="M87 147 Q100 162 113 147 Q100 154 87 147 Z" fill={EYE} />
+          <Path d="M44 92 l2.6 6.6 6.6 2.6 -6.6 2.6 -2.6 6.6 -2.6 -6.6 -6.6 -2.6 6.6 -2.6 z" fill={ACCENT} />
+          <Path d="M158 100 l2.2 5.4 5.4 2.2 -5.4 2.2 -2.2 5.4 -2.2 -5.4 -5.4 -2.2 5.4 -2.2 z" fill={ACCENT} />
+        </G>
+      );
+    case 'thinking':
+      return (
+        <G>
+          {/* eyes glancing up, small mouth, thought dots */}
+          <Circle cx="87" cy="129" r="5.5" fill={EYE} />
+          <Circle cx="115" cy="129" r="5.5" fill={EYE} />
+          <Path d="M92 150 L108 150" stroke={EYE} strokeWidth={3} strokeLinecap="round" />
+          <Circle cx="140" cy="118" r="2.6" fill={EYE} opacity={0.55} />
+          <Circle cx="150" cy="108" r="3.4" fill={EYE} opacity={0.55} />
+          <Circle cx="162" cy="96" r="4.4" fill={EYE} opacity={0.55} />
         </G>
       );
     case 'content':

@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
-import { Card, Button, SectionTitle, EmptyState } from '@/components/ui';
+import { Card, Button, SectionTitle, EmptyState, SpeechBubble } from '@/components/ui';
 import { Ember } from '@/components/Ember';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useProfile, useCircleList, useStore } from '@/store/useStore';
@@ -45,8 +45,13 @@ export default function TogetherScreen() {
     <Screen>
       <Header title="Growing Together" subtitle="Grow with a faith partner" />
 
-      <View style={{ alignItems: 'center', marginBottom: spacing.md }}>
-        <Ember mood="proud" size={92} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md }}>
+        <Ember mood={circles.length > 0 ? 'excited' : 'content'} size={78} />
+        <SpeechBubble>
+          {circles.length > 0
+            ? "Growing together beats growing alone. Let's check in on each other!"
+            : 'Invite a friend and spur one another on toward love and good deeds.'}
+        </SpeechBubble>
       </View>
 
       {/* Identity / name */}

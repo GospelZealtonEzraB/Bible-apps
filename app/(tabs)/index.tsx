@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
-import { Card, Button, SectionTitle, StatusBadge, EmptyState } from '@/components/ui';
+import { Card, Button, SectionTitle, StatusBadge, EmptyState, SpeechBubble } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Ember, type EmberMood } from '@/components/Ember';
 import { useTheme, spacing, font, radius } from '@/theme';
@@ -24,6 +24,8 @@ const MOOD_SPEECH: Record<EmberMood, string> = {
   proud: "All caught up. You're on fire.",
   worried: "Don't leave me hanging — keep the streak!",
   sleeping: 'See you tomorrow.',
+  excited: "Let's hide His word in our hearts!",
+  thinking: 'Let me think about that…',
 };
 
 function dayOfYear(d = new Date()): number {
@@ -153,18 +155,9 @@ export default function TodayScreen() {
 
       {/* Ember hero */}
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-        <Ember mood={mood} size={80} />
-        <View style={{ flex: 1, gap: 6 }}>
-          <Text
-            style={{
-              color: colors.text,
-              fontSize: font.sizes.md,
-              fontFamily: font.serif,
-              fontStyle: 'italic',
-            }}
-          >
-            “{MOOD_SPEECH[mood]}”
-          </Text>
+        <Ember mood={mood} size={84} />
+        <View style={{ flex: 1, gap: 8 }}>
+          <SpeechBubble>{MOOD_SPEECH[mood]}</SpeechBubble>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
             <Text style={{ color: colors.text, fontWeight: '800' }}>Level {level.level}</Text>
             <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
