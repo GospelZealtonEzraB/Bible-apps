@@ -9,6 +9,7 @@ import { Button, EmptyState } from '@/components/ui';
 import { Ember } from '@/components/Ember';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore, useVerse, useStats } from '@/store/useStore';
+import { isLatinTranslation } from '@/data/bibleApi';
 import { isDue, type RecallRating } from '@/srs/sm2';
 
 const RATINGS: { key: RecallRating; label: string; color: keyof ReturnType<typeof useTheme>['colors'] }[] = [
@@ -142,7 +143,8 @@ export default function ReviewScreen() {
                 lineHeight: 30,
                 textAlign: 'center',
                 marginTop: spacing.xl,
-                fontFamily: font.serif,
+                fontFamily:
+                  current && isLatinTranslation(current.translation) ? font.serif : undefined,
               }}
             >
               "{current?.text}"

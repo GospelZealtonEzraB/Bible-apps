@@ -24,6 +24,15 @@ describe('tokenize', () => {
   test('collapses extra whitespace', () => {
     expect(tokenize('  a   b \n c ').map((x) => x.raw)).toEqual(['a', 'b', 'c']);
   });
+
+  test('treats Tamil script as words (so drills work)', () => {
+    // "God is love" in Tamil.
+    const t = tokenize('தேவன் அன்பாயிருக்கிறார்');
+    expect(t).toHaveLength(2);
+    expect(t.every((x) => x.isWord)).toBe(true);
+    expect(t[0].word.length).toBeGreaterThan(0);
+    expect(toFirstLetters('தேவன் அன்பு')).not.toBe('');
+  });
 });
 
 describe('toFirstLetters', () => {

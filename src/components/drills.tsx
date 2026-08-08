@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { useTheme, spacing, font, radius } from '@/theme';
 import { Button } from '@/components/ui';
+import { isLatinTranslation } from '@/data/bibleApi';
 import type { Verse } from '@/types';
 import {
   tokenize,
@@ -14,6 +15,11 @@ import {
   normalizeWord,
   type Token,
 } from '@/drills/helpers';
+
+/** Verse text uses the serif face for Latin scripts, the system font otherwise
+ * (Georgia has no Tamil glyphs). */
+const verseFont = (translation: string): string | undefined =>
+  isLatinTranslation(translation) ? font.serif : undefined;
 
 export interface DrillProps {
   verse: Verse;
@@ -112,7 +118,7 @@ export function FlashcardDrill({ verse, onComplete }: DrillProps) {
             lineHeight: flipped ? 30 : 38,
             fontWeight: flipped ? '400' : '800',
             textAlign: 'center',
-            fontFamily: flipped ? font.serif : undefined,
+            fontFamily: flipped ? verseFont(verse.translation) : undefined,
           }}
         >
           {flipped ? `"${back}"` : front}
@@ -178,7 +184,7 @@ export function VanishingDrill({ verse, onComplete }: DrillProps) {
                     fontSize: font.sizes.lg,
                     lineHeight: 32,
                     marginHorizontal: 4,
-                    fontFamily: font.serif,
+                    fontFamily: verseFont(verse.translation),
                     color: isHidden ? 'transparent' : colors.text,
                     borderBottomWidth: isHidden ? 2 : 0,
                     borderBottomColor: colors.textFaint,
@@ -264,7 +270,7 @@ export function FirstLetterDrill({ verse, onComplete }: DrillProps) {
               lineHeight: 26,
               textAlign: 'center',
               marginTop: spacing.xl,
-              fontFamily: font.serif,
+              fontFamily: verseFont(verse.translation),
             }}
           >
             "{verse.text}"
@@ -379,7 +385,7 @@ function FillBlanks({ verse, onComplete }: DrillProps) {
                     fontSize: font.sizes.md,
                     lineHeight: 34,
                     marginHorizontal: 3,
-                    fontFamily: font.serif,
+                    fontFamily: verseFont(verse.translation),
                   }}
                 >
                   {t.raw}
@@ -473,7 +479,7 @@ function TypeItOut({ verse, onComplete }: DrillProps) {
               borderColor: colors.border,
               padding: spacing.lg,
               marginBottom: spacing.lg,
-              fontFamily: font.serif,
+              fontFamily: verseFont(verse.translation),
             }}
           />
           <Button title="Check accuracy" onPress={onCheck} disabled={!text.trim()} />
@@ -504,7 +510,7 @@ function TypeItOut({ verse, onComplete }: DrillProps) {
                     lineHeight: 28,
                     marginHorizontal: 3,
                     textDecorationLine: d.verdict === 'wrong' ? 'line-through' : 'none',
-                    fontFamily: font.serif,
+                    fontFamily: verseFont(verse.translation),
                   }}
                 >
                   {d.expected ?? d.typed}

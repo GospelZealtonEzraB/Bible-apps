@@ -7,7 +7,7 @@ import { Screen, Header } from '@/components/layout';
 import { Card, Button, SectionTitle } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore, useSettings } from '@/store/useStore';
-import { getVerse, verseId, type FetchedVerse } from '@/data/bibleApi';
+import { getVerse, verseId, isLatinTranslation, type FetchedVerse } from '@/data/bibleApi';
 import { STARTER_PACKS, type StarterPack } from '@/data/packs';
 
 export default function AddScreen() {
@@ -107,7 +107,7 @@ export default function AddScreen() {
                 color: colors.text,
                 fontSize: font.sizes.lg,
                 lineHeight: 28,
-                fontFamily: font.serif,
+                fontFamily: isLatinTranslation(preview.translation) ? font.serif : undefined,
               }}
             >
               "{preview.text}"

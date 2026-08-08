@@ -95,7 +95,7 @@ export default function SettingsScreen() {
             })}
           </View>
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
-            Applies to verses you add next. Public-domain translations via bible-api.com.
+            Applies to verses you add next. More translations (incl. ESV) are coming.
           </Text>
         </Card>
       </View>

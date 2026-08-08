@@ -13,7 +13,11 @@ export interface Token {
   isWord: boolean;
 }
 
-const WORD_CORE = /[A-Za-z0-9À-ɏ']+/;
+// Matches a "word" across Latin (basic + extended) and Tamil scripts, plus
+// straight/curly apostrophes. Explicit ranges are used instead of \p{L} so the
+// pattern works on Hermes regardless of Unicode-property-escape support.
+// ஀-௿ is the Tamil block.
+const WORD_CORE = /[0-9A-Za-zÀ-ɏ஀-௿'’]+/;
 
 /** Split a verse into whitespace-separated tokens, preserving punctuation. */
 export function tokenize(text: string): Token[] {

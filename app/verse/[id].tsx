@@ -9,6 +9,7 @@ import { Card, StatusBadge, Button, SectionTitle, EmptyState } from '@/component
 import { ProgressRing } from '@/components/ProgressRing';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerse } from '@/store/useStore';
+import { isLatinTranslation } from '@/data/bibleApi';
 import { relativeDueLabel } from '@/utils/date';
 import type { DrillMode } from '@/types';
 
@@ -65,7 +66,7 @@ export default function VerseDetailScreen() {
             color: colors.text,
             fontSize: font.sizes.xl,
             lineHeight: 34,
-            fontFamily: font.serif,
+            fontFamily: isLatinTranslation(verse.translation) ? font.serif : undefined,
           }}
         >
           "{verse.text}"
