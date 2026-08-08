@@ -3,7 +3,8 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Settings, Stats, Verse, VerseStatus } from '@/types';
+import type { Profile, Settings, Stats, Verse, VerseStatus } from '@/types';
+import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { initialSRS, review as sm2Review, RATING_TO_QUALITY } from '@/srs/sm2';
 import type { RecallRating } from '@/srs/sm2';
 import {
@@ -29,6 +30,7 @@ interface StoreState {
   verses: Record<string, Verse>;
   stats: Stats;
   settings: Settings;
+  profile: Profile;
   hydrated: boolean;
   /** Id of a badge just earned, for the celebration overlay (transient). */
   recentBadgeId: string | null;
@@ -48,6 +50,13 @@ interface StoreState {
 
   setSettings: (patch: Partial<Settings>) => void;
   setDailyGoal: (goal: number) => void;
+
+  /** Ensure a stable memberId exists (minted once). Idempotent. */
+  ensureProfile: () => void;
+  /** Set the display name shown to circle partners. */
+  setDisplayName: (name: string) => void;
+  /** Adopt a transfer code from another device; returns false if malformed. */
+  restoreFromBackup: (code: string) => boolean;
   /** Cache AI-generated content (memory hook / explanation) on a verse. */
   setVerseAi: (id: string, patch: { memoryHook?: string; explanation?: string }) => void;
   clearCelebration: () => void;
@@ -112,6 +121,8 @@ const defaultSettings: Settings = {
   theme: 'system',
   serverUrl: null,
 };
+
+const defaultProfile: Profile = { memberId: '', displayName: '', backupCode: '' };
 
 function statusFromSrs(
   interval: number,
@@ -221,6 +232,7 @@ export const useStore = create<StoreState>()(
       verses: {},
       stats: defaultStats,
       settings: defaultSettings,
+      profile: defaultProfile,
       hydrated: false,
       recentBadgeId: null,
       recentXp: null,
@@ -358,6 +370,25 @@ export const useStore = create<StoreState>()(
           stats: { ...state.stats, dailyGoal: Math.max(1, Math.min(50, Math.round(goal))) },
         })),
 
+      ensureProfile: () =>
+        set((state) => {
+          if (state.profile.memberId) return {};
+          const id = newMemberId();
+          return { profile: { ...state.profile, memberId: id, backupCode: id } };
+        }),
+
+      setDisplayName: (name) =>
+        set((state) => ({
+          profile: { ...state.profile, displayName: name.trim().slice(0, 40) },
+        })),
+
+      restoreFromBackup: (code) => {
+        const c = code.trim();
+        if (!isValidMemberId(c)) return false;
+        set((state) => ({ profile: { ...state.profile, memberId: c, backupCode: c } }));
+        return true;
+      },
+
       setVerseAi: (id, patch) =>
         set((state) => {
           const v = state.verses[id];
@@ -380,6 +411,7 @@ export const useStore = create<StoreState>()(
         verses: state.verses,
         stats: state.stats,
         settings: state.settings,
+        profile: state.profile,
       }),
       // Merge persisted data over current defaults so state saved by an older
       // version (missing newer fields like stats.earnedBadges) is always
@@ -391,11 +423,14 @@ export const useStore = create<StoreState>()(
           ...p,
           stats: { ...defaultStats, ...(p.stats ?? {}) },
           settings: { ...defaultSettings, ...(p.settings ?? {}) },
+          profile: { ...defaultProfile, ...(p.profile ?? {}) },
           verses: p.verses ?? {},
         };
       },
       onRehydrateStorage: () => () => {
         useStore.setState({ hydrated: true });
+        // Mint a stable identity on first run (idempotent thereafter).
+        useStore.getState().ensureProfile();
       },
     },
   ),
@@ -409,6 +444,10 @@ export function useSettings<T>(selector: (s: Settings) => T): T {
 
 export function useStats(): Stats {
   return useStore((state) => state.stats);
+}
+
+export function useProfile(): Profile {
+  return useStore((state) => state.profile);
 }
 
 /**

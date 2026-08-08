@@ -73,6 +73,16 @@ export interface DailyProgress {
   questBonusClaimed: boolean;
 }
 
+/** Local anonymous identity for Growing Together (no accounts — see identity seam). */
+export interface Profile {
+  /** Stable device-minted id; the authoritative writer id for shared data. */
+  memberId: string;
+  /** Chosen name shown to circle partners. */
+  displayName: string;
+  /** Portable transfer code (equals memberId) to restore identity on a new phone. */
+  backupCode: string;
+}
+
 export type ThemePreference = 'system' | 'light' | 'dark';
 
 export interface Settings {
