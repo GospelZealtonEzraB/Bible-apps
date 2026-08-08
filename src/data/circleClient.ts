@@ -13,6 +13,11 @@ export interface MemberSnapshotInput {
   streak: number;
   versesDone: string[];
   planDone: string[];
+  memorizedRefs: string[];
+  learningRefs: string[];
+  bestStreak: number;
+  xp: number;
+  recentActivity: { type: string; ref?: string; at: number }[];
   lastActiveDay: string | null;
   lastActivity?: { type: string; ref?: string; at: number } | null;
   pushToken?: string | null;

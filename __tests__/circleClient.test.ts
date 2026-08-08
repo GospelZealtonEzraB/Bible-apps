@@ -23,6 +23,11 @@ const member: MemberSnapshotInput = {
   streak: 2,
   versesDone: [],
   planDone: [],
+  memorizedRefs: [],
+  learningRefs: [],
+  bestStreak: 2,
+  xp: 0,
+  recentActivity: [],
   lastActiveDay: '2026-08-08',
 };
 

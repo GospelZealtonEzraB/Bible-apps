@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, TextInput, Alert, Share, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,8 +8,10 @@ import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useCircle, useProfile, useStore } from '@/store/useStore';
 import { getVerse, normalizeKey, verseId } from '@/data/bibleApi';
-import { dayKey, daysBetweenKeys } from '@/utils/date';
+import { dayKey, daysBetweenKeys, relativeTimeAgo } from '@/utils/date';
 import { PLAN_TEMPLATES } from '@/data/plans';
+import { levelInfo } from '@/gamification';
+import { togetherTotals, coverage, mergeActivity } from '@/utils/circleProgress';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
 export default function CircleHubScreen() {
@@ -129,6 +131,9 @@ export default function CircleHubScreen() {
       {/* Shared goal */}
       <GoalCard code={code} />
 
+      {/* Together stats */}
+      <TogetherStatsCard members={members} togetherStreak={meta.togetherStreak} />
+
       {/* Progress board */}
       <View>
         <SectionTitle>Progress board</SectionTitle>
@@ -140,11 +145,18 @@ export default function CircleHubScreen() {
               isMe={m.id === profile.memberId}
               goal={meta.goal}
               cheers={circle.cheersFor?.[m.id] ?? 0}
+              onOpen={() => router.push(`/circle/${code}/member/${m.id}`)}
               onCheer={m.id !== profile.memberId ? () => cheerMember(code, m.id).catch(() => {}) : undefined}
             />
           ))}
         </View>
       </View>
+
+      {/* Who knows what */}
+      <WhoKnowsWhatCard members={members} myId={profile.memberId} />
+
+      {/* Activity feed */}
+      <ActivityFeedCard members={members} myId={profile.memberId} />
 
       {/* Shared verses */}
       <SharedVersesCard code={code} members={members} myId={profile.memberId} />
@@ -170,16 +182,19 @@ function MemberRow({
   isMe,
   goal,
   cheers,
+  onOpen,
   onCheer,
 }: {
   member: CircleMember;
   isMe: boolean;
   goal: CircleGoal | null;
   cheers: number;
+  onOpen?: () => void;
   onCheer?: () => void;
 }) {
   const { colors } = useTheme();
   const initial = (member.displayName || '?').trim().charAt(0).toUpperCase();
+  const level = levelInfo(member.xp ?? 0);
 
   let line = `📖 ${member.memorizedCount} memorized   ·   🔥 ${member.streak}`;
   if (goal?.kind === 'memorizeCount') {
@@ -191,7 +206,7 @@ function MemberRow({
   }
 
   return (
-    <Card>
+    <Card onPress={onOpen}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
         <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.lg }}>{initial}</Text>
@@ -199,11 +214,12 @@ function MemberRow({
         <View style={{ flex: 1 }}>
           <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>
             {member.displayName || 'Unnamed'}{isMe ? '  (you)' : ''}
+            <Text style={{ color: colors.textFaint, fontWeight: '600', fontSize: font.sizes.xs }}>{`   Lv ${level.level}`}</Text>
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>{line}</Text>
         </View>
         {onCheer ? (
-          <Pressable onPress={onCheer} style={{ alignItems: 'center', paddingHorizontal: spacing.sm }}>
+          <Pressable onPress={onCheer} hitSlop={8} style={{ alignItems: 'center', paddingHorizontal: spacing.sm }}>
             <Text style={{ fontSize: 20 }}>👏</Text>
             {cheers > 0 ? <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{cheers}</Text> : null}
           </Pressable>
@@ -213,8 +229,125 @@ function MemberRow({
             <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{cheers}</Text>
           </View>
         ) : null}
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
       </View>
     </Card>
+  );
+}
+
+const ACTIVITY_META: Record<string, { emoji: string; verb: string }> = {
+  memorized: { emoji: '🎉', verb: 'memorized' },
+  reviewed: { emoji: '🔁', verb: 'reviewed' },
+  added: { emoji: '➕', verb: 'added' },
+  studied: { emoji: '📖', verb: 'studied' },
+  prayed: { emoji: '🙏', verb: 'prayed' },
+  challenge: { emoji: '💪', verb: 'took a challenge on' },
+};
+
+function TogetherStatsCard({ members, togetherStreak }: { members: CircleMember[]; togetherStreak: number }) {
+  const { colors } = useTheme();
+  const totals = useMemo(() => togetherTotals(members), [members]);
+  const Stat = ({ value, label }: { value: string | number; label: string }) => (
+    <View style={{ flex: 1, alignItems: 'center' }}>
+      <Text style={{ color: colors.text, fontSize: font.sizes.xl, fontWeight: '800' }}>{value}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, textAlign: 'center' }}>{label}</Text>
+    </View>
+  );
+  return (
+    <Card>
+      <SectionTitle>Together so far</SectionTitle>
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        <Stat value={totals.combinedUnique} label={'verses hidden\nin your hearts'} />
+        <Stat value={totals.common} label={'you all know\nin common'} />
+        <Stat value={togetherStreak} label={'day together\nstreak'} />
+      </View>
+    </Card>
+  );
+}
+
+function WhoKnowsWhatCard({ members, myId }: { members: CircleMember[]; myId: string }) {
+  const { colors } = useTheme();
+  const rows = useMemo(() => coverage(members), [members]);
+  const [open, setOpen] = useState(false);
+  const shared = members.some((m) => (m.memorizedRefs?.length ?? 0) > 0);
+
+  if (!shared) {
+    return (
+      <View>
+        <SectionTitle>Who knows what</SectionTitle>
+        <Card>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.sm }}>
+            As you and your circle memorize verses, you’ll see who knows what here.
+          </Text>
+        </Card>
+      </View>
+    );
+  }
+
+  const shown = open ? rows : rows.slice(0, 6);
+
+  return (
+    <View>
+      <SectionTitle>Who knows what</SectionTitle>
+      <Card>
+        {shown.map((r) => {
+          const everyone = r.byMemberIds.length === members.length && members.length > 1;
+          return (
+            <View key={r.key} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 5 }}>
+              <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, fontWeight: everyone ? '800' : '600' }}>
+                {everyone ? '🌟 ' : ''}{r.display}
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 4 }}>
+                {members.map((m) => {
+                  const has = r.byMemberIds.includes(m.id);
+                  return (
+                    <View key={m.id} style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: has ? colors.success : colors.surfaceAlt }}>
+                      <Text style={{ color: has ? '#fff' : colors.textFaint, fontSize: 10, fontWeight: '800' }}>
+                        {(m.displayName || '?').trim().charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          );
+        })}
+        {rows.length > 6 ? (
+          <View style={{ marginTop: spacing.sm }}>
+            <Button title={open ? 'Show less' : `Show all ${rows.length}`} variant="ghost" small onPress={() => setOpen((o) => !o)} />
+          </View>
+        ) : null}
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
+          🌟 = everyone knows it. A single initial = a verse only one of you has (a great one to share).
+        </Text>
+      </Card>
+    </View>
+  );
+}
+
+function ActivityFeedCard({ members, myId }: { members: CircleMember[]; myId: string }) {
+  const { colors } = useTheme();
+  const feed = useMemo(() => mergeActivity(members, 15), [members]);
+  if (feed.length === 0) return null;
+  return (
+    <View>
+      <SectionTitle>Recent activity</SectionTitle>
+      <Card>
+        {feed.map((f, i) => {
+          const meta = ACTIVITY_META[f.type] ?? { emoji: '•', verb: f.type };
+          const who = f.memberId === myId ? 'You' : f.name || 'Someone';
+          return (
+            <View key={`${f.memberId}-${f.at}-${i}`} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 5 }}>
+              <Text style={{ fontSize: 16 }}>{meta.emoji}</Text>
+              <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm }}>
+                <Text style={{ fontWeight: '800' }}>{who}</Text> {meta.verb}{f.ref ? ` ${f.ref}` : ''}
+              </Text>
+              <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{relativeTimeAgo(f.at)}</Text>
+            </View>
+          );
+        })}
+      </Card>
+    </View>
   );
 }
 

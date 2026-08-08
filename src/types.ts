@@ -120,11 +120,22 @@ export interface CircleMeta {
   lastTogetherDay: string | null;
 }
 
-export interface MemberActivity {
-  type: string;
+export type ActivityType =
+  | 'memorized'
+  | 'reviewed'
+  | 'added'
+  | 'studied'
+  | 'prayed'
+  | 'challenge';
+
+export interface Activity {
+  type: ActivityType;
   ref?: string;
   at: number;
 }
+
+/** Back-compat alias for a single recent activity. */
+export type MemberActivity = Activity;
 
 export interface CircleMember {
   id: string;
@@ -133,8 +144,16 @@ export interface CircleMember {
   streak: number;
   versesDone: string[];
   planDone: string[];
+  /** Deduped references this member has memorized (empty if they opt out). */
+  memorizedRefs?: string[];
+  /** References currently in progress (learning/reviewing). */
+  learningRefs?: string[];
+  bestStreak?: number;
+  xp?: number;
+  /** Rolling last-10 events for the shared activity feed. */
+  recentActivity?: Activity[];
   lastActiveDay: string | null;
-  lastActivity?: MemberActivity | null;
+  lastActivity?: Activity | null;
   updatedAt: number;
 }
 
@@ -284,4 +303,6 @@ export interface Settings {
   theme: ThemePreference;
   /** Deployed Worker URL that powers AI features + ESV, or null if unset. */
   serverUrl: string | null;
+  /** Share which verses I've memorized/am learning with my circles. */
+  shareLibrary: boolean;
 }

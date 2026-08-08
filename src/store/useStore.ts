@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type {
+  Activity,
   ChallengeKind,
   Circle,
   CircleGoal,
@@ -30,7 +31,7 @@ import {
   verseId,
   type FetchedVerse,
 } from '@/data/bibleApi';
-import { versesDoneFrom } from '@/utils/circleProgress';
+import { versesDoneFrom, memorizedReferences, learningReferences } from '@/utils/circleProgress';
 import { dayKey, daysBetweenKeys } from '@/utils/date';
 import {
   xpForPractice,
@@ -59,6 +60,8 @@ interface StoreState {
   notes: Record<string, LocalNote>;
   /** Session memory for the welcome-back recap. */
   session: { lastOpenedDay: string | null };
+  /** Rolling log of recent activity, shared to circles for the feed. */
+  activityLog: Activity[];
   /** Expo push token for partner-activity notifications (null until registered). */
   pushToken: string | null;
   hydrated: boolean;
@@ -195,7 +198,13 @@ const defaultSettings: Settings = {
   reminderTime: null,
   theme: 'system',
   serverUrl: null,
+  shareLibrary: true,
 };
+
+/** Append an event to a rolling activity log, keeping the most recent `cap`. */
+function pushActivity(log: Activity[], evt: Activity, cap = 15): Activity[] {
+  return [...(log ?? []), evt].slice(-cap);
+}
 
 const defaultProfile: Profile = { memberId: '', displayName: '', backupCode: '' };
 
@@ -205,6 +214,7 @@ function myMemberSnapshot(
   sharedRefs: string[] = [],
   planRefs: string[] = [],
 ): MemberSnapshotInput {
+  const share = state.settings.shareLibrary;
   return {
     memberId: state.profile.memberId,
     displayName: state.profile.displayName,
@@ -212,8 +222,13 @@ function myMemberSnapshot(
     streak: state.stats.streak,
     versesDone: versesDoneFrom(state.verses, sharedRefs),
     planDone: versesDoneFrom(state.verses, planRefs),
+    memorizedRefs: share ? memorizedReferences(state.verses).slice(0, 400) : [],
+    learningRefs: share ? learningReferences(state.verses).slice(0, 200) : [],
+    bestStreak: state.stats.bestStreak,
+    xp: state.stats.xp,
+    recentActivity: (state.activityLog ?? []).slice(-10),
     lastActiveDay: state.stats.lastActiveDay,
-    lastActivity: null,
+    lastActivity: (state.activityLog ?? []).slice(-1)[0] ?? null,
     pushToken: state.pushToken,
   };
 }
@@ -345,6 +360,7 @@ export const useStore = create<StoreState>()(
       applications: {},
       notes: {},
       session: { lastOpenedDay: null },
+      activityLog: [],
       pushToken: null,
       hydrated: false,
       recentBadgeId: null,
@@ -390,6 +406,7 @@ export const useStore = create<StoreState>()(
             stats: { ...withBadges, daily: d.daily, xp: withBadges.xp + d.xpBonus },
             recentBadgeId: newBadges[0] ?? state.recentBadgeId,
             recentQuestComplete: d.questJustCompleted,
+            activityLog: pushActivity(state.activityLog, { type: 'added', ref: verse.reference, at: now }),
           };
         });
         return verse;
@@ -421,6 +438,7 @@ export const useStore = create<StoreState>()(
             100,
             Math.max(blended, accuracy >= 95 ? masteryFromInterval(srs.interval) : 0),
           );
+          const becameMemorized = v.status !== 'memorized' && status === 'memorized';
           const verses = { ...state.verses, [id]: { ...v, srs, status, mastery } };
           const progress = withProgress(state, {
             xpDelta: xpForPractice(accuracy),
@@ -439,6 +457,9 @@ export const useStore = create<StoreState>()(
             recentXp: (progress.recentXp ?? 0) + d.xpBonus,
             recentQuestComplete: d.questJustCompleted,
             stats: { ...progress.stats, daily: d.daily, xp: progress.stats.xp + d.xpBonus },
+            activityLog: becameMemorized
+              ? pushActivity(state.activityLog, { type: 'memorized', ref: v.reference, at: now })
+              : state.activityLog,
           };
         }),
 
@@ -455,6 +476,7 @@ export const useStore = create<StoreState>()(
               ? Math.round(v.mastery * 0.5)
               : Math.max(v.mastery, masteryFromInterval(srs.interval)),
           );
+          const becameMemorized = v.status !== 'memorized' && status === 'memorized';
           const verses = { ...state.verses, [id]: { ...v, srs, status, mastery } };
           const progress = withProgress(state, {
             xpDelta: xpForReview(rating),
@@ -469,6 +491,12 @@ export const useStore = create<StoreState>()(
             recentXp: (progress.recentXp ?? 0) + d.xpBonus,
             recentQuestComplete: d.questJustCompleted,
             stats: { ...progress.stats, daily: d.daily, xp: progress.stats.xp + d.xpBonus },
+            activityLog: pushActivity(
+              state.activityLog,
+              becameMemorized
+                ? { type: 'memorized', ref: v.reference, at: now }
+                : { type: 'reviewed', ref: v.reference, at: now },
+            ),
           };
         }),
 
@@ -579,6 +607,7 @@ export const useStore = create<StoreState>()(
       setStudySession: (session) =>
         set((state) => ({
           studySessions: { ...state.studySessions, [session.passageKey]: session },
+          activityLog: pushActivity(state.activityLog, { type: 'studied', ref: session.passage, at: Date.now() }),
         })),
 
       addApplication: (passageKey, passage, text) =>
@@ -738,6 +767,7 @@ export const useStore = create<StoreState>()(
         applications: state.applications,
         notes: state.notes,
         session: state.session,
+        activityLog: state.activityLog,
         pushToken: state.pushToken,
       }),
       // Merge persisted data over current defaults so state saved by an older
@@ -756,6 +786,7 @@ export const useStore = create<StoreState>()(
           applications: p.applications ?? {},
           notes: p.notes ?? {},
           session: { lastOpenedDay: null, ...(p.session ?? {}) },
+          activityLog: p.activityLog ?? [],
           pushToken: p.pushToken ?? null,
           verses: p.verses ?? {},
         };

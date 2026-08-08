@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, Alert, Platform, TextInput } from 'react-native';
+import { View, Text, Pressable, Alert, Platform, TextInput, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
@@ -188,6 +188,29 @@ export default function SettingsScreen() {
                 : 'AI features are enabled (using the built-in server).'
               : 'Optional — the app works fully without it.'}
           </Text>
+        </Card>
+      </View>
+
+      {/* Circle sharing */}
+      <View>
+        <SectionTitle>Circle sharing</SectionTitle>
+        <Card>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }}>
+                Share my memorized verses
+              </Text>
+              <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginTop: 2 }}>
+                Let circle partners see which verses you’ve memorized and are learning. Off = they see
+                only your counts.
+              </Text>
+            </View>
+            <Switch
+              value={settings.shareLibrary}
+              onValueChange={(v) => setSettings({ shareLibrary: v })}
+              trackColor={{ true: colors.primary, false: colors.surfaceAlt }}
+            />
+          </View>
         </Card>
       </View>
 
