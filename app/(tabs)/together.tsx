@@ -46,7 +46,7 @@ export default function TogetherScreen() {
       <Header title="Growing Together" subtitle="Grow with a faith partner" />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md }}>
-        <Ember mood={circles.length > 0 ? 'excited' : 'content'} size={78} />
+        <Ember mood={circles.length > 0 ? 'love' : 'waving'} size={78} />
         <SpeechBubble>
           {circles.length > 0
             ? "Growing together beats growing alone. Let's check in on each other!"

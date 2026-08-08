@@ -7,6 +7,7 @@ import { Screen, Header } from '@/components/layout';
 import { Card, Button, SectionTitle, StatusBadge, EmptyState, SpeechBubble } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Ember, type EmberMood } from '@/components/Ember';
+import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStats, useVerseList, useStore, todaysDaily } from '@/store/useStore';
 import { isDue } from '@/srs/sm2';
@@ -26,6 +27,10 @@ const MOOD_SPEECH: Record<EmberMood, string> = {
   sleeping: 'See you tomorrow.',
   excited: "Let's hide His word in our hearts!",
   thinking: 'Let me think about that…',
+  waving: 'Hi there — ready to begin?',
+  praying: "Let's bring it to Him.",
+  reading: "Let's dig in.",
+  love: 'So good to grow together.',
 };
 
 function dayOfYear(d = new Date()): number {
@@ -119,6 +124,7 @@ export default function TodayScreen() {
   const stats = useStats();
   const verses = useVerseList();
   const verseCount = useStore((s) => Object.keys(s.verses).length);
+  const [emberPop, setEmberPop] = useState(0);
 
   const due = useMemo(() => verses.filter((v) => isDue(v.srs)), [verses]);
   const memorized = useMemo(
@@ -155,9 +161,11 @@ export default function TodayScreen() {
 
       {/* Ember hero */}
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-        <Ember mood={mood} size={84} />
+        <Pressable onPress={() => setEmberPop((n) => n + 1)} hitSlop={8}>
+          <Ember mood={mood} size={84} react={emberPop} />
+        </Pressable>
         <View style={{ flex: 1, gap: 8 }}>
-          <SpeechBubble>{MOOD_SPEECH[mood]}</SpeechBubble>
+          <SpeechBubble>{emberPop > 0 ? pickEmberLine('greeting', emberPop) : MOOD_SPEECH[mood]}</SpeechBubble>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
             <Text style={{ color: colors.text, fontWeight: '800' }}>Level {level.level}</Text>
             <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>

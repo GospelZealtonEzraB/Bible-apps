@@ -18,7 +18,11 @@ export type EmberMood =
   | 'worried'
   | 'sleeping'
   | 'excited'
-  | 'thinking';
+  | 'thinking'
+  | 'waving'
+  | 'praying'
+  | 'reading'
+  | 'love';
 
 const FLAME_3 = '#E0592B';
 const FLAME_2 = '#F5A623';
@@ -37,13 +41,17 @@ export function Ember({
   mood = 'content',
   size = 96,
   animated = true,
+  react = 0,
 }: {
   mood?: EmberMood;
   size?: number;
   animated?: boolean;
+  /** Bump this number to trigger a one-shot "pop" bounce (e.g. on a win). */
+  react?: number;
 }) {
   const width = size * (200 / 240);
   const bob = useRef(new Animated.Value(0)).current;
+  const pop = useRef(new Animated.Value(0)).current;
   const excited = mood === 'celebrating' || mood === 'excited';
 
   useEffect(() => {
@@ -60,8 +68,20 @@ export function Ember({
     return () => loop.stop();
   }, [animated, excited, bob]);
 
+  // One-shot pop: quick over-scale then settle. Skips the initial mount (react=0).
+  useEffect(() => {
+    if (!react) return;
+    pop.setValue(0);
+    Animated.sequence([
+      Animated.spring(pop, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 18 }),
+      Animated.timing(pop, { toValue: 0, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+    ]).start();
+  }, [react, pop]);
+
   const translateY = bob.interpolate({ inputRange: [0, 1], outputRange: [0, excited ? -9 : -4] });
-  const scale = bob.interpolate({ inputRange: [0, 1], outputRange: [1, excited ? 1.05 : 1.015] });
+  const bobScale = bob.interpolate({ inputRange: [0, 1], outputRange: [1, excited ? 1.05 : 1.015] });
+  const popScale = pop.interpolate({ inputRange: [0, 1], outputRange: [1, 1.28] });
+  const scale = Animated.multiply(bobScale, popScale);
   const rotate = bob.interpolate({ inputRange: [0, 1], outputRange: ['0deg', excited ? '3deg' : '1deg'] });
 
   return (
@@ -165,6 +185,47 @@ function Face({ mood }: { mood: EmberMood }) {
           <Circle cx="140" cy="118" r="2.6" fill={EYE} opacity={0.55} />
           <Circle cx="150" cy="108" r="3.4" fill={EYE} opacity={0.55} />
           <Circle cx="162" cy="96" r="4.4" fill={EYE} opacity={0.55} />
+        </G>
+      );
+    case 'waving':
+      return (
+        <G>
+          {/* bright open eyes + big friendly smile + a raised hand */}
+          <Circle cx="86" cy="132" r="5.5" fill={EYE} />
+          <Circle cx="114" cy="132" r="5.5" fill={EYE} />
+          <Path d="M87 147 Q100 160 113 147 Q100 154 87 147 Z" fill={EYE} />
+          <Ellipse cx="160" cy="120" rx="9" ry="6.5" fill={FLAME_3} />
+          <Path d="M154 112 q6 -6 12 0" stroke={FLAME_3} strokeWidth={3} strokeLinecap="round" fill="none" />
+        </G>
+      );
+    case 'praying':
+      return (
+        <G>
+          {/* serene closed eyes + gentle smile + a small halo sparkle */}
+          <Path d="M80 133 Q86 139 92 133" stroke={EYE} strokeWidth={3} strokeLinecap="round" fill="none" />
+          <Path d="M108 133 Q114 139 120 133" stroke={EYE} strokeWidth={3} strokeLinecap="round" fill="none" />
+          <Path d="M92 150 Q100 155 108 150" stroke={EYE} strokeWidth={3} strokeLinecap="round" fill="none" />
+          <Path d="M100 30 l1.6 4 4 1.6 -4 1.6 -1.6 4 -1.6 -4 -4 -1.6 4 -1.6 z" fill={ACCENT} opacity={0.9} />
+        </G>
+      );
+    case 'reading':
+      return (
+        <G>
+          {/* eyes cast down, focused; small neutral mouth */}
+          <Path d="M81 130 q5 5 10 0" stroke={EYE} strokeWidth={3} strokeLinecap="round" fill="none" />
+          <Path d="M109 130 q5 5 10 0" stroke={EYE} strokeWidth={3} strokeLinecap="round" fill="none" />
+          <Circle cx="86" cy="135" r="3.6" fill={EYE} />
+          <Circle cx="114" cy="135" r="3.6" fill={EYE} />
+          <Path d="M93 151 L107 151" stroke={EYE} strokeWidth={3} strokeLinecap="round" />
+        </G>
+      );
+    case 'love':
+      return (
+        <G>
+          {/* heart eyes + happy smile */}
+          <Path d="M86 128 c-3 -3 -8 -1 -8 3 c0 4 6 7 8 9 c2 -2 8 -5 8 -9 c0 -4 -5 -6 -8 -3 z" fill={CHEEK} />
+          <Path d="M114 128 c-3 -3 -8 -1 -8 3 c0 4 6 7 8 9 c2 -2 8 -5 8 -9 c0 -4 -5 -6 -8 -3 z" fill={CHEEK} />
+          <Path d="M89 150 Q100 159 111 150" stroke={EYE} strokeWidth={3} strokeLinecap="round" fill="none" />
         </G>
       );
     case 'content':

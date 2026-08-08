@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen, Header } from '@/components/layout';
 import { Card, Button, Chip, SectionTitle, EmptyState, SpeechBubble } from '@/components/ui';
 import { Ember } from '@/components/Ember';
+import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStudySession, useApplication, useStore } from '@/store/useStore';
 import { fetchStudyBrief } from '@/data/studyClient';
@@ -63,6 +64,13 @@ export default function StudyBriefScreen() {
           subtitle={error}
           action={<Button title="Try again" onPress={() => { setError(null); setLoading(true); fetchStudyBrief(serverUrl, passage).then((r) => setStudySession({ passage, passageKey, brief: r.brief, fetchedAt: Date.now() })).catch((e) => setError(e instanceof Error ? e.message : 'Failed')).finally(() => setLoading(false)); }} />}
         />
+      ) : null}
+
+      {brief ? (
+        <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          <Ember mood="reading" size={60} />
+          <SpeechBubble>{pickEmberLine('study', passage.length)}</SpeechBubble>
+        </Card>
       ) : null}
 
       {brief ? <BriefBody brief={brief} passage={passage} translation={translation} serverUrl={serverUrl} onOpenRef={(r) => router.push(`/study/${encodeURIComponent(r)}`)} /> : null}

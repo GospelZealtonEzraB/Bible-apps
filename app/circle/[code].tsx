@@ -4,7 +4,9 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
-import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
+import { Card, Button, Chip, SectionTitle, EmptyState, SpeechBubble } from '@/components/ui';
+import { Ember } from '@/components/Ember';
+import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useCircle, useProfile, useStore } from '@/store/useStore';
 import { getVerse, normalizeKey, verseId } from '@/data/bibleApi';
@@ -553,6 +555,12 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
   return (
     <View>
       <SectionTitle>Praying together</SectionTitle>
+      {active.length === 0 ? (
+        <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.sm }}>
+          <Ember mood="praying" size={54} />
+          <SpeechBubble>{pickEmberLine('prayerReverent', active.length + answered.length)}</SpeechBubble>
+        </Card>
+      ) : null}
       <Card>
         <TextInput value={text} onChangeText={setText} placeholder="Share a prayer request…" placeholderTextColor={colors.textFaint} multiline style={[fieldStyle(colors), { minHeight: 60 }]} />
         <View style={{ marginTop: spacing.sm }}>
