@@ -278,6 +278,8 @@ export interface StudyApplication {
 
 /** The full shared state of a circle, as returned by the server. */
 export interface CircleSnapshot {
+  /** Server API version (for stale-server detection). */
+  apiVersion?: number;
   meta: CircleMeta;
   members: CircleMember[];
   sharedVerses: SharedVerseRef[];

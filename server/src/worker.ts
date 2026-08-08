@@ -317,6 +317,10 @@ async function kvListKeys(kv: KVNamespaceLike, prefix: string): Promise<string[]
   return names;
 }
 
+// Bumped whenever /circle gains actions the client depends on. Returned in every
+// snapshot so the app can warn when a deployed Worker is out of date.
+const API_VERSION = 3;
+
 // Invite codes: 6 chars, unambiguous base32 (no O/0/I/1).
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function genCode(): string {
@@ -514,7 +518,7 @@ async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | n
     if (to) cheersFor[to] = (cheersFor[to] ?? 0) + (Number(c?.count ?? 1) || 1);
   }
 
-  return { meta, members, sharedVerses, plans, notes, prayers, challenges, cheersFor };
+  return { apiVersion: API_VERSION, meta, members, sharedVerses, plans, notes, prayers, challenges, cheersFor };
 }
 
 async function handleCircle(req: Request, env: Env): Promise<Response> {
@@ -773,6 +777,30 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
         lastAt: Date.now(),
         kind: str(body.kind, 20) || 'cheer',
       });
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'renameCircle': {
+      const code = normCode(body.code);
+      const meta = await kvGetJson<any>(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      meta.name = str(body.name, 60).trim() || meta.name;
+      meta.version = (meta.version ?? 1) + 1;
+      await kvPutJson(kv, `circle:${code}:meta`, meta);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'removeVerse': {
+      const code = normCode(body.code);
+      const reference = str(body.reference, 60).trim();
+      if (reference) await kv.delete(`circle:${code}:verse:${normRef(reference)}`);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'deletePlan': {
+      const code = normCode(body.code);
+      const planId = String(body.planId ?? '');
+      if (planId) await kv.delete(`circle:${code}:plan:${planId}`);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

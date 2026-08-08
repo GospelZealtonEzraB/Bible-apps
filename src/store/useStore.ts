@@ -103,6 +103,12 @@ interface StoreState {
   addSharedVerse: (code: string, reference: string, forMemberId?: string) => Promise<void>;
   /** Set the circle's shared goal (or clear it with null). */
   setCircleGoal: (code: string, goal: CircleGoal | null) => Promise<void>;
+  /** Rename a circle. */
+  setCircleName: (code: string, name: string) => Promise<void>;
+  /** Remove a verse from a circle's shared list. */
+  removeSharedVerse: (code: string, reference: string) => Promise<void>;
+  /** Delete a study plan from a circle. */
+  deleteCirclePlan: (code: string, planId: string) => Promise<void>;
   /** Assign a memorization/study challenge to a partner. */
   assignChallenge: (code: string, toMemberId: string, toName: string, reference: string, kind: ChallengeKind) => Promise<void>;
   /** Submit my attempt at a challenge (text + optional accuracy). */
@@ -575,6 +581,24 @@ export const useStore = create<StoreState>()(
       setCircleGoal: async (code, goal) => {
         const s = get();
         const snap = await circleApi.setGoal(s.settings.serverUrl, code, s.profile.memberId, goal);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      setCircleName: async (code, name) => {
+        const s = get();
+        const snap = await circleApi.renameCircle(s.settings.serverUrl, code, s.profile.memberId, name.trim());
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      removeSharedVerse: async (code, reference) => {
+        const s = get();
+        const snap = await circleApi.removeVerse(s.settings.serverUrl, code, s.profile.memberId, reference);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      deleteCirclePlan: async (code, planId) => {
+        const s = get();
+        const snap = await circleApi.deletePlan(s.settings.serverUrl, code, s.profile.memberId, planId);
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 

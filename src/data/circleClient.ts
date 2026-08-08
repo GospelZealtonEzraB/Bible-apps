@@ -27,9 +27,20 @@ async function circleCall(
   serverUrl: string | null,
   body: Record<string, unknown>,
 ): Promise<CircleSnapshot> {
-  const { snapshot } = await postServer<{ snapshot: CircleSnapshot }>(serverUrl, '/circle', body);
-  return snapshot;
+  try {
+    const { snapshot } = await postServer<{ snapshot: CircleSnapshot }>(serverUrl, '/circle', body);
+    return snapshot;
+  } catch (e) {
+    // An old Worker rejects newer actions with this — make it actionable.
+    if (e instanceof Error && /unknown circle action/i.test(e.message)) {
+      throw new Error('Your circle server is out of date. Ask the owner to redeploy it (see Settings → Smart features).');
+    }
+    throw e;
+  }
 }
+
+/** The API version this app build expects from the Worker. */
+export const EXPECTED_API_VERSION = 3;
 
 export function createCircle(
   serverUrl: string | null,
@@ -203,6 +214,18 @@ export function answerPrayer(serverUrl: string | null, code: string, memberId: s
 
 export function cheer(serverUrl: string | null, code: string, memberId: string, toMemberId: string, kind = 'cheer'): Promise<CircleSnapshot> {
   return circleCall(serverUrl, { action: 'cheer', code, memberId, toMemberId, kind });
+}
+
+export function renameCircle(serverUrl: string | null, code: string, memberId: string, name: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'renameCircle', code, memberId, name });
+}
+
+export function removeVerse(serverUrl: string | null, code: string, memberId: string, reference: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'removeVerse', code, memberId, reference });
+}
+
+export function deletePlan(serverUrl: string | null, code: string, memberId: string, planId: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'deletePlan', code, memberId, planId });
 }
 
 export async function leaveCircle(

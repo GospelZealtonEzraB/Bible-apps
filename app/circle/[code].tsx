@@ -12,6 +12,7 @@ import { dayKey, daysBetweenKeys, relativeTimeAgo } from '@/utils/date';
 import { PLAN_TEMPLATES } from '@/data/plans';
 import { levelInfo } from '@/gamification';
 import { togetherTotals, coverage, mergeActivity } from '@/utils/circleProgress';
+import { EXPECTED_API_VERSION } from '@/data/circleClient';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
 export default function CircleHubScreen() {
@@ -26,8 +27,11 @@ export default function CircleHubScreen() {
   const refreshCircle = useStore((s) => s.refreshCircle);
   const leaveCircle = useStore((s) => s.leaveCircle);
   const cheerMember = useStore((s) => s.cheerMember);
+  const setCircleName = useStore((s) => s.setCircleName);
 
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [nameInput, setNameInput] = useState('');
 
   // Push my progress + pull the board whenever the screen focuses.
   useFocusEffect(
@@ -80,7 +84,39 @@ export default function CircleHubScreen() {
 
   return (
     <Screen>
-      <Header title={meta.name} subtitle={`Invite code · ${meta.code}`} back />
+      <Header
+        title={meta.name}
+        subtitle={`Invite code · ${meta.code}`}
+        back
+        right={
+          <Pressable onPress={() => { setNameInput(meta.name); setRenaming(true); }} hitSlop={8}>
+            <Ionicons name="pencil" size={18} color={colors.textMuted} />
+          </Pressable>
+        }
+      />
+
+      {renaming ? (
+        <Card>
+          <SectionTitle>Rename circle</SectionTitle>
+          <TextInput value={nameInput} onChangeText={setNameInput} placeholder="Circle name" placeholderTextColor={colors.textFaint} autoFocus style={fieldStyle(colors)} />
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setRenaming(false)} />
+            <Button title="Save" small style={{ flex: 1 }} disabled={!nameInput.trim()} onPress={async () => { try { await setCircleName(code, nameInput); } catch {} setRenaming(false); }} />
+          </View>
+        </Card>
+      ) : null}
+
+      {circle.apiVersion !== undefined && circle.apiVersion < EXPECTED_API_VERSION ? (
+        <Card style={{ borderColor: colors.warning }}>
+          <Text style={{ color: colors.warning, fontWeight: '700', fontSize: font.sizes.sm }}>
+            Your circle server is out of date
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginTop: 2 }}>
+            Some features (prayer, notes, plans) need a newer server. Ask the circle owner to redeploy it:
+            {' '}<Text style={{ fontWeight: '700' }}>cd server && npx wrangler deploy</Text>.
+          </Text>
+        </Card>
+      ) : null}
 
       {syncError ? (
         <Card>
@@ -356,19 +392,34 @@ function PlansCard({ code }: { code: string }) {
   const circle = useCircle(code);
   const createCirclePlan = useStore((s) => s.createCirclePlan);
   const plans = circle?.plans ?? [];
-  const [picking, setPicking] = useState(false);
+  const [mode, setMode] = useState<'idle' | 'templates' | 'custom'>('idle');
   const [busy, setBusy] = useState<string | null>(null);
 
-  const start = async (title: string, items: string[]) => {
-    setBusy(title);
+  // custom builder state
+  const [title, setTitle] = useState('');
+  const [refInput, setRefInput] = useState('');
+  const [items, setItems] = useState<string[]>([]);
+
+  const start = async (planTitle: string, planItems: string[]) => {
+    if (!planTitle.trim() || planItems.length === 0) return;
+    setBusy(planTitle);
     try {
-      await createCirclePlan(code, title, items);
-      setPicking(false);
+      await createCirclePlan(code, planTitle.trim(), planItems);
+      setMode('idle');
+      setTitle('');
+      setItems([]);
     } catch (e) {
       Alert.alert('Couldn’t start plan', e instanceof Error ? e.message : 'Please try again.');
     } finally {
       setBusy(null);
     }
+  };
+
+  const addRef = () => {
+    const r = refInput.trim();
+    if (!r) return;
+    setItems((prev) => (prev.includes(r) ? prev : [...prev, r]));
+    setRefInput('');
   };
 
   return (
@@ -378,9 +429,9 @@ function PlansCard({ code }: { code: string }) {
         <PlanRow key={p.planId} plan={p} circleCode={code} />
       ))}
 
-      {picking ? (
+      {mode === 'templates' ? (
         <Card>
-          <SectionTitle>Choose a plan</SectionTitle>
+          <SectionTitle>Start from a collection</SectionTitle>
           <View style={{ gap: spacing.sm }}>
             {PLAN_TEMPLATES.map((t) => (
               <Card key={t.id} onPress={() => start(t.title, t.items)}>
@@ -390,12 +441,36 @@ function PlansCard({ code }: { code: string }) {
               </Card>
             ))}
           </View>
-          <View style={{ marginTop: spacing.sm }}>
-            <Button title="Cancel" variant="ghost" small onPress={() => setPicking(false)} />
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setMode('idle')} />
+            <Button title="＋ Build my own" small style={{ flex: 1 }} onPress={() => setMode('custom')} />
+          </View>
+        </Card>
+      ) : mode === 'custom' ? (
+        <Card>
+          <SectionTitle>Build your own plan</SectionTitle>
+          <TextInput value={title} onChangeText={setTitle} placeholder="Plan name (e.g. Verses on hope)" placeholderTextColor={colors.textFaint} style={fieldStyle(colors)} />
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+            <TextInput value={refInput} onChangeText={setRefInput} placeholder="Add a reference (e.g. Psalm 46:1)" placeholderTextColor={colors.textFaint} autoCapitalize="words" returnKeyType="done" onSubmitEditing={addRef} style={[fieldStyle(colors), { flex: 1 }]} />
+            <Button title="Add" small onPress={addRef} disabled={!refInput.trim()} />
+          </View>
+          {items.length > 0 ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm }}>
+              {items.map((r) => (
+                <Pressable key={r} onPress={() => setItems((prev) => prev.filter((x) => x !== r))} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt }}>
+                  <Text style={{ color: colors.text, fontSize: font.sizes.sm, fontWeight: '600' }}>{r}</Text>
+                  <Ionicons name="close" size={13} color={colors.textFaint} />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setMode('idle')} />
+            <Button title={busy ? 'Creating…' : 'Create plan'} small style={{ flex: 1 }} loading={!!busy} disabled={!title.trim() || items.length === 0} onPress={() => start(title, items)} />
           </View>
         </Card>
       ) : (
-        <Button title="Start a plan together" variant="secondary" icon={<Ionicons name="map-outline" size={16} color={colors.text} />} onPress={() => setPicking(true)} />
+        <Button title="Start a plan together" variant="secondary" icon={<Ionicons name="map-outline" size={16} color={colors.text} />} onPress={() => setMode('templates')} />
       )}
     </View>
   );
@@ -405,10 +480,18 @@ function PlanRow({ plan, circleCode }: { plan: StudyPlan; circleCode: string }) 
   const { colors } = useTheme();
   const router = useRouter();
   const hasVerse = useStore((s) => s.hasVerse);
+  const deleteCirclePlan = useStore((s) => s.deleteCirclePlan);
   const translation = useStore((s) => s.settings.translation);
   const [open, setOpen] = useState(false);
 
   const doneCount = plan.items.filter((r) => hasVerse(verseId(r, translation))).length;
+
+  const onDelete = () => {
+    Alert.alert('Delete this plan?', `"${plan.title}" will be removed for everyone.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteCirclePlan(circleCode, plan.planId).catch(() => {}) },
+    ]);
+  };
 
   return (
     <Card style={{ marginBottom: spacing.sm }}>
@@ -418,6 +501,9 @@ function PlanRow({ plan, circleCode }: { plan: StudyPlan; circleCode: string }) 
           <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>{plan.title}</Text>
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{doneCount} / {plan.items.length} in your library</Text>
         </View>
+        <Pressable onPress={onDelete} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+          <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
+        </Pressable>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textFaint} />
       </Pressable>
       {open ? (
@@ -651,6 +737,7 @@ function SharedVersesCard({ code, members, myId }: { code: string; members: Circ
   const router = useRouter();
   const circle = useCircle(code);
   const addSharedVerse = useStore((s) => s.addSharedVerse);
+  const removeSharedVerse = useStore((s) => s.removeSharedVerse);
   const addFetchedVerse = useStore((s) => s.addFetchedVerse);
   const hasVerse = useStore((s) => s.hasVerse);
   const translation = useStore((s) => s.settings.translation);
@@ -734,6 +821,7 @@ function SharedVersesCard({ code, members, myId }: { code: string; members: Circ
               importing={importing === sv.reference}
               onImport={() => onImport(sv.reference)}
               onOpen={() => router.push(`/verse/${encodeURIComponent(verseId(sv.reference, translation))}`)}
+              onRemove={() => removeSharedVerse(code, sv.reference).catch(() => {})}
             />
           ))}
         </View>
@@ -749,6 +837,7 @@ function SharedVerseRow({
   importing,
   onImport,
   onOpen,
+  onRemove,
 }: {
   sv: SharedVerseRef;
   forLabel: string | null;
@@ -756,8 +845,14 @@ function SharedVerseRow({
   importing: boolean;
   onImport: () => void;
   onOpen: () => void;
+  onRemove: () => void;
 }) {
   const { colors } = useTheme();
+  const confirmRemove = () =>
+    Alert.alert('Remove from the list?', `"${sv.reference}" will be removed for everyone in the circle.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: onRemove },
+    ]);
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
@@ -772,6 +867,9 @@ function SharedVerseRow({
         ) : (
           <Button title={importing ? '…' : 'Add to mine'} small loading={importing} onPress={onImport} />
         )}
+        <Pressable onPress={confirmRemove} hitSlop={8} style={{ paddingHorizontal: 2 }}>
+          <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
+        </Pressable>
       </View>
     </Card>
   );
