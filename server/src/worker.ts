@@ -324,7 +324,7 @@ async function kvDeletePrefix(kv: KVNamespaceLike, prefix: string): Promise<void
 
 // Bumped whenever /circle gains actions the client depends on. Returned in every
 // snapshot so the app can warn when a deployed Worker is out of date.
-const API_VERSION = 4;
+const API_VERSION = 5;
 
 // Invite codes: 6 chars, unambiguous base32 (no O/0/I/1).
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -643,7 +643,8 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       const to = String(body.toMemberId ?? '');
       const reference = str(body.reference, 60).trim();
       if (!to || !reference) return json({ error: 'Missing partner or reference.' }, 400);
-      const chalId = genId();
+      // Honor a client-supplied id so optimistic UI ids match the server's.
+      const chalId = str(body.chalId, 40).trim() || genId();
       const rec = {
         chalId,
         from: memberId,
@@ -700,7 +701,7 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
         ? body.items.filter((x: any) => typeof x === 'string').map((x: string) => str(x, 60).trim()).slice(0, 200)
         : [];
       if (!title || items.length === 0) return json({ error: 'Missing plan title or items.' }, 400);
-      const planId = genId();
+      const planId = str(body.planId, 40).trim() || genId();
       await kvPutJson(kv, `circle:${code}:plan:${planId}`, {
         planId, title, items, createdBy: memberId, createdAt: Date.now(),
       });
@@ -754,7 +755,7 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       if (!meta) return json({ error: 'No circle with that code.' }, 404);
       const text = str(body.text, 1000).trim();
       if (!text) return json({ error: 'Missing prayer request.' }, 400);
-      const prayerId = genId();
+      const prayerId = str(body.prayerId, 40).trim() || genId();
       const byName = str(body.displayName, 40);
       await kvPutJson(kv, `circle:${code}:prayer:${prayerId}`, {
         prayerId, text, by: memberId, byName,

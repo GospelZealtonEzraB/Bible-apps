@@ -30,7 +30,7 @@ export default function MemberDetailScreen() {
   const profile = useProfile();
   const cheerMember = useStore((s) => s.cheerMember);
 
-  const member = circle?.members.find((m) => m.id === memberId);
+  const member = (circle?.members ?? []).find((m) => m.id === memberId);
   const isMe = memberId === profile.memberId;
 
   if (!member) {

@@ -708,10 +708,11 @@ export const useStore = create<StoreState>()(
       assignChallenge: async (code, toMemberId, toName, reference, kind) => {
         const s = get();
         const ref = reference.trim();
-        const optimistic = { chalId: genLocalId(), from: s.profile.memberId, fromName: s.profile.displayName, to: toMemberId, toName, reference: ref, kind, createdAt: Date.now(), status: 'pending' as const };
+        const chalId = genLocalId();
+        const optimistic = { chalId, from: s.profile.memberId, fromName: s.profile.displayName, to: toMemberId, toName, reference: ref, kind, createdAt: Date.now(), status: 'pending' as const };
         await optimisticCircle(set, get, code,
           (c) => ({ ...c, challenges: [optimistic, ...c.challenges] }),
-          () => circleApi.assignChallenge(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, toMemberId, toName, ref, kind),
+          () => circleApi.assignChallenge(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, toMemberId, toName, ref, kind, chalId),
         );
       },
 
@@ -778,10 +779,11 @@ export const useStore = create<StoreState>()(
 
       createCirclePlan: async (code, title, items) => {
         const s = get();
-        const optimistic = { planId: genLocalId(), title: title.trim(), items, createdBy: s.profile.memberId, createdAt: Date.now() };
+        const planId = genLocalId();
+        const optimistic = { planId, title: title.trim(), items, createdBy: s.profile.memberId, createdAt: Date.now() };
         await optimisticCircle(set, get, code,
           (c) => ({ ...c, plans: [optimistic, ...c.plans] }),
-          () => circleApi.createPlan(s.settings.serverUrl, code, s.profile.memberId, title, items),
+          () => circleApi.createPlan(s.settings.serverUrl, code, s.profile.memberId, title, items, planId),
         );
       },
 
@@ -839,10 +841,11 @@ export const useStore = create<StoreState>()(
 
       addPrayer: async (code, text) => {
         const s = get();
-        const optimistic = { prayerId: genLocalId(), text: text.trim(), by: s.profile.memberId, byName: s.profile.displayName, createdAt: Date.now(), status: 'active' as const, prayedByCount: 0, prayedByIds: [] as string[] };
+        const prayerId = genLocalId();
+        const optimistic = { prayerId, text: text.trim(), by: s.profile.memberId, byName: s.profile.displayName, createdAt: Date.now(), status: 'active' as const, prayedByCount: 0, prayedByIds: [] as string[] };
         await optimisticCircle(set, get, code,
           (c) => ({ ...c, prayers: [optimistic, ...c.prayers] }),
-          () => circleApi.addPrayer(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, text.trim()),
+          () => circleApi.addPrayer(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, text.trim(), prayerId),
         );
       },
 
@@ -983,13 +986,20 @@ export const useStore = create<StoreState>()(
       // Merge persisted data over current defaults so state saved by an older
       // version (missing newer fields like stats.earnedBadges) is always
       // backfilled — otherwise those undefined fields crash the UI.
+      // Never discard saved state on a version bump — pass it straight to merge,
+      // which backfills any missing fields. (Default zustand behavior can drop
+      // state on version mismatch when no migrate is supplied.)
+      migrate: (persisted) => persisted as StoreState,
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<StoreState>;
+        // Existing users (they already have a profile or saved verses) should
+        // NOT be sent back through first-run onboarding after this update.
+        const isReturningUser = !!(p.profile?.memberId || (p.verses && Object.keys(p.verses).length > 0));
         return {
           ...current,
           ...p,
           stats: { ...defaultStats, ...(p.stats ?? {}) },
-          settings: { ...defaultSettings, ...(p.settings ?? {}) },
+          settings: { ...defaultSettings, onboarded: isReturningUser, ...(p.settings ?? {}) },
           profile: { ...defaultProfile, ...(p.profile ?? {}) },
           circles: p.circles ?? {},
           studySessions: p.studySessions ?? {},

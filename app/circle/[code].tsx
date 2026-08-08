@@ -82,7 +82,8 @@ export default function CircleHubScreen() {
     );
   }
 
-  const { meta, members } = circle;
+  const meta = circle.meta;
+  const members = circle.members ?? [];
 
   return (
     <Screen>
@@ -238,7 +239,7 @@ function MemberRow({
   if (goal?.kind === 'memorizeCount') {
     line = `📖 ${member.memorizedCount} / ${goal.target}   ·   🔥 ${member.streak}`;
   } else if (goal?.kind === 'sharedVerses') {
-    line = `🤝 ${member.versesDone.length} / ${goal.target} shared   ·   🔥 ${member.streak}`;
+    line = `🤝 ${(member.versesDone ?? []).length} / ${goal.target} shared   ·   🔥 ${member.streak}`;
   } else if (goal?.kind === 'streak') {
     line = `🔥 ${member.streak} / ${goal.target}-day streak`;
   }
@@ -852,8 +853,8 @@ function GoalCard({ code }: { code: string }) {
   const { colors } = useTheme();
   const circle = useCircle(code);
   const setCircleGoal = useStore((s) => s.setCircleGoal);
-  const goal = circle?.meta.goal ?? null;
-  const sharedCount = circle?.sharedVerses.length ?? 0;
+  const goal = circle?.meta?.goal ?? null;
+  const sharedCount = (circle?.sharedVerses ?? []).length;
 
   const [editing, setEditing] = useState(false);
   const [kind, setKind] = useState<CircleGoal['kind']>(goal?.kind ?? 'memorizeCount');

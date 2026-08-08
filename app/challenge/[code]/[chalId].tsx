@@ -31,7 +31,7 @@ export default function ChallengeScreen() {
   const translation = useStore((s) => s.settings.translation);
   const serverUrl = useStore((s) => s.settings.serverUrl);
 
-  const challenge = circle?.challenges.find((c) => c.chalId === chalId);
+  const challenge = (circle?.challenges ?? []).find((c) => c.chalId === chalId);
   const prompt = challenge ? PROMPTS[challenge.kind] : PROMPTS.type;
 
   const [expected, setExpected] = useState<string | null>(null);

@@ -40,7 +40,7 @@ async function circleCall(
 }
 
 /** The API version this app build expects from the Worker. */
-export const EXPECTED_API_VERSION = 4;
+export const EXPECTED_API_VERSION = 5;
 
 export function createCircle(
   serverUrl: string | null,
@@ -119,6 +119,7 @@ export function assignChallenge(
   toName: string,
   reference: string,
   kind: ChallengeKind,
+  chalId?: string,
 ): Promise<CircleSnapshot> {
   return circleCall(serverUrl, {
     action: 'assignChallenge',
@@ -129,6 +130,7 @@ export function assignChallenge(
     toName,
     reference,
     kind,
+    chalId,
   });
 }
 
@@ -167,8 +169,9 @@ export function createPlan(
   memberId: string,
   title: string,
   items: string[],
+  planId?: string,
 ): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'createPlan', code, memberId, title, items });
+  return circleCall(serverUrl, { action: 'createPlan', code, memberId, title, items, planId });
 }
 
 /** Edit an existing plan's title and/or items. */
@@ -207,8 +210,9 @@ export function addPrayer(
   code: string,
   member: { memberId: string; displayName: string },
   text: string,
+  prayerId?: string,
 ): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'addPrayer', code, memberId: member.memberId, displayName: member.displayName, text });
+  return circleCall(serverUrl, { action: 'addPrayer', code, memberId: member.memberId, displayName: member.displayName, text, prayerId });
 }
 
 export function prayFor(
