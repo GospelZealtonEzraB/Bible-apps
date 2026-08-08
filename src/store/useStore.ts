@@ -3,8 +3,10 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { Profile, Settings, Stats, Verse, VerseStatus } from '@/types';
+import type { Circle, CircleSnapshot, Profile, Settings, Stats, Verse, VerseStatus } from '@/types';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
+import * as circleApi from '@/data/circleClient';
+import type { MemberSnapshotInput } from '@/data/circleClient';
 import { initialSRS, review as sm2Review, RATING_TO_QUALITY } from '@/srs/sm2';
 import type { RecallRating } from '@/srs/sm2';
 import {
@@ -31,6 +33,8 @@ interface StoreState {
   stats: Stats;
   settings: Settings;
   profile: Profile;
+  /** Growing Together circles, cached by invite code. */
+  circles: Record<string, Circle>;
   hydrated: boolean;
   /** Id of a badge just earned, for the celebration overlay (transient). */
   recentBadgeId: string | null;
@@ -57,6 +61,19 @@ interface StoreState {
   setDisplayName: (name: string) => void;
   /** Adopt a transfer code from another device; returns false if malformed. */
   restoreFromBackup: (code: string) => boolean;
+
+  /** Create a new circle; resolves to the new invite code. */
+  createCircle: (name?: string) => Promise<string>;
+  /** Join an existing circle by code. */
+  joinCircle: (code: string) => Promise<void>;
+  /** Pull the latest snapshot for a circle (read-only). */
+  refreshCircle: (code: string) => Promise<void>;
+  /** Push my progress + pull the board for a circle. */
+  syncCircle: (code: string) => Promise<void>;
+  /** Leave a circle (removes my member record + local cache). */
+  leaveCircle: (code: string) => Promise<void>;
+  /** Set the partnership covenant (agreed rhythm + goal). */
+  setCircleCovenant: (code: string, cadenceLabel: string, goalText: string) => Promise<void>;
   /** Cache AI-generated content (memory hook / explanation) on a verse. */
   setVerseAi: (id: string, patch: { memoryHook?: string; explanation?: string }) => void;
   clearCelebration: () => void;
@@ -123,6 +140,33 @@ const defaultSettings: Settings = {
 };
 
 const defaultProfile: Profile = { memberId: '', displayName: '', backupCode: '' };
+
+/** Build the progress snapshot this device pushes up to a circle. */
+function myMemberSnapshot(state: StoreState): MemberSnapshotInput {
+  return {
+    memberId: state.profile.memberId,
+    displayName: state.profile.displayName,
+    memorizedCount: memorizedCount(state.verses),
+    streak: state.stats.streak,
+    versesDone: [], // Phase 3 fills this from the shared verse list.
+    planDone: [],
+    lastActiveDay: state.stats.lastActiveDay,
+    lastActivity: null,
+  };
+}
+
+/** Cache a fresh snapshot, preserving the local joinedAt and stamping lastSyncedAt. */
+function withSnapshot(
+  circles: Record<string, Circle>,
+  snap: CircleSnapshot,
+): Record<string, Circle> {
+  const existing = circles[snap.meta.code];
+  const now = Date.now();
+  return {
+    ...circles,
+    [snap.meta.code]: { ...snap, joinedAt: existing?.joinedAt ?? now, lastSyncedAt: now },
+  };
+}
 
 function statusFromSrs(
   interval: number,
@@ -233,6 +277,7 @@ export const useStore = create<StoreState>()(
       stats: defaultStats,
       settings: defaultSettings,
       profile: defaultProfile,
+      circles: {},
       hydrated: false,
       recentBadgeId: null,
       recentXp: null,
@@ -389,6 +434,57 @@ export const useStore = create<StoreState>()(
         return true;
       },
 
+      createCircle: async (name) => {
+        const s = get();
+        const snap = await circleApi.createCircle(s.settings.serverUrl, myMemberSnapshot(s), { name });
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        return snap.meta.code;
+      },
+
+      joinCircle: async (code) => {
+        const s = get();
+        const snap = await circleApi.joinCircle(s.settings.serverUrl, code.trim().toUpperCase(), myMemberSnapshot(s));
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      refreshCircle: async (code) => {
+        const s = get();
+        const snap = await circleApi.getCircle(s.settings.serverUrl, code);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      syncCircle: async (code) => {
+        const s = get();
+        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s));
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      leaveCircle: async (code) => {
+        const s = get();
+        try {
+          await circleApi.leaveCircle(s.settings.serverUrl, code, s.profile.memberId);
+        } catch {
+          // Even if the server call fails, drop the local cache.
+        }
+        set((state) => {
+          const next = { ...state.circles };
+          delete next[code];
+          return { circles: next };
+        });
+      },
+
+      setCircleCovenant: async (code, cadenceLabel, goalText) => {
+        const s = get();
+        const snap = await circleApi.setCovenant(
+          s.settings.serverUrl,
+          code,
+          s.profile.memberId,
+          cadenceLabel,
+          goalText,
+        );
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
       setVerseAi: (id, patch) =>
         set((state) => {
           const v = state.verses[id];
@@ -412,6 +508,7 @@ export const useStore = create<StoreState>()(
         stats: state.stats,
         settings: state.settings,
         profile: state.profile,
+        circles: state.circles,
       }),
       // Merge persisted data over current defaults so state saved by an older
       // version (missing newer fields like stats.earnedBadges) is always
@@ -424,6 +521,7 @@ export const useStore = create<StoreState>()(
           stats: { ...defaultStats, ...(p.stats ?? {}) },
           settings: { ...defaultSettings, ...(p.settings ?? {}) },
           profile: { ...defaultProfile, ...(p.profile ?? {}) },
+          circles: p.circles ?? {},
           verses: p.verses ?? {},
         };
       },
@@ -448,6 +546,18 @@ export function useStats(): Stats {
 
 export function useProfile(): Profile {
   return useStore((state) => state.profile);
+}
+
+export function useCircleList(): Circle[] {
+  const circles = useStore((state) => state.circles);
+  return useMemo(
+    () => Object.values(circles).sort((a, b) => b.joinedAt - a.joinedAt),
+    [circles],
+  );
+}
+
+export function useCircle(code: string | undefined): Circle | undefined {
+  return useStore((state) => (code ? state.circles[code] : undefined));
 }
 
 /**

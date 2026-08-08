@@ -13,3 +13,11 @@ compatibility_date = "2024-11-01"
 # Non-secret config. Set AI_MODEL to your exact model id.
 [vars]
 AI_MODEL = "gpt-5.4-mini"
+
+# Growing Together shared storage (Cloudflare KV — free tier).
+# To enable circles: run `npx wrangler kv namespace create ENGRAVED_KV`, paste the
+# printed id below, uncomment these two lines, then `npx wrangler deploy`.
+# Until then the /circle routes return 501 and the rest of the app is unaffected.
+# [[kv_namespaces]]
+# binding = "ENGRAVED_KV"
+# id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"

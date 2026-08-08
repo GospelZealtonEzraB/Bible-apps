@@ -11,6 +11,22 @@
  * trusted providers. `pack` returns references only.
  */
 
+/**
+ * Minimal shape of a Cloudflare KV namespace (self-contained so the Worker needs
+ * no ambient @cloudflare/workers-types). The real binding satisfies this.
+ */
+interface KVListResult {
+  keys: { name: string }[];
+  list_complete: boolean;
+  cursor?: string;
+}
+interface KVNamespaceLike {
+  get(key: string): Promise<string | null>;
+  put(key: string, value: string): Promise<void>;
+  delete(key: string): Promise<void>;
+  list(opts?: { prefix?: string; cursor?: string; limit?: number }): Promise<KVListResult>;
+}
+
 export interface Env {
   /** Set one of these. If both are present, OpenAI is used. */
   OPENAI_API_KEY?: string;
@@ -20,6 +36,8 @@ export interface Env {
   APP_SHARED_SECRET?: string;
   /** Model id for the active provider. Defaults per provider if unset. */
   AI_MODEL?: string;
+  /** KV store for Growing Together shared state (optional; routes 501 without it). */
+  ENGRAVED_KV?: KVNamespaceLike;
 }
 
 const CORS = {
@@ -180,6 +198,164 @@ async function handleAi(req: Request, env: Env): Promise<Response> {
  * }
  */
 
+// ===========================================================================
+// Growing Together — circles (shared state in KV)
+// ===========================================================================
+
+async function kvGetJson<T>(kv: KVNamespaceLike, key: string): Promise<T | null> {
+  const raw = await kv.get(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function kvPutJson(kv: KVNamespaceLike, key: string, value: unknown): Promise<void> {
+  return kv.put(key, JSON.stringify(value));
+}
+
+/** List every key under a prefix (follows KV pagination). */
+async function kvListKeys(kv: KVNamespaceLike, prefix: string): Promise<string[]> {
+  const names: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const res = await kv.list({ prefix, cursor });
+    for (const k of res.keys) names.push(k.name);
+    cursor = res.list_complete ? undefined : res.cursor;
+  } while (cursor);
+  return names;
+}
+
+// Invite codes: 6 chars, unambiguous base32 (no O/0/I/1).
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function genCode(): string {
+  let s = '';
+  for (let i = 0; i < 6; i++) {
+    s += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  }
+  return s;
+}
+function normCode(code: unknown): string {
+  return String(code ?? '').trim().toUpperCase();
+}
+function str(v: unknown, max: number): string {
+  return String(v ?? '').slice(0, max);
+}
+
+/** Persist a member's own progress snapshot (only that member writes this key). */
+async function writeMember(kv: KVNamespaceLike, code: string, member: any): Promise<void> {
+  const memberId = String(member?.memberId ?? '');
+  const rec = {
+    id: memberId,
+    displayName: str(member?.displayName, 40),
+    memorizedCount: Number(member?.memorizedCount ?? 0) || 0,
+    streak: Number(member?.streak ?? 0) || 0,
+    versesDone: Array.isArray(member?.versesDone) ? member.versesDone.slice(0, 500) : [],
+    planDone: Array.isArray(member?.planDone) ? member.planDone.slice(0, 500) : [],
+    lastActiveDay: member?.lastActiveDay ?? null,
+    lastActivity: member?.lastActivity ?? null,
+    updatedAt: Date.now(),
+  };
+  await kvPutJson(kv, `circle:${code}:member:${memberId}`, rec);
+}
+
+/** Assemble the full circle snapshot returned to clients. */
+async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | null> {
+  const meta = await kvGetJson<any>(kv, `circle:${code}:meta`);
+  if (!meta) return null;
+  const memberKeys = await kvListKeys(kv, `circle:${code}:member:`);
+  const members: any[] = [];
+  for (const key of memberKeys) {
+    const m = await kvGetJson<any>(kv, key);
+    if (m) members.push(m);
+  }
+  members.sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
+  // Later phases populate these from their own key families.
+  return { meta, members, sharedVerses: [], plans: [], prayers: [], challenges: [], cheersFor: {} };
+}
+
+async function handleCircle(req: Request, env: Env): Promise<Response> {
+  if (!env.ENGRAVED_KV) return json({ error: 'Storage not configured on the server.' }, 501);
+  const kv = env.ENGRAVED_KV;
+  const body: any = await req.json().catch(() => ({}));
+  const action = String(body.action ?? '');
+  const member = body.member ?? {};
+  const memberId = String(member.memberId ?? body.memberId ?? '');
+
+  switch (action) {
+    case 'create': {
+      if (!memberId) return json({ error: 'Missing member.' }, 400);
+      let code = '';
+      for (let i = 0; i < 6; i++) {
+        const c = genCode();
+        if (!(await kvGetJson(kv, `circle:${c}:meta`))) {
+          code = c;
+          break;
+        }
+      }
+      if (!code) return json({ error: 'Could not allocate a code. Try again.' }, 503);
+      const meta = {
+        code,
+        name: str(body.name, 60) || 'Our Circle',
+        goal: body.goal ?? null,
+        covenant: body.covenant ?? null,
+        createdAt: Date.now(),
+        ownerMemberId: memberId,
+        version: 1,
+        togetherStreak: 0,
+        lastTogetherDay: null,
+      };
+      await kvPutJson(kv, `circle:${code}:meta`, meta);
+      await writeMember(kv, code, member);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'join':
+    case 'sync': {
+      const code = normCode(body.code);
+      if (!memberId) return json({ error: 'Missing member.' }, 400);
+      const meta = await kvGetJson(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      await writeMember(kv, code, member);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'get': {
+      const code = normCode(body.code);
+      const snap = await buildSnapshot(kv, code);
+      if (!snap) return json({ error: 'No circle with that code.' }, 404);
+      return json({ snapshot: snap });
+    }
+
+    case 'setCovenant': {
+      const code = normCode(body.code);
+      const meta = await kvGetJson<any>(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      const prevAgreed: string[] = Array.isArray(meta.covenant?.agreedBy) ? meta.covenant.agreedBy : [];
+      const agreedBy = memberId && !prevAgreed.includes(memberId) ? [...prevAgreed, memberId] : prevAgreed;
+      meta.covenant = {
+        cadenceLabel: str(body.cadenceLabel, 80),
+        goalText: str(body.goalText, 120),
+        agreedBy: body.resetAgreement ? (memberId ? [memberId] : []) : agreedBy,
+      };
+      meta.version = (meta.version ?? 1) + 1;
+      await kvPutJson(kv, `circle:${code}:meta`, meta);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'leave': {
+      const code = normCode(body.code);
+      if (memberId) await kv.delete(`circle:${code}:member:${memberId}`);
+      return json({ ok: true });
+    }
+
+    default:
+      return json({ error: 'Unknown circle action.' }, 400);
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -193,8 +369,9 @@ export default {
     const path = new URL(request.url).pathname.replace(/\/$/, '');
     try {
       if (path === '/ai') return await handleAi(request, env);
+      if (path === '/circle') return await handleCircle(request, env);
       // if (path === '/esv') return await handleEsv(request, env); // ESV disabled for now
-      return json({ error: 'Not found. Use /ai.' }, 404);
+      return json({ error: 'Not found. Use /ai or /circle.' }, 404);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Server error';
       return json({ error: message }, 500);

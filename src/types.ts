@@ -83,6 +83,136 @@ export interface Profile {
   backupCode: string;
 }
 
+// ---- Growing Together -----------------------------------------------------
+
+export type ChallengeKind =
+  | 'recite'
+  | 'type'
+  | 'fill'
+  | 'reflection'
+  | 'application'
+  | 'study';
+
+export interface CircleGoal {
+  kind: 'memorizeCount' | 'sharedVerses' | 'streak';
+  target: number;
+  label?: string;
+}
+
+/** A partnership agreement: an agreed rhythm + goal both hold each other to. */
+export interface Covenant {
+  cadenceLabel: string;
+  goalText: string;
+  /** memberIds who have agreed to it. */
+  agreedBy: string[];
+}
+
+export interface CircleMeta {
+  code: string;
+  name: string;
+  goal: CircleGoal | null;
+  covenant: Covenant | null;
+  createdAt: number;
+  ownerMemberId: string;
+  version: number;
+  /** Consecutive days every member was active (server-computed). */
+  togetherStreak: number;
+  lastTogetherDay: string | null;
+}
+
+export interface MemberActivity {
+  type: string;
+  ref?: string;
+  at: number;
+}
+
+export interface CircleMember {
+  id: string;
+  displayName: string;
+  memorizedCount: number;
+  streak: number;
+  versesDone: string[];
+  planDone: string[];
+  lastActiveDay: string | null;
+  lastActivity?: MemberActivity | null;
+  updatedAt: number;
+}
+
+export interface SharedVerseRef {
+  reference: string;
+  addedBy: string;
+  addedByName: string;
+  addedAt: number;
+  /** memberId this verse was picked for, if any ("I chose this for you"). */
+  forMemberId?: string;
+}
+
+export interface StudyPlan {
+  planId: string;
+  title: string;
+  items: string[];
+  createdBy: string;
+  createdAt: number;
+}
+
+export interface Prayer {
+  prayerId: string;
+  text: string;
+  by: string;
+  byName: string;
+  createdAt: number;
+  status: 'active' | 'answered';
+  answeredAt?: number;
+  answerNote?: string;
+  prayedByCount: number;
+  didIPray: boolean;
+}
+
+export interface ChallengeSubmission {
+  by: string;
+  text: string;
+  accuracy?: number;
+  submittedAt: number;
+}
+
+export interface ChallengeReview {
+  by: string;
+  note: string;
+  meaningPrompt?: string;
+  at: number;
+}
+
+export interface Challenge {
+  chalId: string;
+  from: string;
+  fromName: string;
+  to: string;
+  toName: string;
+  reference: string;
+  kind: ChallengeKind;
+  createdAt: number;
+  status: 'pending' | 'submitted' | 'reviewed';
+  submission?: ChallengeSubmission;
+  review?: ChallengeReview;
+}
+
+/** The full shared state of a circle, as returned by the server. */
+export interface CircleSnapshot {
+  meta: CircleMeta;
+  members: CircleMember[];
+  sharedVerses: SharedVerseRef[];
+  plans: StudyPlan[];
+  prayers: Prayer[];
+  challenges: Challenge[];
+  cheersFor: Record<string, number>;
+}
+
+/** A circle cached on the device (snapshot + local bookkeeping). */
+export type Circle = CircleSnapshot & {
+  joinedAt: number;
+  lastSyncedAt: number | null;
+};
+
 export type ThemePreference = 'system' | 'light' | 'dark';
 
 export interface Settings {

@@ -48,6 +48,46 @@ mismatch makes the Worker return `401`. Set both or neither. This is a speed bum
 strangers who find your URL; the real cost guarantee is an **OpenAI spend cap** (platform.openai.com
 → Billing → Limits).
 
+## Growing Together (circles) — enable shared storage
+
+The `/circle` endpoint powers faith-partner circles (shared progress, goals, covenant, and —
+in later phases — verses, challenges, prayer). It needs a **Cloudflare KV** namespace (free
+tier). Until you add it, `/circle` returns `501` and the rest of the app is unaffected.
+
+```bash
+cd server
+npx wrangler kv namespace create ENGRAVED_KV   # prints an id
+```
+
+Then open `wrangler.toml`, uncomment the `[[kv_namespaces]]` block, paste the printed `id`, and
+redeploy:
+
+```toml
+[[kv_namespaces]]
+binding = "ENGRAVED_KV"
+id = "the-id-it-printed"
+```
+
+```bash
+npx wrangler deploy
+```
+
+Quick smoke test (replace URL; add `-H "x-app-secret: …"` if you set that secret):
+
+```bash
+U=https://biblememory.<you>.workers.dev
+# create a circle → note the "code" in the response
+curl -s -X POST $U/circle -H 'content-type: application/json' \
+  -d '{"action":"create","name":"Test","member":{"memberId":"m_a","displayName":"Ann"}}'
+# join it from a second member, then fetch the board
+curl -s -X POST $U/circle -H 'content-type: application/json' \
+  -d '{"action":"join","code":"ABC123","member":{"memberId":"m_b","displayName":"Bob"}}'
+curl -s -X POST $U/circle -H 'content-type: application/json' \
+  -d '{"action":"get","code":"ABC123"}'
+```
+
+You should see both members in the `snapshot.members` array.
+
 ## Model / cost
 
 The model is set by `AI_MODEL` in `wrangler.toml` (default **`gpt-5.4-mini`**). Change it to

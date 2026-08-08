@@ -1,15 +1,19 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
 import { Card, Button, SectionTitle, EmptyState } from '@/components/ui';
 import { Ember } from '@/components/Ember';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useProfile, useStore } from '@/store/useStore';
+import { useProfile, useCircleList, useStore } from '@/store/useStore';
+import type { Circle } from '@/types';
 
 export default function TogetherScreen() {
   const { colors } = useTheme();
   const profile = useProfile();
+  const circles = useCircleList();
   const setDisplayName = useStore((s) => s.setDisplayName);
   const restoreFromBackup = useStore((s) => s.restoreFromBackup);
 
@@ -60,14 +64,7 @@ export default function TogetherScreen() {
             autoCapitalize="words"
             returnKeyType="done"
             onSubmitEditing={saveName}
-            style={{
-              color: colors.text,
-              fontSize: font.sizes.md,
-              backgroundColor: colors.surfaceAlt,
-              borderRadius: radius.md,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.md,
-            }}
+            style={inputStyle(colors)}
           />
           <View style={{ marginTop: spacing.md }}>
             <Button title="Save name" onPress={saveName} disabled={!name.trim()} />
@@ -87,17 +84,21 @@ export default function TogetherScreen() {
         </Card>
       )}
 
-      {/* Circles (arriving in Phase 2) */}
-      <View>
-        <SectionTitle>Your circles</SectionTitle>
-        <Card>
-          <EmptyState
-            emoji="🤝"
-            title="Invite a partner in faith"
-            subtitle="Soon you’ll create a circle and share an invite code — then memorize, study, pray, and keep each other accountable. Set your name above to get ready."
-          />
-        </Card>
-      </View>
+      {/* Circles */}
+      {hasName ? (
+        <CirclesSection circles={circles} />
+      ) : (
+        <View>
+          <SectionTitle>Your circles</SectionTitle>
+          <Card>
+            <EmptyState
+              emoji="🤝"
+              title="Set your name to begin"
+              subtitle="Once you’ve chosen a name, you can create a circle and invite a partner to grow together."
+            />
+          </Card>
+        </View>
+      )}
 
       {/* Transfer code */}
       <View>
@@ -106,14 +107,7 @@ export default function TogetherScreen() {
           <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
             Save this code somewhere safe. Enter it on a new phone to keep your identity and circles.
           </Text>
-          <View
-            style={{
-              backgroundColor: colors.surfaceAlt,
-              borderRadius: radius.md,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.md,
-            }}
-          >
+          <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.md, paddingHorizontal: spacing.md, paddingVertical: spacing.md }}>
             <Text selectable style={{ color: colors.text, fontSize: font.sizes.md, fontWeight: '700', letterSpacing: 0.5 }}>
               {profile.backupCode || '—'}
             </Text>
@@ -131,14 +125,7 @@ export default function TogetherScreen() {
                 placeholderTextColor={colors.textFaint}
                 autoCapitalize="none"
                 autoCorrect={false}
-                style={{
-                  color: colors.text,
-                  fontSize: font.sizes.md,
-                  backgroundColor: colors.surfaceAlt,
-                  borderRadius: radius.md,
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.md,
-                }}
+                style={inputStyle(colors)}
               />
               <Button title="Restore identity" onPress={onRestore} disabled={!restoreCode.trim()} />
             </View>
@@ -151,4 +138,120 @@ export default function TogetherScreen() {
       </View>
     </Screen>
   );
+}
+
+function CirclesSection({ circles }: { circles: Circle[] }) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const createCircle = useStore((s) => s.createCircle);
+  const joinCircle = useStore((s) => s.joinCircle);
+
+  const [newName, setNewName] = useState('');
+  const [joinCode, setJoinCode] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [joining, setJoining] = useState(false);
+
+  const onCreate = async () => {
+    setCreating(true);
+    try {
+      const code = await createCircle(newName.trim() || undefined);
+      setNewName('');
+      router.push(`/circle/${code}`);
+    } catch (e) {
+      Alert.alert('Couldn’t create the circle', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const onJoin = async () => {
+    const code = joinCode.trim().toUpperCase();
+    if (!code) return;
+    setJoining(true);
+    try {
+      await joinCircle(code);
+      setJoinCode('');
+      router.push(`/circle/${code}`);
+    } catch (e) {
+      Alert.alert('Couldn’t join', e instanceof Error ? e.message : 'Check the code and try again.');
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  return (
+    <View style={{ gap: spacing.md }}>
+      <View>
+        <SectionTitle>Your circles</SectionTitle>
+        {circles.length === 0 ? (
+          <Card>
+            <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>
+              No circles yet. Create one and share the code, or join a partner’s below.
+            </Text>
+          </Card>
+        ) : (
+          <View style={{ gap: spacing.sm }}>
+            {circles.map((c) => (
+              <Card key={c.meta.code} onPress={() => router.push(`/circle/${c.meta.code}`)}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+                  <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="people" size={22} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>{c.meta.name}</Text>
+                    <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+                      Code {c.meta.code} · {c.members.length} {c.members.length === 1 ? 'member' : 'members'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+                </View>
+              </Card>
+            ))}
+          </View>
+        )}
+      </View>
+
+      <Card>
+        <SectionTitle>Create a circle</SectionTitle>
+        <TextInput
+          value={newName}
+          onChangeText={setNewName}
+          placeholder="Name it (e.g. Me & Sarah)"
+          placeholderTextColor={colors.textFaint}
+          autoCapitalize="words"
+          style={inputStyle(colors)}
+        />
+        <View style={{ marginTop: spacing.md }}>
+          <Button title={creating ? 'Creating…' : 'Create circle'} onPress={onCreate} loading={creating} icon={<Ionicons name="add" size={18} color={colors.onPrimary} />} />
+        </View>
+      </Card>
+
+      <Card>
+        <SectionTitle>Join with a code</SectionTitle>
+        <TextInput
+          value={joinCode}
+          onChangeText={setJoinCode}
+          placeholder="Enter invite code (e.g. FA7K2Q)"
+          placeholderTextColor={colors.textFaint}
+          autoCapitalize="characters"
+          autoCorrect={false}
+          style={inputStyle(colors)}
+        />
+        <View style={{ marginTop: spacing.md }}>
+          <Button title={joining ? 'Joining…' : 'Join circle'} variant="secondary" onPress={onJoin} loading={joining} disabled={!joinCode.trim()} />
+        </View>
+      </Card>
+    </View>
+  );
+}
+
+function inputStyle(colors: ReturnType<typeof useTheme>['colors']) {
+  return {
+    color: colors.text,
+    fontSize: font.sizes.md,
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+  } as const;
 }

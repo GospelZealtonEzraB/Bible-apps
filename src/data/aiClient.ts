@@ -1,45 +1,16 @@
 /**
- * Client for the Engraved server's AI endpoint. All calls require the user to
- * have set a Server URL in Settings (the deployed Worker). Without it, these
- * throw a friendly error the UI turns into a "set up AI in Settings" hint.
+ * Client for the Engraved server's AI endpoint (/ai). Posts through the shared
+ * `postServer` helper, which resolves the server URL and attaches the shared
+ * secret. `NoServerError` is re-exported for callers/tests that reference it.
  */
 import type { Verse } from '@/types';
-import { resolveServerUrl, serverHeaders } from '@/config';
+import { postServer, NoServerError } from './serverClient';
 
-export class NoServerError extends Error {
-  constructor() {
-    super('Add your Server URL in Settings to use AI features.');
-    this.name = 'NoServerError';
-  }
-}
-
-function normalizeBase(serverUrl: string): string {
-  return serverUrl.trim().replace(/\/+$/, '');
-}
-
-async function postAi<T>(
-  serverUrl: string | null,
-  body: Record<string, unknown>,
-): Promise<T> {
-  // A user's override in Settings wins; otherwise fall back to the URL baked
-  // into the build so AI works with no setup.
-  const base = resolveServerUrl(serverUrl);
-  if (!base) throw new NoServerError();
-  const res = await fetch(`${normalizeBase(base)}/ai`, {
-    method: 'POST',
-    headers: serverHeaders({ 'content-type': 'application/json' }),
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error((data as { error?: string }).error || `AI request failed (${res.status}).`);
-  }
-  return data as T;
-}
+export { NoServerError };
 
 /** Generate a short memory hook for a verse. */
 export async function fetchMemoryHook(serverUrl: string | null, verse: Verse): Promise<string> {
-  const { text } = await postAi<{ text: string }>(serverUrl, {
+  const { text } = await postServer<{ text: string }>(serverUrl, '/ai', {
     task: 'hook',
     reference: verse.reference,
     text: verse.text,
@@ -49,7 +20,7 @@ export async function fetchMemoryHook(serverUrl: string | null, verse: Verse): P
 
 /** Generate a plain-English meaning + context for a verse. */
 export async function fetchExplanation(serverUrl: string | null, verse: Verse): Promise<string> {
-  const { text } = await postAi<{ text: string }>(serverUrl, {
+  const { text } = await postServer<{ text: string }>(serverUrl, '/ai', {
     task: 'explain',
     reference: verse.reference,
     text: verse.text,
@@ -59,7 +30,7 @@ export async function fetchExplanation(serverUrl: string | null, verse: Verse): 
 
 /** Suggest verse references for a theme (references only — the app fetches text). */
 export async function suggestPack(serverUrl: string | null, theme: string): Promise<string[]> {
-  const { references } = await postAi<{ references: string[] }>(serverUrl, {
+  const { references } = await postServer<{ references: string[] }>(serverUrl, '/ai', {
     task: 'pack',
     theme,
   });
