@@ -29,6 +29,7 @@ import { initialSRS, review as sm2Review, RATING_TO_QUALITY } from '@/srs/sm2';
 import type { RecallRating } from '@/srs/sm2';
 import {
   displayReference,
+  normalizeKey,
   translationName,
   verseId,
   type FetchedVerse,
@@ -266,6 +267,35 @@ function withSnapshot(
     ...circles,
     [snap.meta.code]: { ...snap, joinedAt: existing?.joinedAt ?? now, lastSyncedAt: now },
   };
+}
+
+/**
+ * Run a circle mutation optimistically: patch the cached snapshot immediately
+ * so the UI updates with no network wait, then persist in the background. If the
+ * server rejects, roll this circle back. The focus-sync (screen focus /
+ * pull-to-refresh) reconciles authoritative state — real server ids and other
+ * members' changes — so KV's eventual consistency never blocks the UI.
+ */
+async function optimisticCircle(
+  set: (u: (s: StoreState) => Partial<StoreState>) => void,
+  get: () => StoreState,
+  code: string,
+  patch: (c: Circle) => Circle,
+  server: () => Promise<unknown>,
+): Promise<void> {
+  const before = get().circles[code];
+  if (before) set((s) => ({ circles: { ...s.circles, [code]: patch(before) } }));
+  try {
+    await server();
+  } catch (e) {
+    if (before) set((s) => ({ circles: { ...s.circles, [code]: before } }));
+    throw e;
+  }
+}
+
+/** A stable client-side id for optimistic items (reconciled on the next sync). */
+function genLocalId(): string {
+  return 'c_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
 function statusFromSrs(
@@ -633,64 +663,72 @@ export const useStore = create<StoreState>()(
 
       addSharedVerse: async (code, reference, forMemberId) => {
         const s = get();
-        const snap = await circleApi.addSharedVerse(
-          s.settings.serverUrl,
-          code,
-          { memberId: s.profile.memberId, displayName: s.profile.displayName },
-          reference.trim(),
-          forMemberId,
+        const ref = reference.trim();
+        const optimistic = { reference: ref, addedBy: s.profile.memberId, addedByName: s.profile.displayName, addedAt: Date.now(), forMemberId };
+        await optimisticCircle(set, get, code,
+          (c) => c.sharedVerses.some((v) => normalizeKey(v.reference) === normalizeKey(ref))
+            ? c
+            : { ...c, sharedVerses: [optimistic, ...c.sharedVerses] },
+          () => circleApi.addSharedVerse(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, ref, forMemberId),
         );
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
       setCircleGoal: async (code, goal) => {
         const s = get();
-        const snap = await circleApi.setGoal(s.settings.serverUrl, code, s.profile.memberId, goal);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, meta: { ...c.meta, goal: goal ?? null } }),
+          () => circleApi.setGoal(s.settings.serverUrl, code, s.profile.memberId, goal),
+        );
       },
 
       setCircleName: async (code, name) => {
         const s = get();
-        const snap = await circleApi.renameCircle(s.settings.serverUrl, code, s.profile.memberId, name.trim());
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, meta: { ...c.meta, name: name.trim() || c.meta.name } }),
+          () => circleApi.renameCircle(s.settings.serverUrl, code, s.profile.memberId, name.trim()),
+        );
       },
 
       removeSharedVerse: async (code, reference) => {
         const s = get();
-        const snap = await circleApi.removeVerse(s.settings.serverUrl, code, s.profile.memberId, reference);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, sharedVerses: c.sharedVerses.filter((v) => normalizeKey(v.reference) !== normalizeKey(reference)) }),
+          () => circleApi.removeVerse(s.settings.serverUrl, code, s.profile.memberId, reference),
+        );
       },
 
       deleteCirclePlan: async (code, planId) => {
         const s = get();
-        const snap = await circleApi.deletePlan(s.settings.serverUrl, code, s.profile.memberId, planId);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, plans: c.plans.filter((p) => p.planId !== planId) }),
+          () => circleApi.deletePlan(s.settings.serverUrl, code, s.profile.memberId, planId),
+        );
       },
 
       assignChallenge: async (code, toMemberId, toName, reference, kind) => {
         const s = get();
-        const snap = await circleApi.assignChallenge(
-          s.settings.serverUrl,
-          code,
-          { memberId: s.profile.memberId, displayName: s.profile.displayName },
-          toMemberId,
-          toName,
-          reference.trim(),
-          kind,
+        const ref = reference.trim();
+        const optimistic = { chalId: genLocalId(), from: s.profile.memberId, fromName: s.profile.displayName, to: toMemberId, toName, reference: ref, kind, createdAt: Date.now(), status: 'pending' as const };
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, challenges: [optimistic, ...c.challenges] }),
+          () => circleApi.assignChallenge(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, toMemberId, toName, ref, kind),
         );
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
       submitChallenge: async (code, chalId, text, accuracy) => {
         const s = get();
-        const snap = await circleApi.submitChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId, text, accuracy);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, challenges: c.challenges.map((ch) => ch.chalId === chalId ? { ...ch, status: 'submitted', submission: { by: s.profile.memberId, text, accuracy, submittedAt: Date.now() } } : ch) }),
+          () => circleApi.submitChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId, text, accuracy),
+        );
       },
 
       reviewChallenge: async (code, chalId, note, meaningPrompt) => {
         const s = get();
-        const snap = await circleApi.reviewChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId, note, meaningPrompt);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, challenges: c.challenges.map((ch) => ch.chalId === chalId ? { ...ch, status: 'reviewed', review: { by: s.profile.memberId, note, meaningPrompt, at: Date.now() } } : ch) }),
+          () => circleApi.reviewChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId, note, meaningPrompt),
+        );
       },
 
       setStudySession: (session) =>
@@ -740,42 +778,45 @@ export const useStore = create<StoreState>()(
 
       createCirclePlan: async (code, title, items) => {
         const s = get();
-        const snap = await circleApi.createPlan(s.settings.serverUrl, code, s.profile.memberId, title, items);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        const optimistic = { planId: genLocalId(), title: title.trim(), items, createdBy: s.profile.memberId, createdAt: Date.now() };
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, plans: [optimistic, ...c.plans] }),
+          () => circleApi.createPlan(s.settings.serverUrl, code, s.profile.memberId, title, items),
+        );
       },
 
       updateCirclePlan: async (code, planId, title, items) => {
         const s = get();
-        const snap = await circleApi.updatePlan(s.settings.serverUrl, code, s.profile.memberId, planId, title, items);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, plans: c.plans.map((p) => p.planId === planId ? { ...p, title: title.trim(), items } : p) }),
+          () => circleApi.updatePlan(s.settings.serverUrl, code, s.profile.memberId, planId, title, items),
+        );
       },
 
       shareNote: async (code, text, scope = 'free', ref, noteId) => {
         const s = get();
-        const snap = await circleApi.saveNote(
-          s.settings.serverUrl,
-          code,
-          { memberId: s.profile.memberId, displayName: s.profile.displayName },
-          { noteId, scope, ref, text: text.trim() },
+        const id = noteId ?? genLocalId();
+        const optimistic = { noteId: id, by: s.profile.memberId, byName: s.profile.displayName, scope, ref, text: text.trim(), updatedAt: Date.now() };
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, notes: [optimistic, ...c.notes.filter((n) => n.noteId !== id)] }),
+          () => circleApi.saveNote(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, { noteId: id, scope, ref, text: text.trim() }),
         );
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
       editSharedNote: async (code, noteId, text, scope = 'free', ref) => {
         const s = get();
-        const snap = await circleApi.saveNote(
-          s.settings.serverUrl,
-          code,
-          { memberId: s.profile.memberId, displayName: s.profile.displayName },
-          { noteId, scope, ref, text: text.trim() },
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, notes: c.notes.map((n) => n.noteId === noteId ? { ...n, text: text.trim(), scope, ref, updatedAt: Date.now() } : n) }),
+          () => circleApi.saveNote(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, { noteId, scope, ref, text: text.trim() }),
         );
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
       deleteSharedNote: async (code, noteId) => {
         const s = get();
-        const snap = await circleApi.deleteNote(s.settings.serverUrl, code, s.profile.memberId, noteId);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, notes: c.notes.filter((n) => n.noteId !== noteId) }),
+          () => circleApi.deleteNote(s.settings.serverUrl, code, s.profile.memberId, noteId),
+        );
       },
 
       addPrivateNote: (scope, text, ref) =>
@@ -798,73 +839,84 @@ export const useStore = create<StoreState>()(
 
       addPrayer: async (code, text) => {
         const s = get();
-        const snap = await circleApi.addPrayer(
-          s.settings.serverUrl,
-          code,
-          { memberId: s.profile.memberId, displayName: s.profile.displayName },
-          text.trim(),
+        const optimistic = { prayerId: genLocalId(), text: text.trim(), by: s.profile.memberId, byName: s.profile.displayName, createdAt: Date.now(), status: 'active' as const, prayedByCount: 0, prayedByIds: [] as string[] };
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, prayers: [optimistic, ...c.prayers] }),
+          () => circleApi.addPrayer(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, text.trim()),
         );
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
       prayForRequest: async (code, prayerId) => {
         const s = get();
-        const snap = await circleApi.prayFor(
-          s.settings.serverUrl,
-          code,
-          { memberId: s.profile.memberId, displayName: s.profile.displayName },
-          prayerId,
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, prayers: c.prayers.map((p) => p.prayerId === prayerId && !p.prayedByIds?.includes(s.profile.memberId) ? { ...p, prayedByCount: p.prayedByCount + 1, prayedByIds: [...(p.prayedByIds ?? []), s.profile.memberId] } : p) }),
+          () => circleApi.prayFor(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, prayerId),
         );
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
       answerPrayer: async (code, prayerId, answerNote) => {
         const s = get();
-        const snap = await circleApi.answerPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId, answerNote);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, prayers: c.prayers.map((p) => p.prayerId === prayerId ? { ...p, status: 'answered', answeredAt: Date.now(), answerNote } : p) }),
+          () => circleApi.answerPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId, answerNote),
+        );
       },
 
       reopenPrayer: async (code, prayerId) => {
         const s = get();
-        const snap = await circleApi.reopenPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, prayers: c.prayers.map((p) => p.prayerId === prayerId ? { ...p, status: 'active', answeredAt: undefined, answerNote: undefined } : p) }),
+          () => circleApi.reopenPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId),
+        );
       },
 
       editPrayer: async (code, prayerId, text) => {
         const s = get();
-        const snap = await circleApi.editPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId, text.trim());
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, prayers: c.prayers.map((p) => p.prayerId === prayerId ? { ...p, text: text.trim() } : p) }),
+          () => circleApi.editPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId, text.trim()),
+        );
       },
 
       deletePrayer: async (code, prayerId) => {
         const s = get();
-        const snap = await circleApi.deletePrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, prayers: c.prayers.filter((p) => p.prayerId !== prayerId) }),
+          () => circleApi.deletePrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId),
+        );
       },
 
       togglePrayed: async (code, prayer) => {
         const s = get();
-        const snap = prayer.didIPray || prayer.prayedByIds?.includes(s.profile.memberId)
-          ? await circleApi.unpray(s.settings.serverUrl, code, s.profile.memberId, prayer.prayerId)
-          : await circleApi.prayFor(
-              s.settings.serverUrl,
-              code,
-              { memberId: s.profile.memberId, displayName: s.profile.displayName },
-              prayer.prayerId,
-            );
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        const me = s.profile.memberId;
+        const iPrayed = prayer.didIPray || prayer.prayedByIds?.includes(me);
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, prayers: c.prayers.map((p) => {
+            if (p.prayerId !== prayer.prayerId) return p;
+            return iPrayed
+              ? { ...p, prayedByCount: Math.max(0, p.prayedByCount - 1), prayedByIds: (p.prayedByIds ?? []).filter((id) => id !== me) }
+              : { ...p, prayedByCount: p.prayedByCount + 1, prayedByIds: [...(p.prayedByIds ?? []), me] };
+          }) }),
+          () => iPrayed
+            ? circleApi.unpray(s.settings.serverUrl, code, me, prayer.prayerId)
+            : circleApi.prayFor(s.settings.serverUrl, code, { memberId: me, displayName: s.profile.displayName }, prayer.prayerId),
+        );
       },
 
       deleteChallenge: async (code, chalId) => {
         const s = get();
-        const snap = await circleApi.deleteChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, challenges: c.challenges.filter((ch) => ch.chalId !== chalId) }),
+          () => circleApi.deleteChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId),
+        );
       },
 
       cheerMember: async (code, toMemberId) => {
         const s = get();
-        const snap = await circleApi.cheer(s.settings.serverUrl, code, s.profile.memberId, toMemberId);
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, cheersFor: { ...c.cheersFor, [toMemberId]: (c.cheersFor?.[toMemberId] ?? 0) + 1 } }),
+          () => circleApi.cheer(s.settings.serverUrl, code, s.profile.memberId, toMemberId),
+        );
       },
 
       markOpened: () => set({ session: { lastOpenedDay: dayKey() } }),
@@ -891,14 +943,10 @@ export const useStore = create<StoreState>()(
 
       setCircleCovenant: async (code, cadenceLabel, goalText) => {
         const s = get();
-        const snap = await circleApi.setCovenant(
-          s.settings.serverUrl,
-          code,
-          s.profile.memberId,
-          cadenceLabel,
-          goalText,
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, meta: { ...c.meta, covenant: { ...(c.meta.covenant ?? { agreedBy: [] }), cadenceLabel, goalText } } }),
+          () => circleApi.setCovenant(s.settings.serverUrl, code, s.profile.memberId, cadenceLabel, goalText),
         );
-        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
       setVerseAi: (id, patch) =>
