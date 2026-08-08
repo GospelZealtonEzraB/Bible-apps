@@ -18,6 +18,6 @@ AI_MODEL = "gpt-5.4-mini"
 # To enable circles: run `npx wrangler kv namespace create ENGRAVED_KV`, paste the
 # printed id below, uncomment these two lines, then `npx wrangler deploy`.
 # Until then the /circle routes return 501 and the rest of the app is unaffected.
-# [[kv_namespaces]]
-# binding = "ENGRAVED_KV"
-# id = "PASTE_YOUR_KV_NAMESPACE_ID_HERE"
+[[kv_namespaces]]
+binding = "ENGRAVED_KV"
+id = "a5c4f5d2f91044479c4ebcff2a7c515d"
