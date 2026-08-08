@@ -8,7 +8,7 @@ import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useCircle, useProfile, useStore } from '@/store/useStore';
 import { getVerse, normalizeKey, verseId } from '@/data/bibleApi';
-import type { CircleGoal, CircleMember, SharedVerseRef } from '@/types';
+import type { Challenge, ChallengeKind, CircleGoal, CircleMember, SharedVerseRef } from '@/types';
 
 export default function CircleHubScreen() {
   const { colors } = useTheme();
@@ -113,6 +113,9 @@ export default function CircleHubScreen() {
           </Text>
         </Card>
       ) : null}
+
+      {/* Accountability inbox */}
+      <ChallengesCard code={code} members={members} myId={profile.memberId} />
 
       {/* Covenant */}
       <CovenantCard code={code} />
@@ -452,4 +455,171 @@ function fieldStyle(colors: ReturnType<typeof useTheme>['colors']) {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
   } as const;
+}
+
+const ASSIGN_KINDS: { kind: ChallengeKind; label: string }[] = [
+  { kind: 'type', label: 'Recite' },
+  { kind: 'reflection', label: 'Reflect' },
+  { kind: 'application', label: 'Apply' },
+  { kind: 'study', label: 'Study' },
+];
+
+function ChallengesCard({ code, members, myId }: { code: string; members: CircleMember[]; myId: string }) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const circle = useCircle(code);
+  const assignChallenge = useStore((s) => s.assignChallenge);
+
+  const challenges = circle?.challenges ?? [];
+  const others = members.filter((m) => m.id !== myId);
+
+  const toComplete = challenges.filter((c) => c.to === myId && c.status === 'pending');
+  const toReview = challenges.filter((c) => c.from === myId && c.status === 'submitted');
+  const reviewedForMe = challenges.filter((c) => c.to === myId && c.status === 'reviewed');
+
+  const [assigning, setAssigning] = useState(false);
+  const [ref, setRef] = useState('');
+  const [toId, setToId] = useState<string | undefined>(others[0]?.id);
+  const [kind, setKind] = useState<ChallengeKind>('type');
+  const [busy, setBusy] = useState(false);
+
+  const onAssign = async () => {
+    const partner = others.find((m) => m.id === toId) ?? others[0];
+    if (!partner || !ref.trim()) return;
+    setBusy(true);
+    try {
+      await assignChallenge(code, partner.id, partner.displayName, ref.trim(), kind);
+      setRef('');
+      setAssigning(false);
+    } catch (e) {
+      Alert.alert('Couldn’t assign', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View>
+      <SectionTitle>Accountability</SectionTitle>
+
+      {/* Things waiting on me */}
+      {toComplete.map((c) => (
+        <Card key={c.chalId} style={{ marginBottom: spacing.sm }}>
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }}>
+            {c.fromName} challenged you: {c.reference}
+          </Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginBottom: spacing.sm }}>
+            {kindLabel(c.kind)}
+          </Text>
+          <Button title="Take the challenge" onPress={() => router.push(`/challenge/${code}/${c.chalId}`)} />
+        </Card>
+      ))}
+
+      {/* Submissions waiting for my review */}
+      {toReview.map((c) => (
+        <ReviewRow key={c.chalId} code={code} challenge={c} />
+      ))}
+
+      {/* Encouragement I received */}
+      {reviewedForMe.map((c) => (
+        <Card key={c.chalId} style={{ marginBottom: spacing.sm }}>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{c.reference} · reviewed by {c.fromName}</Text>
+          {c.review?.note ? <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>💛 {c.review.note}</Text> : null}
+          {c.review?.meaningPrompt ? <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginTop: 2 }}>💭 {c.review.meaningPrompt}</Text> : null}
+        </Card>
+      ))}
+
+      {/* Assign */}
+      {others.length === 0 ? (
+        <Card>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.sm }}>
+            When a partner joins, you can challenge each other with a verse to recite or a passage to reflect on.
+          </Text>
+        </Card>
+      ) : !assigning ? (
+        <Button title="Challenge a partner" variant="secondary" icon={<Ionicons name="flash-outline" size={16} color={colors.text} />} onPress={() => setAssigning(true)} />
+      ) : (
+        <Card>
+          <SectionTitle>Challenge a partner</SectionTitle>
+          <TextInput value={ref} onChangeText={setRef} placeholder="Reference (e.g. Psalm 23:1)" placeholderTextColor={colors.textFaint} autoCapitalize="words" style={fieldStyle(colors)} />
+          {others.length > 1 ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm }}>
+              {others.map((m) => (
+                <Chip key={m.id} label={m.displayName || 'partner'} active={toId === m.id} onPress={() => setToId(m.id)} />
+              ))}
+            </View>
+          ) : null}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm }}>
+            {ASSIGN_KINDS.map((k) => (
+              <Chip key={k.kind} label={k.label} active={kind === k.kind} onPress={() => setKind(k.kind)} />
+            ))}
+          </View>
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setAssigning(false)} />
+            <Button title={busy ? 'Sending…' : 'Send challenge'} small style={{ flex: 1 }} loading={busy} disabled={!ref.trim()} onPress={onAssign} />
+          </View>
+        </Card>
+      )}
+    </View>
+  );
+}
+
+function ReviewRow({ code, challenge }: { code: string; challenge: Challenge }) {
+  const { colors } = useTheme();
+  const reviewChallenge = useStore((s) => s.reviewChallenge);
+  const [note, setNote] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const onReview = async () => {
+    if (!note.trim()) return;
+    setSaving(true);
+    try {
+      await reviewChallenge(code, challenge.chalId, note.trim(), prompt.trim() || undefined);
+    } catch (e) {
+      Alert.alert('Couldn’t send', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const acc = challenge.submission?.accuracy;
+
+  return (
+    <Card style={{ marginBottom: spacing.sm }}>
+      <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }}>
+        {challenge.toName} answered: {challenge.reference}
+      </Text>
+      {acc != null ? (
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginTop: 2 }}>Word match: {acc}%</Text>
+      ) : null}
+      {challenge.submission?.text ? (
+        <Text style={{ color: colors.text, fontSize: font.sizes.sm, marginTop: spacing.sm, fontStyle: 'italic' }}>
+          “{challenge.submission.text}”
+        </Text>
+      ) : null}
+      <TextInput value={note} onChangeText={setNote} placeholder="Encourage them…" placeholderTextColor={colors.textFaint} style={[fieldStyle(colors), { marginTop: spacing.sm }]} />
+      <TextInput value={prompt} onChangeText={setPrompt} placeholder="Optional: what does this mean to you?" placeholderTextColor={colors.textFaint} style={[fieldStyle(colors), { marginTop: spacing.sm }]} />
+      <View style={{ marginTop: spacing.md }}>
+        <Button title={saving ? 'Sending…' : 'Send encouragement'} small loading={saving} disabled={!note.trim()} onPress={onReview} />
+      </View>
+    </Card>
+  );
+}
+
+function kindLabel(kind: ChallengeKind): string {
+  switch (kind) {
+    case 'recite':
+    case 'type':
+    case 'fill':
+      return 'Recite from memory';
+    case 'reflection':
+      return 'Reflect on it';
+    case 'application':
+      return 'Apply it this week';
+    case 'study':
+      return 'Share a study insight';
+    default:
+      return 'Challenge';
+  }
 }

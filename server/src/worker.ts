@@ -240,6 +240,10 @@ function genCode(): string {
 function normCode(code: unknown): string {
   return String(code ?? '').trim().toUpperCase();
 }
+/** Short unique id for challenges/prayers/notes etc. */
+function genId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+}
 function str(v: unknown, max: number): string {
   return String(v ?? '').slice(0, max);
 }
@@ -314,8 +318,31 @@ async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | n
   }
   sharedVerses.sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0));
 
-  // Later phases populate plans/prayers/challenges from their own key families.
-  return { meta, members, sharedVerses, plans: [], prayers: [], challenges: [], cheersFor: {} };
+  // Challenges: the meta key is `...:chal:{id}`; submission/review are deeper
+  // keys under it. List the prefix, keep only the meta keys (no extra colon),
+  // then derive lifecycle status from the presence of submission/review.
+  const chalPrefix = `circle:${code}:chal:`;
+  const chalKeys = await kvListKeys(kv, chalPrefix);
+  const chalIds = chalKeys
+    .map((k) => k.substring(chalPrefix.length))
+    .filter((rest) => rest.length > 0 && !rest.includes(':'));
+  const challenges: any[] = [];
+  for (const id of chalIds) {
+    const cm = await kvGetJson<any>(kv, `${chalPrefix}${id}`);
+    if (!cm) continue;
+    const submission = await kvGetJson<any>(kv, `${chalPrefix}${id}:submission`);
+    const review = await kvGetJson<any>(kv, `${chalPrefix}${id}:review`);
+    challenges.push({
+      ...cm,
+      submission: submission ?? undefined,
+      review: review ?? undefined,
+      status: review ? 'reviewed' : submission ? 'submitted' : 'pending',
+    });
+  }
+  challenges.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+
+  // Later phases populate plans/prayers from their own key families.
+  return { meta, members, sharedVerses, plans: [], prayers: [], challenges, cheersFor: {} };
 }
 
 async function handleCircle(req: Request, env: Env): Promise<Response> {
@@ -425,6 +452,58 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       };
       meta.version = (meta.version ?? 1) + 1;
       await kvPutJson(kv, `circle:${code}:meta`, meta);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'assignChallenge': {
+      const code = normCode(body.code);
+      const meta = await kvGetJson(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      const to = String(body.toMemberId ?? '');
+      const reference = str(body.reference, 60).trim();
+      if (!to || !reference) return json({ error: 'Missing partner or reference.' }, 400);
+      const chalId = genId();
+      const rec = {
+        chalId,
+        from: memberId,
+        fromName: str(body.displayName, 40),
+        to,
+        toName: str(body.toName, 40),
+        reference,
+        kind: String(body.kind ?? 'type'),
+        createdAt: Date.now(),
+      };
+      await kvPutJson(kv, `circle:${code}:chal:${chalId}`, rec);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'submitChallenge': {
+      const code = normCode(body.code);
+      const chalId = String(body.chalId ?? '');
+      const cm = await kvGetJson(kv, `circle:${code}:chal:${chalId}`);
+      if (!cm) return json({ error: 'Challenge not found.' }, 404);
+      const submission = {
+        by: memberId,
+        text: str(body.text, 2000),
+        accuracy: body.accuracy != null ? Number(body.accuracy) : undefined,
+        submittedAt: Date.now(),
+      };
+      await kvPutJson(kv, `circle:${code}:chal:${chalId}:submission`, submission);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'reviewChallenge': {
+      const code = normCode(body.code);
+      const chalId = String(body.chalId ?? '');
+      const cm = await kvGetJson(kv, `circle:${code}:chal:${chalId}`);
+      if (!cm) return json({ error: 'Challenge not found.' }, 404);
+      const review = {
+        by: memberId,
+        note: str(body.note, 500),
+        meaningPrompt: body.meaningPrompt ? str(body.meaningPrompt, 300) : undefined,
+        at: Date.now(),
+      };
+      await kvPutJson(kv, `circle:${code}:chal:${chalId}:review`, review);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

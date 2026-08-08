@@ -4,6 +4,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type {
+  ChallengeKind,
   Circle,
   CircleGoal,
   CircleSnapshot,
@@ -84,6 +85,12 @@ interface StoreState {
   addSharedVerse: (code: string, reference: string, forMemberId?: string) => Promise<void>;
   /** Set the circle's shared goal (or clear it with null). */
   setCircleGoal: (code: string, goal: CircleGoal | null) => Promise<void>;
+  /** Assign a memorization/study challenge to a partner. */
+  assignChallenge: (code: string, toMemberId: string, toName: string, reference: string, kind: ChallengeKind) => Promise<void>;
+  /** Submit my attempt at a challenge (text + optional accuracy). */
+  submitChallenge: (code: string, chalId: string, text: string, accuracy?: number) => Promise<void>;
+  /** Review a partner's submission with an encouraging note. */
+  reviewChallenge: (code: string, chalId: string, note: string, meaningPrompt?: string) => Promise<void>;
   /** Leave a circle (removes my member record + local cache). */
   leaveCircle: (code: string) => Promise<void>;
   /** Set the partnership covenant (agreed rhythm + goal). */
@@ -489,6 +496,32 @@ export const useStore = create<StoreState>()(
       setCircleGoal: async (code, goal) => {
         const s = get();
         const snap = await circleApi.setGoal(s.settings.serverUrl, code, s.profile.memberId, goal);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      assignChallenge: async (code, toMemberId, toName, reference, kind) => {
+        const s = get();
+        const snap = await circleApi.assignChallenge(
+          s.settings.serverUrl,
+          code,
+          { memberId: s.profile.memberId, displayName: s.profile.displayName },
+          toMemberId,
+          toName,
+          reference.trim(),
+          kind,
+        );
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      submitChallenge: async (code, chalId, text, accuracy) => {
+        const s = get();
+        const snap = await circleApi.submitChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId, text, accuracy);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      reviewChallenge: async (code, chalId, note, meaningPrompt) => {
+        const s = get();
+        const snap = await circleApi.reviewChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId, note, meaningPrompt);
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 

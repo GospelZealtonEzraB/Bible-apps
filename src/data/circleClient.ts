@@ -3,7 +3,7 @@
  * an `action` and returns the updated `snapshot` (except `leave`).
  */
 import { postServer } from './serverClient';
-import type { CircleGoal, CircleSnapshot } from '@/types';
+import type { ChallengeKind, CircleGoal, CircleSnapshot } from '@/types';
 
 /** The progress snapshot a device pushes up about itself. */
 export interface MemberSnapshotInput {
@@ -92,6 +92,56 @@ export function setCovenant(
   goalText: string,
 ): Promise<CircleSnapshot> {
   return circleCall(serverUrl, { action: 'setCovenant', code, memberId, cadenceLabel, goalText });
+}
+
+export function assignChallenge(
+  serverUrl: string | null,
+  code: string,
+  from: { memberId: string; displayName: string },
+  toMemberId: string,
+  toName: string,
+  reference: string,
+  kind: ChallengeKind,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, {
+    action: 'assignChallenge',
+    code,
+    memberId: from.memberId,
+    displayName: from.displayName,
+    toMemberId,
+    toName,
+    reference,
+    kind,
+  });
+}
+
+export function submitChallenge(
+  serverUrl: string | null,
+  code: string,
+  memberId: string,
+  chalId: string,
+  text: string,
+  accuracy?: number,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'submitChallenge', code, memberId, chalId, text, accuracy });
+}
+
+export function reviewChallenge(
+  serverUrl: string | null,
+  code: string,
+  memberId: string,
+  chalId: string,
+  note: string,
+  meaningPrompt?: string,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, {
+    action: 'reviewChallenge',
+    code,
+    memberId,
+    chalId,
+    note,
+    meaningPrompt,
+  });
 }
 
 export async function leaveCircle(
