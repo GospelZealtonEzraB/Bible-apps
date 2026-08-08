@@ -208,6 +208,7 @@ const defaultSettings: Settings = {
   theme: 'system',
   serverUrl: null,
   shareLibrary: true,
+  onboarded: false,
 };
 
 /** Append an event to a rolling activity log, keeping the most recent `cap`. */

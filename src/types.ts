@@ -316,4 +316,6 @@ export interface Settings {
   serverUrl: string | null;
   /** Share which verses I've memorized/am learning with my circles. */
   shareLibrary: boolean;
+  /** Has the first-run onboarding flow been completed (or skipped)? */
+  onboarded: boolean;
 }
