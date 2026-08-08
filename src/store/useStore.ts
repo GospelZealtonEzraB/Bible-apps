@@ -12,6 +12,7 @@ import type {
   CircleSnapshot,
   LocalNote,
   NoteScope,
+  Prayer,
   Profile,
   Settings,
   Stats,
@@ -125,16 +126,27 @@ interface StoreState {
   addApplication: (passageKey: string, passage: string, text: string) => void;
   /** Mark an application revisited, optionally recording how it went. */
   revisitApplication: (passageKey: string, outcome?: string) => void;
+  /** Edit the text of a saved application. */
+  editApplication: (passageKey: string, text: string) => void;
+  /** Delete a saved application. */
+  deleteApplication: (passageKey: string) => void;
 
   // Growing Together — plans, notes, prayer, cheers
   createCirclePlan: (code: string, title: string, items: string[]) => Promise<void>;
-  shareNote: (code: string, text: string, scope?: NoteScope, ref?: string) => Promise<void>;
+  updateCirclePlan: (code: string, planId: string, title: string, items: string[]) => Promise<void>;
+  shareNote: (code: string, text: string, scope?: NoteScope, ref?: string, noteId?: string) => Promise<void>;
+  editSharedNote: (code: string, noteId: string, text: string, scope?: NoteScope, ref?: string) => Promise<void>;
   deleteSharedNote: (code: string, noteId: string) => Promise<void>;
   addPrivateNote: (scope: NoteScope, text: string, ref?: string) => void;
   deletePrivateNote: (noteId: string) => void;
   addPrayer: (code: string, text: string) => Promise<void>;
   prayForRequest: (code: string, prayerId: string) => Promise<void>;
   answerPrayer: (code: string, prayerId: string, answerNote?: string) => Promise<void>;
+  reopenPrayer: (code: string, prayerId: string) => Promise<void>;
+  editPrayer: (code: string, prayerId: string, text: string) => Promise<void>;
+  deletePrayer: (code: string, prayerId: string) => Promise<void>;
+  togglePrayed: (code: string, prayer: Prayer) => Promise<void>;
+  deleteChallenge: (code: string, chalId: string) => Promise<void>;
   cheerMember: (code: string, toMemberId: string) => Promise<void>;
   /** Record that the app was opened today (for the welcome-back recap). */
   markOpened: () => void;
@@ -707,19 +719,55 @@ export const useStore = create<StoreState>()(
           };
         }),
 
+      editApplication: (passageKey, text) =>
+        set((state) => {
+          const a = state.applications[passageKey];
+          if (!a) return {};
+          return {
+            applications: {
+              ...state.applications,
+              [passageKey]: { ...a, text: text.trim() },
+            },
+          };
+        }),
+
+      deleteApplication: (passageKey) =>
+        set((state) => {
+          const next = { ...state.applications };
+          delete next[passageKey];
+          return { applications: next };
+        }),
+
       createCirclePlan: async (code, title, items) => {
         const s = get();
         const snap = await circleApi.createPlan(s.settings.serverUrl, code, s.profile.memberId, title, items);
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
-      shareNote: async (code, text, scope = 'free', ref) => {
+      updateCirclePlan: async (code, planId, title, items) => {
+        const s = get();
+        const snap = await circleApi.updatePlan(s.settings.serverUrl, code, s.profile.memberId, planId, title, items);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      shareNote: async (code, text, scope = 'free', ref, noteId) => {
         const s = get();
         const snap = await circleApi.saveNote(
           s.settings.serverUrl,
           code,
           { memberId: s.profile.memberId, displayName: s.profile.displayName },
-          { scope, ref, text: text.trim() },
+          { noteId, scope, ref, text: text.trim() },
+        );
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      editSharedNote: async (code, noteId, text, scope = 'free', ref) => {
+        const s = get();
+        const snap = await circleApi.saveNote(
+          s.settings.serverUrl,
+          code,
+          { memberId: s.profile.memberId, displayName: s.profile.displayName },
+          { noteId, scope, ref, text: text.trim() },
         );
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
@@ -773,6 +821,43 @@ export const useStore = create<StoreState>()(
       answerPrayer: async (code, prayerId, answerNote) => {
         const s = get();
         const snap = await circleApi.answerPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId, answerNote);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      reopenPrayer: async (code, prayerId) => {
+        const s = get();
+        const snap = await circleApi.reopenPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      editPrayer: async (code, prayerId, text) => {
+        const s = get();
+        const snap = await circleApi.editPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId, text.trim());
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      deletePrayer: async (code, prayerId) => {
+        const s = get();
+        const snap = await circleApi.deletePrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      togglePrayed: async (code, prayer) => {
+        const s = get();
+        const snap = prayer.didIPray || prayer.prayedByIds?.includes(s.profile.memberId)
+          ? await circleApi.unpray(s.settings.serverUrl, code, s.profile.memberId, prayer.prayerId)
+          : await circleApi.prayFor(
+              s.settings.serverUrl,
+              code,
+              { memberId: s.profile.memberId, displayName: s.profile.displayName },
+              prayer.prayerId,
+            );
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      deleteChallenge: async (code, chalId) => {
+        const s = get();
+        const snap = await circleApi.deleteChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId);
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 

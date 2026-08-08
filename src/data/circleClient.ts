@@ -40,7 +40,7 @@ async function circleCall(
 }
 
 /** The API version this app build expects from the Worker. */
-export const EXPECTED_API_VERSION = 3;
+export const EXPECTED_API_VERSION = 4;
 
 export function createCircle(
   serverUrl: string | null,
@@ -171,6 +171,18 @@ export function createPlan(
   return circleCall(serverUrl, { action: 'createPlan', code, memberId, title, items });
 }
 
+/** Edit an existing plan's title and/or items. */
+export function updatePlan(
+  serverUrl: string | null,
+  code: string,
+  memberId: string,
+  planId: string,
+  title: string,
+  items: string[],
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'updatePlan', code, memberId, planId, title, items });
+}
+
 export function saveNote(
   serverUrl: string | null,
   code: string,
@@ -210,6 +222,31 @@ export function prayFor(
 
 export function answerPrayer(serverUrl: string | null, code: string, memberId: string, prayerId: string, answerNote?: string): Promise<CircleSnapshot> {
   return circleCall(serverUrl, { action: 'answerPrayer', code, memberId, prayerId, answerNote });
+}
+
+/** Revert an accidentally-answered prayer back to active. */
+export function reopenPrayer(serverUrl: string | null, code: string, memberId: string, prayerId: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'reopenPrayer', code, memberId, prayerId });
+}
+
+/** Edit a prayer request's text. */
+export function editPrayer(serverUrl: string | null, code: string, memberId: string, prayerId: string, text: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'editPrayer', code, memberId, prayerId, text });
+}
+
+/** Delete a prayer request (and its "prayed" marks). */
+export function deletePrayer(serverUrl: string | null, code: string, memberId: string, prayerId: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'deletePrayer', code, memberId, prayerId });
+}
+
+/** Undo my own "I prayed" mark. */
+export function unpray(serverUrl: string | null, code: string, memberId: string, prayerId: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'unpray', code, memberId, prayerId });
+}
+
+/** Cancel/delete a challenge (and any submission/review). */
+export function deleteChallenge(serverUrl: string | null, code: string, memberId: string, chalId: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'deleteChallenge', code, memberId, chalId });
 }
 
 export function cheer(serverUrl: string | null, code: string, memberId: string, toMemberId: string, kind = 'cheer'): Promise<CircleSnapshot> {

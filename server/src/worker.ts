@@ -317,9 +317,14 @@ async function kvListKeys(kv: KVNamespaceLike, prefix: string): Promise<string[]
   return names;
 }
 
+/** Delete every key under a prefix — used to cascade-delete an entity's sub-keys. */
+async function kvDeletePrefix(kv: KVNamespaceLike, prefix: string): Promise<void> {
+  for (const key of await kvListKeys(kv, prefix)) await kv.delete(key);
+}
+
 // Bumped whenever /circle gains actions the client depends on. Returned in every
 // snapshot so the app can warn when a deployed Worker is out of date.
-const API_VERSION = 3;
+const API_VERSION = 4;
 
 // Invite codes: 6 chars, unambiguous base32 (no O/0/I/1).
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -702,6 +707,22 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 
+    case 'updatePlan': {
+      const code = normCode(body.code);
+      const planId = String(body.planId ?? '');
+      const existing = await kvGetJson<any>(kv, `circle:${code}:plan:${planId}`);
+      if (!existing) return json({ error: 'Plan not found.' }, 404);
+      const title = str(body.title, 80).trim();
+      const items = Array.isArray(body.items)
+        ? body.items.filter((x: any) => typeof x === 'string').map((x: string) => str(x, 60).trim()).slice(0, 200)
+        : [];
+      if (!title || items.length === 0) return json({ error: 'Missing plan title or items.' }, 400);
+      await kvPutJson(kv, `circle:${code}:plan:${planId}`, {
+        ...existing, title, items,
+      });
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
     case 'saveNote': {
       const code = normCode(body.code);
       const meta = await kvGetJson(kv, `circle:${code}:meta`);
@@ -763,6 +784,62 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       pm.answeredAt = Date.now();
       pm.answerNote = body.answerNote ? str(body.answerNote, 500) : undefined;
       await kvPutJson(kv, `circle:${code}:prayer:${prayerId}`, pm);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'reopenPrayer': {
+      // Undo an accidental "mark answered" — revert to active.
+      const code = normCode(body.code);
+      const prayerId = String(body.prayerId ?? '');
+      const pm = await kvGetJson<any>(kv, `circle:${code}:prayer:${prayerId}`);
+      if (!pm) return json({ error: 'Prayer not found.' }, 404);
+      pm.status = 'active';
+      delete pm.answeredAt;
+      delete pm.answerNote;
+      await kvPutJson(kv, `circle:${code}:prayer:${prayerId}`, pm);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'editPrayer': {
+      const code = normCode(body.code);
+      const prayerId = String(body.prayerId ?? '');
+      const pm = await kvGetJson<any>(kv, `circle:${code}:prayer:${prayerId}`);
+      if (!pm) return json({ error: 'Prayer not found.' }, 404);
+      const text = str(body.text, 1000).trim();
+      if (!text) return json({ error: 'Missing prayer request.' }, 400);
+      pm.text = text;
+      await kvPutJson(kv, `circle:${code}:prayer:${prayerId}`, pm);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'deletePrayer': {
+      // Remove the request and every "I prayed" mark under it.
+      const code = normCode(body.code);
+      const prayerId = String(body.prayerId ?? '');
+      if (prayerId) {
+        await kv.delete(`circle:${code}:prayer:${prayerId}`);
+        await kvDeletePrefix(kv, `circle:${code}:prayer:${prayerId}:pray:`);
+      }
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'unpray': {
+      // Undo an accidental "I prayed" — remove only the caller's own mark.
+      const code = normCode(body.code);
+      const prayerId = String(body.prayerId ?? '');
+      if (memberId && prayerId) await kv.delete(`circle:${code}:prayer:${prayerId}:pray:${memberId}`);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'deleteChallenge': {
+      // Cancel a challenge — remove it plus any submission/review sub-keys.
+      const code = normCode(body.code);
+      const chalId = String(body.chalId ?? '');
+      if (chalId) {
+        await kv.delete(`circle:${code}:chal:${chalId}`);
+        await kv.delete(`circle:${code}:chal:${chalId}:submission`);
+        await kv.delete(`circle:${code}:chal:${chalId}:review`);
+      }
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

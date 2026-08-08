@@ -15,7 +15,7 @@ import { PLAN_TEMPLATES } from '@/data/plans';
 import { levelInfo } from '@/gamification';
 import { togetherTotals, coverage, mergeActivity } from '@/utils/circleProgress';
 import { EXPECTED_API_VERSION } from '@/data/circleClient';
-import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Prayer, SharedVerseRef, StudyPlan } from '@/types';
+import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Note, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
 export default function CircleHubScreen() {
   const { colors } = useTheme();
@@ -206,7 +206,7 @@ export default function CircleHubScreen() {
       <PrayerCard code={code} myId={profile.memberId} />
 
       {/* Notes wall */}
-      <NotesCard code={code} myId={profile.memberId} />
+      <NotesCard code={code} />
 
       <View style={{ marginTop: spacing.sm }}>
         <Button title="Leave circle" variant="ghost" onPress={onLeave} />
@@ -483,8 +483,16 @@ function PlanRow({ plan, circleCode }: { plan: StudyPlan; circleCode: string }) 
   const router = useRouter();
   const hasVerse = useStore((s) => s.hasVerse);
   const deleteCirclePlan = useStore((s) => s.deleteCirclePlan);
+  const updateCirclePlan = useStore((s) => s.updateCirclePlan);
   const translation = useStore((s) => s.settings.translation);
   const [open, setOpen] = useState(false);
+
+  // Edit state (reuses the custom-plan builder pattern).
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(plan.title);
+  const [items, setItems] = useState<string[]>(plan.items);
+  const [refInput, setRefInput] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const doneCount = plan.items.filter((r) => hasVerse(verseId(r, translation))).length;
 
@@ -495,6 +503,61 @@ function PlanRow({ plan, circleCode }: { plan: StudyPlan; circleCode: string }) 
     ]);
   };
 
+  const startEdit = () => {
+    setTitle(plan.title);
+    setItems(plan.items);
+    setRefInput('');
+    setOpen(false);
+    setEditing(true);
+  };
+
+  const addRef = () => {
+    const r = refInput.trim();
+    if (!r) return;
+    setItems((prev) => (prev.includes(r) ? prev : [...prev, r]));
+    setRefInput('');
+  };
+
+  const saveEdit = async () => {
+    if (!title.trim() || items.length === 0) return;
+    setSaving(true);
+    try {
+      await updateCirclePlan(circleCode, plan.planId, title.trim(), items);
+      setEditing(false);
+    } catch (e) {
+      Alert.alert('Couldn’t save', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <Card style={{ marginBottom: spacing.sm }}>
+        <SectionTitle>Edit plan</SectionTitle>
+        <TextInput value={title} onChangeText={setTitle} placeholder="Plan name" placeholderTextColor={colors.textFaint} style={fieldStyle(colors)} />
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+          <TextInput value={refInput} onChangeText={setRefInput} placeholder="Add a reference (e.g. Psalm 46:1)" placeholderTextColor={colors.textFaint} autoCapitalize="words" returnKeyType="done" onSubmitEditing={addRef} style={[fieldStyle(colors), { flex: 1 }]} />
+          <Button title="Add" small onPress={addRef} disabled={!refInput.trim()} />
+        </View>
+        {items.length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm }}>
+            {items.map((r) => (
+              <Pressable key={r} onPress={() => setItems((prev) => prev.filter((x) => x !== r))} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt }}>
+                <Text style={{ color: colors.text, fontSize: font.sizes.sm, fontWeight: '600' }}>{r}</Text>
+                <Ionicons name="close" size={13} color={colors.textFaint} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+          <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setEditing(false)} />
+          <Button title={saving ? 'Saving…' : 'Save plan'} small style={{ flex: 1 }} loading={saving} disabled={!title.trim() || items.length === 0} onPress={saveEdit} />
+        </View>
+      </Card>
+    );
+  }
+
   return (
     <Card style={{ marginBottom: spacing.sm }}>
       <Pressable onPress={() => setOpen((o) => !o)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
@@ -503,6 +566,9 @@ function PlanRow({ plan, circleCode }: { plan: StudyPlan; circleCode: string }) 
           <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>{plan.title}</Text>
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{doneCount} / {plan.items.length} in your library</Text>
         </View>
+        <Pressable onPress={startEdit} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+          <Ionicons name="pencil" size={15} color={colors.textFaint} />
+        </Pressable>
         <Pressable onPress={onDelete} hitSlop={8} style={{ paddingHorizontal: 4 }}>
           <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
         </Pressable>
@@ -529,8 +595,8 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
   const { colors } = useTheme();
   const circle = useCircle(code);
   const addPrayer = useStore((s) => s.addPrayer);
-  const prayForRequest = useStore((s) => s.prayForRequest);
-  const answerPrayer = useStore((s) => s.answerPrayer);
+  const reopenPrayer = useStore((s) => s.reopenPrayer);
+  const deletePrayer = useStore((s) => s.deletePrayer);
 
   const prayers = circle?.prayers ?? [];
   const active = prayers.filter((p) => p.status === 'active');
@@ -552,6 +618,12 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
     }
   };
 
+  const confirmDelete = (prayerId: string) =>
+    Alert.alert('Delete this prayer?', 'It will be removed for everyone in the circle.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deletePrayer(code, prayerId).catch(() => {}) },
+    ]);
+
   return (
     <View>
       <SectionTitle>Praying together</SectionTitle>
@@ -569,7 +641,7 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
       </Card>
 
       {active.map((p) => (
-        <PrayerRow key={p.prayerId} prayer={p} myId={myId} onPray={() => prayForRequest(code, p.prayerId).catch(() => {})} onAnswer={() => answerPrayer(code, p.prayerId).catch(() => {})} />
+        <PrayerRow key={p.prayerId} code={code} prayer={p} myId={myId} onDelete={() => confirmDelete(p.prayerId)} />
       ))}
 
       {answered.length > 0 ? (
@@ -579,6 +651,10 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
             <Card key={p.prayerId} style={{ marginBottom: spacing.sm }}>
               <Text style={{ color: colors.text, fontSize: font.sizes.md }}>{p.text}</Text>
               <Text style={{ color: colors.success, fontSize: font.sizes.sm, marginTop: 4 }}>✅ Answered{p.answerNote ? ` — ${p.answerNote}` : ''}</Text>
+              <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm, alignSelf: 'flex-start' }}>
+                <Button title="Reopen" variant="ghost" small onPress={() => reopenPrayer(code, p.prayerId).catch(() => {})} />
+                <Button title="Delete" variant="ghost" small onPress={() => confirmDelete(p.prayerId)} />
+              </View>
             </Card>
           ))}
         </View>
@@ -587,32 +663,98 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
   );
 }
 
-function PrayerRow({ prayer, myId, onPray, onAnswer }: { prayer: Prayer; myId: string; onPray: () => void; onAnswer: () => void }) {
+function PrayerRow({ code, prayer, myId, onDelete }: { code: string; prayer: Prayer; myId: string; onDelete: () => void }) {
   const { colors } = useTheme();
+  const togglePrayed = useStore((s) => s.togglePrayed);
+  const answerPrayer = useStore((s) => s.answerPrayer);
+  const editPrayer = useStore((s) => s.editPrayer);
   const didIPray = prayer.prayedByIds?.includes(myId);
-  const mine = prayer.by === myId;
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(prayer.text);
+  const [answering, setAnswering] = useState(false);
+  const [answerNote, setAnswerNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const saveEdit = async () => {
+    if (!draft.trim()) return;
+    setBusy(true);
+    try {
+      await editPrayer(code, prayer.prayerId, draft);
+      setEditing(false);
+    } catch (e) {
+      Alert.alert('Couldn’t save', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitAnswer = async () => {
+    setBusy(true);
+    try {
+      await answerPrayer(code, prayer.prayerId, answerNote.trim() || undefined);
+      setAnswering(false);
+      setAnswerNote('');
+    } catch (e) {
+      Alert.alert('Couldn’t save', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Card style={{ marginBottom: spacing.sm }}>
-      <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{prayer.byName || 'someone'}</Text>
-      <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>{prayer.text}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm }}>
-        <Button
-          title={didIPray ? `🙏 Prayed (${prayer.prayedByCount})` : `🙏 I prayed${prayer.prayedByCount ? ` (${prayer.prayedByCount})` : ''}`}
-          variant="secondary"
-          small
-          onPress={onPray}
-        />
-        {mine ? <Button title="Mark answered" variant="ghost" small onPress={onAnswer} /> : null}
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, flex: 1 }}>{prayer.byName || 'someone'}</Text>
+        <Pressable onPress={() => { setDraft(prayer.text); setEditing((v) => !v); }} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+          <Ionicons name="pencil" size={15} color={colors.textFaint} />
+        </Pressable>
+        <Pressable onPress={onDelete} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+          <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
+        </Pressable>
       </View>
+
+      {editing ? (
+        <View style={{ marginTop: spacing.sm }}>
+          <TextInput value={draft} onChangeText={setDraft} multiline autoFocus placeholderTextColor={colors.textFaint} style={[fieldStyle(colors), { minHeight: 54 }]} />
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setEditing(false)} />
+            <Button title={busy ? 'Saving…' : 'Save'} small style={{ flex: 1 }} loading={busy} disabled={!draft.trim()} onPress={saveEdit} />
+          </View>
+        </View>
+      ) : (
+        <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>{prayer.text}</Text>
+      )}
+
+      {!editing ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm }}>
+          <Button
+            title={didIPray ? `🙏 Prayed (${prayer.prayedByCount})` : `🙏 I prayed${prayer.prayedByCount ? ` (${prayer.prayedByCount})` : ''}`}
+            variant={didIPray ? 'primary' : 'secondary'}
+            small
+            onPress={() => togglePrayed(code, prayer).catch(() => {})}
+          />
+          <Button title="Mark answered" variant="ghost" small onPress={() => setAnswering((v) => !v)} />
+        </View>
+      ) : null}
+
+      {answering ? (
+        <View style={{ marginTop: spacing.sm }}>
+          <TextInput value={answerNote} onChangeText={setAnswerNote} placeholder="How was it answered? (optional)" placeholderTextColor={colors.textFaint} multiline style={[fieldStyle(colors), { minHeight: 48 }]} />
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setAnswering(false)} />
+            <Button title={busy ? 'Saving…' : 'Answered 🙌'} small style={{ flex: 1 }} loading={busy} onPress={submitAnswer} />
+          </View>
+        </View>
+      ) : null}
     </Card>
   );
 }
 
-function NotesCard({ code, myId }: { code: string; myId: string }) {
+function NotesCard({ code }: { code: string }) {
   const { colors } = useTheme();
   const circle = useCircle(code);
   const shareNote = useStore((s) => s.shareNote);
-  const deleteSharedNote = useStore((s) => s.deleteSharedNote);
   const notes = circle?.notes ?? [];
 
   const [text, setText] = useState('');
@@ -641,17 +783,62 @@ function NotesCard({ code, myId }: { code: string; myId: string }) {
         </View>
       </Card>
       {notes.map((n) => (
-        <Card key={n.noteId} style={{ marginBottom: spacing.sm }}>
-          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{n.byName || 'someone'}{n.ref ? ` · ${n.ref}` : ''}</Text>
-          <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>{n.text}</Text>
-          {n.by === myId ? (
-            <View style={{ marginTop: spacing.sm, alignSelf: 'flex-start' }}>
-              <Button title="Delete" variant="ghost" small onPress={() => deleteSharedNote(code, n.noteId).catch(() => {})} />
-            </View>
-          ) : null}
-        </Card>
+        <NoteRow key={n.noteId} code={code} note={n} />
       ))}
     </View>
+  );
+}
+
+function NoteRow({ code, note }: { code: string; note: Note }) {
+  const { colors } = useTheme();
+  const editSharedNote = useStore((s) => s.editSharedNote);
+  const deleteSharedNote = useStore((s) => s.deleteSharedNote);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note.text);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    if (!draft.trim()) return;
+    setBusy(true);
+    try {
+      await editSharedNote(code, note.noteId, draft, note.scope, note.ref);
+      setEditing(false);
+    } catch (e) {
+      Alert.alert('Couldn’t save', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmDelete = () =>
+    Alert.alert('Delete this note?', 'It will be removed for everyone in the circle.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteSharedNote(code, note.noteId).catch(() => {}) },
+    ]);
+
+  return (
+    <Card style={{ marginBottom: spacing.sm }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, flex: 1 }}>{note.byName || 'someone'}{note.ref ? ` · ${note.ref}` : ''}</Text>
+        <Pressable onPress={() => { setDraft(note.text); setEditing((v) => !v); }} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+          <Ionicons name="pencil" size={15} color={colors.textFaint} />
+        </Pressable>
+        <Pressable onPress={confirmDelete} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+          <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
+        </Pressable>
+      </View>
+      {editing ? (
+        <View style={{ marginTop: spacing.sm }}>
+          <TextInput value={draft} onChangeText={setDraft} multiline autoFocus placeholderTextColor={colors.textFaint} style={[fieldStyle(colors), { minHeight: 54 }]} />
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm }}>
+            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setEditing(false)} />
+            <Button title={busy ? 'Saving…' : 'Save'} small style={{ flex: 1 }} loading={busy} disabled={!draft.trim()} onPress={save} />
+          </View>
+        </View>
+      ) : (
+        <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>{note.text}</Text>
+      )}
+    </Card>
   );
 }
 
@@ -671,6 +858,7 @@ function GoalCard({ code }: { code: string }) {
   const [editing, setEditing] = useState(false);
   const [kind, setKind] = useState<CircleGoal['kind']>(goal?.kind ?? 'memorizeCount');
   const [target, setTarget] = useState(goal?.target ?? 5);
+  const [customLabel, setCustomLabel] = useState('');
   const [saving, setSaving] = useState(false);
 
   const save = async (next: CircleGoal | null) => {
@@ -688,7 +876,8 @@ function GoalCard({ code }: { code: string }) {
   const onSave = () => {
     const t = kind === 'sharedVerses' ? sharedCount : target;
     const label =
-      kind === 'memorizeCount' ? `Each memorize ${t} verses`
+      customLabel.trim() ? customLabel.trim()
+      : kind === 'memorizeCount' ? `Each memorize ${t} verses`
       : kind === 'sharedVerses' ? 'Memorize all shared verses'
       : `Reach a ${t}-day streak`;
     save({ kind, target: t, label });
@@ -699,7 +888,7 @@ function GoalCard({ code }: { code: string }) {
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <SectionTitle style={{ marginBottom: 0 }}>Our goal</SectionTitle>
         {!editing ? (
-          <Button title={goal ? 'Edit' : 'Set'} variant="secondary" small onPress={() => { setKind(goal?.kind ?? 'memorizeCount'); setTarget(goal?.target ?? 5); setEditing(true); }} />
+          <Button title={goal ? 'Edit' : 'Set'} variant="secondary" small onPress={() => { setKind(goal?.kind ?? 'memorizeCount'); setTarget(goal?.target ?? 5); setCustomLabel(goal?.label ?? ''); setEditing(true); }} />
         ) : null}
       </View>
 
@@ -722,6 +911,13 @@ function GoalCard({ code }: { code: string }) {
               Target = every verse in the shared list ({sharedCount}).
             </Text>
           )}
+          <TextInput
+            value={customLabel}
+            onChangeText={setCustomLabel}
+            placeholder="Custom name (optional, e.g. Our Lent challenge)"
+            placeholderTextColor={colors.textFaint}
+            style={fieldStyle(colors)}
+          />
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
             {goal ? <Button title="Clear" variant="ghost" small style={{ flex: 1 }} onPress={() => save(null)} /> : null}
             <Button title={saving ? 'Saving…' : 'Save goal'} small style={{ flex: 1 }} loading={saving} onPress={onSave} />
@@ -963,6 +1159,7 @@ function ChallengesCard({ code, members, myId }: { code: string; members: Circle
   const router = useRouter();
   const circle = useCircle(code);
   const assignChallenge = useStore((s) => s.assignChallenge);
+  const deleteChallenge = useStore((s) => s.deleteChallenge);
 
   const challenges = circle?.challenges ?? [];
   const others = members.filter((m) => m.id !== myId);
@@ -970,6 +1167,12 @@ function ChallengesCard({ code, members, myId }: { code: string; members: Circle
   const toComplete = challenges.filter((c) => c.to === myId && c.status === 'pending');
   const toReview = challenges.filter((c) => c.from === myId && c.status === 'submitted');
   const reviewedForMe = challenges.filter((c) => c.to === myId && c.status === 'reviewed');
+
+  const confirmCancel = (chalId: string) =>
+    Alert.alert('Remove this challenge?', 'It will be removed for both of you.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => deleteChallenge(code, chalId).catch(() => {}) },
+    ]);
 
   const [assigning, setAssigning] = useState(false);
   const [ref, setRef] = useState('');
@@ -999,9 +1202,14 @@ function ChallengesCard({ code, members, myId }: { code: string; members: Circle
       {/* Things waiting on me */}
       {toComplete.map((c) => (
         <Card key={c.chalId} style={{ marginBottom: spacing.sm }}>
-          <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }}>
-            {c.fromName} challenged you: {c.reference}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md, flex: 1 }}>
+              {c.fromName} challenged you: {c.reference}
+            </Text>
+            <Pressable onPress={() => confirmCancel(c.chalId)} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+              <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
+            </Pressable>
+          </View>
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginBottom: spacing.sm }}>
             {kindLabel(c.kind)}
           </Text>
@@ -1011,13 +1219,18 @@ function ChallengesCard({ code, members, myId }: { code: string; members: Circle
 
       {/* Submissions waiting for my review */}
       {toReview.map((c) => (
-        <ReviewRow key={c.chalId} code={code} challenge={c} />
+        <ReviewRow key={c.chalId} code={code} challenge={c} onCancel={() => confirmCancel(c.chalId)} />
       ))}
 
       {/* Encouragement I received */}
       {reviewedForMe.map((c) => (
         <Card key={c.chalId} style={{ marginBottom: spacing.sm }}>
-          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{c.reference} · reviewed by {c.fromName}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, flex: 1 }}>{c.reference} · reviewed by {c.fromName}</Text>
+            <Pressable onPress={() => confirmCancel(c.chalId)} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+              <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
+            </Pressable>
+          </View>
           {c.review?.note ? <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>💛 {c.review.note}</Text> : null}
           {c.review?.meaningPrompt ? <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginTop: 2 }}>💭 {c.review.meaningPrompt}</Text> : null}
         </Card>
@@ -1058,7 +1271,7 @@ function ChallengesCard({ code, members, myId }: { code: string; members: Circle
   );
 }
 
-function ReviewRow({ code, challenge }: { code: string; challenge: Challenge }) {
+function ReviewRow({ code, challenge, onCancel }: { code: string; challenge: Challenge; onCancel: () => void }) {
   const { colors } = useTheme();
   const reviewChallenge = useStore((s) => s.reviewChallenge);
   const [note, setNote] = useState('');
@@ -1081,9 +1294,14 @@ function ReviewRow({ code, challenge }: { code: string; challenge: Challenge }) 
 
   return (
     <Card style={{ marginBottom: spacing.sm }}>
-      <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }}>
-        {challenge.toName} answered: {challenge.reference}
-      </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md, flex: 1 }}>
+          {challenge.toName} answered: {challenge.reference}
+        </Text>
+        <Pressable onPress={onCancel} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+          <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
+        </Pressable>
+      </View>
       {acc != null ? (
         <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginTop: 2 }}>Word match: {acc}%</Text>
       ) : null}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, ActivityIndicator, Alert, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -214,16 +214,49 @@ function ApplicationCard({ passageKey, passage }: { passageKey: string; passage:
   const { colors } = useTheme();
   const application = useApplication(passageKey);
   const addApplication = useStore((s) => s.addApplication);
+  const editApplication = useStore((s) => s.editApplication);
+  const deleteApplication = useStore((s) => s.deleteApplication);
   const [text, setText] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
 
-  if (application) {
+  const inputStyle = { color: colors.text, fontSize: font.sizes.md, minHeight: 70, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md } as const;
+
+  const confirmDelete = () =>
+    Alert.alert('Delete this commitment?', 'You can always add a new one.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteApplication(passageKey) },
+    ]);
+
+  if (application && !editing) {
     return (
       <Card>
-        <SectionTitle>Living it out</SectionTitle>
-        <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }}>✅ {application.text}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <SectionTitle style={{ marginBottom: 0, flex: 1 }}>Living it out</SectionTitle>
+          <Pressable onPress={() => { setDraft(application.text); setEditing(true); }} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+            <Ionicons name="pencil" size={15} color={colors.textFaint} />
+          </Pressable>
+          <Pressable onPress={confirmDelete} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+            <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
+          </Pressable>
+        </View>
+        <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24, marginTop: spacing.sm }}>✅ {application.text}</Text>
         <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: 4 }}>
           We’ll check back with you on this.
         </Text>
+      </Card>
+    );
+  }
+
+  if (application && editing) {
+    return (
+      <Card>
+        <SectionTitle>Edit your commitment</SectionTitle>
+        <TextInput value={draft} onChangeText={setDraft} placeholder="This week I will…" placeholderTextColor={colors.textFaint} multiline textAlignVertical="top" style={inputStyle} />
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+          <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setEditing(false)} />
+          <Button title="Save" small style={{ flex: 1 }} disabled={!draft.trim()} onPress={() => { editApplication(passageKey, draft); setEditing(false); }} />
+        </View>
       </Card>
     );
   }
@@ -241,7 +274,7 @@ function ApplicationCard({ passageKey, passage }: { passageKey: string; passage:
         placeholderTextColor={colors.textFaint}
         multiline
         textAlignVertical="top"
-        style={{ color: colors.text, fontSize: font.sizes.md, minHeight: 70, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
+        style={inputStyle}
       />
       <View style={{ marginTop: spacing.md }}>
         <Button title="Save my commitment" onPress={() => text.trim() && addApplication(passageKey, passage, text)} disabled={!text.trim()} />
