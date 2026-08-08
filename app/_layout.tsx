@@ -8,9 +8,15 @@ import { View } from 'react-native';
 import { useTheme } from '@/theme';
 import { configureNotificationHandler } from '@/notifications';
 import { Celebration } from '@/components/Celebration';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { useStore, useSettings } from '@/store/useStore';
 
-configureNotificationHandler();
+// Never let startup config throw before the app can render.
+try {
+  configureNotificationHandler();
+} catch {
+  // notifications are optional; ignore setup failures
+}
 
 /** Redirect to the one-time onboarding flow until it's been completed. */
 function useOnboardingGate() {
@@ -33,35 +39,45 @@ function useOnboardingGate() {
   }, [navReady, hydrated, onboarded, segments, router]);
 }
 
-export default function RootLayout() {
+/** The navigable app — kept below the ErrorBoundary so any failure here (the
+ *  onboarding gate, hydration, or a screen) becomes a recoverable screen. */
+function AppShell() {
   const { colors, dark } = useTheme();
   useOnboardingGate();
 
   return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <StatusBar style={dark ? 'light' : 'dark'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.bg },
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
+        <Stack.Screen
+          name="review"
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="drill/[id]/[mode]"
+          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+        />
+      </Stack>
+      <Celebration />
+    </View>
+  );
+}
+
+export default function RootLayout() {
+  return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <View style={{ flex: 1, backgroundColor: colors.bg }}>
-          <StatusBar style={dark ? 'light' : 'dark'} />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.bg },
-              animation: 'slide_from_right',
-            }}
-          >
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
-            <Stack.Screen
-              name="review"
-              options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-            />
-            <Stack.Screen
-              name="drill/[id]/[mode]"
-              options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-            />
-          </Stack>
-          <Celebration />
-        </View>
+        <ErrorBoundary>
+          <AppShell />
+        </ErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -25,7 +25,7 @@
     },
     "android": {
       "package": "com.engraved.app",
-      "allowBackup": true,
+      "allowBackup": false,
       "adaptiveIcon": {
         "backgroundColor": "#0B1220",
         "foregroundImage": "./assets/android-icon-foreground.png",

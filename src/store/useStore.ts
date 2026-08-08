@@ -1042,30 +1042,43 @@ export const useStore = create<StoreState>()(
       // state on version mismatch when no migrate is supplied.)
       migrate: (persisted) => persisted as StoreState,
       merge: (persisted, current) => {
-        const p = (persisted ?? {}) as Partial<StoreState>;
-        // Existing users (they already have a profile or saved verses) should
-        // NOT be sent back through first-run onboarding after this update.
-        const isReturningUser = !!(p.profile?.memberId || (p.verses && Object.keys(p.verses).length > 0));
-        return {
-          ...current,
-          ...p,
-          stats: { ...defaultStats, ...(p.stats ?? {}) },
-          settings: { ...defaultSettings, onboarded: isReturningUser, ...(p.settings ?? {}) },
-          profile: { ...defaultProfile, ...(p.profile ?? {}) },
-          circles: p.circles ?? {},
-          studySessions: p.studySessions ?? {},
-          applications: p.applications ?? {},
-          notes: p.notes ?? {},
-          session: { lastOpenedDay: null, ...(p.session ?? {}) },
-          activityLog: p.activityLog ?? [],
-          pushToken: p.pushToken ?? null,
-          verses: p.verses ?? {},
-        };
+        // Hydration must NEVER throw — a corrupt or partial persisted blob
+        // (including one auto-restored from a different app version) would
+        // otherwise crash the app on launch. On any problem, fall back to
+        // defaults rather than crash.
+        try {
+          const p = (persisted ?? {}) as Partial<StoreState>;
+          const verses = p.verses && typeof p.verses === 'object' ? p.verses : {};
+          // Existing users (they already have a profile or saved verses) should
+          // NOT be sent back through first-run onboarding after this update.
+          const isReturningUser = !!(p.profile?.memberId || Object.keys(verses).length > 0);
+          return {
+            ...current,
+            ...p,
+            stats: { ...defaultStats, ...(p.stats ?? {}) },
+            settings: { ...defaultSettings, onboarded: isReturningUser, ...(p.settings ?? {}) },
+            profile: { ...defaultProfile, ...(p.profile ?? {}) },
+            circles: p.circles ?? {},
+            studySessions: p.studySessions ?? {},
+            applications: p.applications ?? {},
+            notes: p.notes ?? {},
+            session: { lastOpenedDay: null, ...(p.session ?? {}) },
+            activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
+            pushToken: p.pushToken ?? null,
+            verses,
+          };
+        } catch {
+          return current;
+        }
       },
       onRehydrateStorage: () => () => {
-        useStore.setState({ hydrated: true });
-        // Mint a stable identity on first run (idempotent thereafter).
-        useStore.getState().ensureProfile();
+        try {
+          useStore.setState({ hydrated: true });
+          // Mint a stable identity on first run (idempotent thereafter).
+          useStore.getState().ensureProfile();
+        } catch {
+          useStore.setState({ hydrated: true });
+        }
       },
     },
   ),
