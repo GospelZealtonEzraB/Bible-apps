@@ -7,6 +7,7 @@ import { View } from 'react-native';
 
 import { useTheme } from '@/theme';
 import { configureNotificationHandler } from '@/notifications';
+import { Celebration } from '@/components/Celebration';
 
 configureNotificationHandler();
 
@@ -35,6 +36,7 @@ export default function RootLayout() {
               options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
             />
           </Stack>
+          <Celebration />
         </View>
       </SafeAreaProvider>
     </GestureHandlerRootView>

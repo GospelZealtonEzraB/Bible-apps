@@ -1,11 +1,33 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 
 const REMINDER_ID = 'engraved-daily-reminder';
 
+/**
+ * Expo Go (SDK 53+) strips out the push-notification native module and prints a
+ * noisy warning the moment `expo-notifications` is imported. We therefore load
+ * it lazily and only in environments that actually support it (a dev/standalone
+ * build), so Expo Go never evaluates the module. Reminders light up
+ * automatically once the app is run as a real build.
+ */
+export const NOTIFICATIONS_SUPPORTED =
+  Platform.OS !== 'web' &&
+  Constants.executionEnvironment !== 'storeClient'; // 'storeClient' === Expo Go
+
+function getNotifications():
+  | typeof import('expo-notifications')
+  | null {
+  if (!NOTIFICATIONS_SUPPORTED) return null;
+  // Loaded lazily so Expo Go never evaluates the native push module.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require('expo-notifications');
+}
+
 /** Configure how notifications are presented while the app is foregrounded. */
 export function configureNotificationHandler(): void {
-  Notifications.setNotificationHandler({
+  const N = getNotifications();
+  if (!N) return;
+  N.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowBanner: true,
       shouldShowList: true,
@@ -16,10 +38,11 @@ export function configureNotificationHandler(): void {
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  if (Platform.OS === 'web') return false;
-  const settings = await Notifications.getPermissionsAsync();
+  const N = getNotifications();
+  if (!N) return false;
+  const settings = await N.getPermissionsAsync();
   if (settings.granted) return true;
-  const req = await Notifications.requestPermissionsAsync();
+  const req = await N.requestPermissionsAsync();
   return req.granted;
 }
 
@@ -35,10 +58,11 @@ export function parseTime(time: string): { hour: number; minute: number } | null
 
 /**
  * Schedule (or reschedule) a repeating daily reminder at the given local time.
- * No-ops on web. Returns true when a reminder was scheduled.
+ * No-ops (returns false) on web and in Expo Go. Returns true when scheduled.
  */
 export async function scheduleDailyReminder(time: string): Promise<boolean> {
-  if (Platform.OS === 'web') return false;
+  const N = getNotifications();
+  if (!N) return false;
   const parsed = parseTime(time);
   if (!parsed) return false;
 
@@ -46,14 +70,14 @@ export async function scheduleDailyReminder(time: string): Promise<boolean> {
   if (!granted) return false;
 
   await cancelDailyReminder();
-  await Notifications.scheduleNotificationAsync({
+  await N.scheduleNotificationAsync({
     identifier: REMINDER_ID,
     content: {
       title: 'Time to hide the Word in your heart 📖',
       body: 'A few verses are ready for review. Keep your streak alive!',
     },
     trigger: {
-      type: Notifications.SchedulableTriggerInputTypes.DAILY,
+      type: N.SchedulableTriggerInputTypes.DAILY,
       hour: parsed.hour,
       minute: parsed.minute,
     },
@@ -62,9 +86,10 @@ export async function scheduleDailyReminder(time: string): Promise<boolean> {
 }
 
 export async function cancelDailyReminder(): Promise<void> {
-  if (Platform.OS === 'web') return;
+  const N = getNotifications();
+  if (!N) return;
   try {
-    await Notifications.cancelScheduledNotificationAsync(REMINDER_ID);
+    await N.cancelScheduledNotificationAsync(REMINDER_ID);
   } catch {
     // No existing reminder scheduled — nothing to cancel.
   }

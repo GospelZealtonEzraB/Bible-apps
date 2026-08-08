@@ -7,7 +7,11 @@ import { Card, Chip, SectionTitle, Button } from '@/components/ui';
 import { useTheme, spacing, font } from '@/theme';
 import { useStore, useSettings, useStats } from '@/store/useStore';
 import { TRANSLATIONS } from '@/data/bibleApi';
-import { scheduleDailyReminder, cancelDailyReminder } from '@/notifications';
+import {
+  scheduleDailyReminder,
+  cancelDailyReminder,
+  NOTIFICATIONS_SUPPORTED,
+} from '@/notifications';
 import type { ThemePreference } from '@/types';
 
 const REMINDER_TIMES = ['07:00', '08:00', '12:00', '18:00', '21:00'];
@@ -31,11 +35,17 @@ export default function SettingsScreen() {
       setSettings({ reminderTime: null });
       return;
     }
+    if (!NOTIFICATIONS_SUPPORTED) {
+      Alert.alert(
+        'Reminders need the installed app',
+        'Daily reminders work once Engraved is built as a real app (an EAS/dev build) — not in Expo Go or the web preview. Your choice is saved and will activate there.',
+      );
+      setSettings({ reminderTime: time });
+      return;
+    }
     const ok = await scheduleDailyReminder(time);
     if (ok) {
       setSettings({ reminderTime: time });
-    } else if (Platform.OS === 'web') {
-      Alert.alert('Not available', 'Reminders work on the iOS/Android app, not the web preview.');
     } else {
       Alert.alert('Permission needed', 'Enable notifications for Engraved to get reminders.');
     }

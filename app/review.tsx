@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { Button, EmptyState } from '@/components/ui';
+import { Ember } from '@/components/Ember';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore, useVerse, useStats } from '@/store/useStore';
 import { isDue, type RecallRating } from '@/srs/sm2';
@@ -71,13 +72,15 @@ export default function ReviewScreen() {
   if (finished) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
-        <View style={{ flex: 1, justifyContent: 'center' }}>
-          <EmptyState
-            emoji="🎉"
-            title="Review complete!"
-            subtitle={`You reviewed ${queue.length} verse${queue.length === 1 ? '' : 's'}. Streak: ${stats.streak} day${stats.streak === 1 ? '' : 's'} 🔥`}
-            action={<Button title="Done" onPress={close} />}
-          />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: spacing.md }}>
+          <Ember mood="celebrating" size={130} />
+          <Text style={{ color: colors.text, fontSize: font.sizes.xxl, fontWeight: '800' }}>
+            Review complete!
+          </Text>
+          <Text style={{ color: colors.textMuted, textAlign: 'center', maxWidth: 300 }}>
+            {`You reviewed ${queue.length} verse${queue.length === 1 ? '' : 's'}. Streak: ${stats.streak} day${stats.streak === 1 ? '' : 's'} 🔥`}
+          </Text>
+          <Button title="Done" onPress={close} style={{ marginTop: spacing.sm }} />
         </View>
       </SafeAreaView>
     );

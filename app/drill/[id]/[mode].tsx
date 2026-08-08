@@ -6,7 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { Button, EmptyState } from '@/components/ui';
-import { useTheme, spacing, font } from '@/theme';
+import { Ember } from '@/components/Ember';
+import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerse, useStore } from '@/store/useStore';
 import {
   FlashcardDrill,
@@ -45,6 +46,7 @@ export default function DrillScreen() {
   const mode = params.mode as DrillMode;
   const verse = useVerse(id);
   const practiceResult = useStore((s) => s.practiceResult);
+  const xpEarned = useStore((s) => s.recentXp);
 
   const [runKey, setRunKey] = useState(0);
   const [done, setDone] = useState<number | null>(null);
@@ -111,15 +113,33 @@ export default function DrillScreen() {
           renderDrill()
         ) : (
           <View style={{ flex: 1, justifyContent: 'center', gap: spacing.lg }}>
-            <EmptyState
-              emoji={done >= 90 ? '🎉' : done >= 60 ? '💪' : '🌱'}
-              title={done >= 90 ? 'Beautifully done!' : done >= 60 ? 'Getting there!' : 'Keep going!'}
-              subtitle={
-                done >= 90
+            <View style={{ alignItems: 'center', gap: spacing.sm }}>
+              <Ember
+                mood={done >= 90 ? 'celebrating' : done >= 60 ? 'proud' : 'content'}
+                size={120}
+              />
+              <Text style={{ color: colors.text, fontSize: font.sizes.xl, fontWeight: '800' }}>
+                {done >= 90 ? 'Beautifully done!' : done >= 60 ? 'Getting there!' : 'Keep going!'}
+              </Text>
+              <Text style={{ color: colors.textMuted, textAlign: 'center', maxWidth: 280 }}>
+                {done >= 90
                   ? "That's hidden deep in your heart now."
-                  : 'Repetition is the secret. Run it again.'
-              }
-            />
+                  : 'Repetition is the secret. Run it again.'}
+              </Text>
+              {xpEarned ? (
+                <View
+                  style={{
+                    marginTop: 4,
+                    backgroundColor: colors.primarySoft,
+                    paddingVertical: 4,
+                    paddingHorizontal: spacing.md,
+                    borderRadius: radius.pill,
+                  }}
+                >
+                  <Text style={{ color: colors.primary, fontWeight: '800' }}>+{xpEarned} XP</Text>
+                </View>
+              ) : null}
+            </View>
             <View style={{ gap: spacing.sm }}>
               <Button
                 title="Practice again"

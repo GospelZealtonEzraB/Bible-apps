@@ -43,6 +43,16 @@ export interface Stats {
   reviewsToday: number;
   /** Longest streak ever reached. */
   bestStreak: number;
+  /** Total experience points earned. */
+  xp: number;
+  /** "Streak freeze" tokens that protect a streak across a missed day. */
+  graceTokens: number;
+  /** Ids of badges the user has earned. */
+  earnedBadges: string[];
+  /** Count of 100%-accuracy recitations (drives the Word-Perfect badge). */
+  perfectRecitations: number;
+  /** Count of reviews completed before 7am (drives the Early Light badge). */
+  earlyReviews: number;
 }
 
 export type ThemePreference = 'system' | 'light' | 'dark';

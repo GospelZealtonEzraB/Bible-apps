@@ -6,13 +6,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen, Header } from '@/components/layout';
 import { Card, Button, SectionTitle, StatusBadge, EmptyState } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
+import { Ember, type EmberMood } from '@/components/Ember';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStats, useVerseList, useStore } from '@/store/useStore';
 import { isDue } from '@/srs/sm2';
+import { levelInfo, BADGES } from '@/gamification';
+import { dayKey } from '@/utils/date';
 import { WEB_FIXTURES } from '@/data/fixtures';
 import { normalizeKey } from '@/data/bibleApi';
 import { VERSE_OF_THE_DAY_POOL } from '@/data/packs';
 import type { Verse } from '@/types';
+
+const MOOD_SPEECH: Record<EmberMood, string> = {
+  content: 'Ready when you are.',
+  celebrating: "You showed up today — love it!",
+  proud: "All caught up. You're on fire.",
+  worried: "Don't leave me hanging — keep the streak!",
+  sleeping: 'See you tomorrow.',
+};
 
 function dayOfYear(d = new Date()): number {
   const start = new Date(d.getFullYear(), 0, 0);
@@ -61,6 +72,13 @@ export default function TodayScreen() {
   const votdText = WEB_FIXTURES[normalizeKey(votdRef)];
   const goalPct = stats.dailyGoal > 0 ? (stats.reviewsToday / stats.dailyGoal) * 100 : 0;
 
+  const activeToday = stats.lastActiveDay === dayKey();
+  const level = levelInfo(stats.xp);
+  let mood: EmberMood = 'content';
+  if (verseCount > 0 && stats.streak > 0 && !activeToday) mood = 'worried';
+  else if (activeToday) mood = 'celebrating';
+  else if (verseCount > 0 && due.length === 0) mood = 'proud';
+
   const today = new Date().toLocaleDateString(undefined, {
     weekday: 'long',
     month: 'long',
@@ -70,6 +88,39 @@ export default function TodayScreen() {
   return (
     <Screen>
       <Header title="Today" subtitle={today} />
+
+      {/* Ember hero */}
+      <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <Ember mood={mood} size={80} />
+        <View style={{ flex: 1, gap: 6 }}>
+          <Text
+            style={{
+              color: colors.text,
+              fontSize: font.sizes.md,
+              fontFamily: font.serif,
+              fontStyle: 'italic',
+            }}
+          >
+            “{MOOD_SPEECH[mood]}”
+          </Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+            <Text style={{ color: colors.text, fontWeight: '800' }}>Level {level.level}</Text>
+            <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+              {level.inLevel}/{level.perLevel} XP
+            </Text>
+          </View>
+          <View style={{ height: 8, backgroundColor: colors.surfaceAlt, borderRadius: 4, overflow: 'hidden' }}>
+            <View
+              style={{
+                width: `${level.progress}%`,
+                height: 8,
+                backgroundColor: colors.accent,
+                borderRadius: 4,
+              }}
+            />
+          </View>
+        </View>
+      </Card>
 
       {/* Stats */}
       <View style={{ flexDirection: 'row', gap: spacing.md }}>
@@ -154,6 +205,33 @@ export default function TodayScreen() {
             >
               {votdRef}
             </Text>
+          </Card>
+        </View>
+      ) : null}
+
+      {/* Achievements */}
+      {verseCount > 0 ? (
+        <View>
+          <SectionTitle>
+            Achievements · {stats.earnedBadges.length}/{BADGES.length}
+          </SectionTitle>
+          <Card>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
+              {BADGES.map((b) => {
+                const earned = stats.earnedBadges.includes(b.id);
+                return (
+                  <View key={b.id} style={{ alignItems: 'center', width: 84, opacity: earned ? 1 : 0.35 }}>
+                    <Text style={{ fontSize: 28 }}>{earned ? b.emoji : '🔒'}</Text>
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: colors.textMuted, fontSize: font.sizes.xs, marginTop: 2 }}
+                    >
+                      {b.name}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
           </Card>
         </View>
       ) : null}
