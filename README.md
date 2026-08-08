@@ -1,4 +1,4 @@
-# 📖 Engraved — Scripture Memorization
+# 📖 Versed — Scripture Memorization
 
 > _"Your word I have hidden in my heart, that I might not sin against you."_ — Psalm 119:11
 
@@ -79,7 +79,7 @@ Then either:
 ### Building an installable app (share it with others)
 
 Use [EAS Build](https://docs.expo.dev/build/introduction/) to produce a real,
-installable binary — its own **Engraved** icon on the home screen, no Expo Go
+installable binary — its own **Versed** icon on the home screen, no Expo Go
 required. A one-time free Expo account is all you need to start.
 
 ```bash
@@ -89,7 +89,7 @@ eas build -p android --profile preview   # shareable .apk (see eas.json)
 ```
 
 When it finishes, EAS gives you a download link. Send that link to anyone —
-they tap it on an Android phone, allow "install from this source," and Engraved
+they tap it on an Android phone, allow "install from this source," and Versed
 installs like any app. The `preview` profile (in `eas.json`) is tuned for exactly
 this: internal distribution as a direct-install **APK**.
 

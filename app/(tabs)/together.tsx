@@ -107,7 +107,7 @@ export default function TogetherScreen() {
 
       {/* Transfer code */}
       <View>
-        <SectionTitle>Transfer code</SectionTitle>
+        <SectionTitle>Move to a new phone</SectionTitle>
         <Card>
           <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
             Save this code somewhere safe. Enter it on a new phone to keep your identity and circles.

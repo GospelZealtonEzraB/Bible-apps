@@ -31,7 +31,7 @@ export default function StudyIndexScreen() {
 
   return (
     <Screen>
-      <Header title="Bible study" subtitle="Set the scene for today's passage" back />
+      <Header title="Study" subtitle="Set the scene for today's passage" back />
 
       <Card>
         <SectionTitle>What are you reading today?</SectionTitle>

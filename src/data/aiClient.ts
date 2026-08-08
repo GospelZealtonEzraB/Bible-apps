@@ -1,5 +1,5 @@
 /**
- * Client for the Engraved server's AI endpoint (/ai). Posts through the shared
+ * Client for the Versed server's AI endpoint (/ai). Posts through the shared
  * `postServer` helper, which resolves the server URL and attaches the shared
  * secret. `NoServerError` is re-exported for callers/tests that reference it.
  */

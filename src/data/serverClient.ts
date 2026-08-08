@@ -1,5 +1,5 @@
 /**
- * Shared client for the Engraved server. Resolves the server URL (a user's
+ * Shared client for the Versed server. Resolves the server URL (a user's
  * Settings override wins, else the baked-in default) and attaches the optional
  * shared-secret header. All server families (/ai, /circle, /study) post through
  * `postServer`. Without any resolvable URL it throws `NoServerError`, which the

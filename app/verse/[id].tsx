@@ -159,7 +159,7 @@ export default function VerseDetailScreen() {
 
       {/* AI insights */}
       <View>
-        <SectionTitle>Insights</SectionTitle>
+        <SectionTitle>Go deeper</SectionTitle>
         {!aiEnabled ? (
           <Card>
             <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>
@@ -225,7 +225,7 @@ export default function VerseDetailScreen() {
       </View>
 
       <View>
-        <SectionTitle>Practice</SectionTitle>
+        <SectionTitle>Ways to learn it</SectionTitle>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
           {DRILLS.map((d) => (
             <Pressable

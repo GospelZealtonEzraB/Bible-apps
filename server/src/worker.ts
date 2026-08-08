@@ -1,5 +1,5 @@
 /**
- * Engraved server — a tiny Cloudflare Worker that holds the secret AI API key the
+ * Versed server — a tiny Cloudflare Worker that holds the secret AI API key the
  * app can't ship, and proxies AI requests. Works with OpenAI or Anthropic.
  * Deploy with `wrangler deploy`; set secrets with `wrangler secret put`.
  *

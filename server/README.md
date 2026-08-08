@@ -1,4 +1,4 @@
-# Engraved server (Cloudflare Worker)
+# Versed server (Cloudflare Worker)
 
 A tiny server that holds the secret AI key the app can't ship, and proxies:
 

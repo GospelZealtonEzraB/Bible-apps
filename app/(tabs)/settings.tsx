@@ -39,7 +39,7 @@ export default function SettingsScreen() {
     if (!NOTIFICATIONS_SUPPORTED) {
       Alert.alert(
         'Reminders need the installed app',
-        'Daily reminders work once Engraved is built as a real app (an EAS/dev build) — not in Expo Go or the web preview. Your choice is saved and will activate there.',
+        'Daily reminders work once Versed is built as a real app (an EAS/dev build) — not in Expo Go or the web preview. Your choice is saved and will activate there.',
       );
       setSettings({ reminderTime: time });
       return;
@@ -48,7 +48,7 @@ export default function SettingsScreen() {
     if (ok) {
       setSettings({ reminderTime: time });
     } else {
-      Alert.alert('Permission needed', 'Enable notifications for Engraved to get reminders.');
+      Alert.alert('Permission needed', 'Enable notifications for Versed to get reminders.');
     }
   };
 
@@ -157,12 +157,12 @@ export default function SettingsScreen() {
 
       {/* AI & Server */}
       <View>
-        <SectionTitle>AI &amp; Server</SectionTitle>
+        <SectionTitle>Smart features</SectionTitle>
         <Card>
           <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
             {DEFAULT_SERVER_URL
-              ? 'AI memory hooks, verse explanations, and build-a-pack are ready to use. This field is optional — set it only to point the app at your own server instead of the built-in one.'
-              : 'Paste your deployed server URL to unlock AI memory hooks, verse explanations, and build-a-pack. See server/README.md to deploy one.'}
+              ? 'AI memory hooks, verse explanations, and verse suggestions are ready to use. This field is optional — set it only to point the app at your own server instead of the built-in one.'
+              : 'Paste your deployed server URL to unlock AI memory hooks, verse explanations, and verse suggestions. See server/README.md to deploy one.'}
           </Text>
           <TextInput
             value={settings.serverUrl ?? ''}
@@ -193,7 +193,7 @@ export default function SettingsScreen() {
 
       {/* Circle sharing */}
       <View>
-        <SectionTitle>Circle sharing</SectionTitle>
+        <SectionTitle>Sharing with your circle</SectionTitle>
         <Card>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
             <View style={{ flex: 1 }}>
@@ -216,12 +216,12 @@ export default function SettingsScreen() {
 
       {/* Danger zone */}
       <View>
-        <SectionTitle>Data</SectionTitle>
+        <SectionTitle>Reset</SectionTitle>
         <Button title="Reset all data" variant="danger" onPress={confirmReset} />
       </View>
 
       <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, textAlign: 'center' }}>
-        Engraved · "Your word I have hidden in my heart" — Psalm 119:11
+        Versed · "Your word I have hidden in my heart" — Psalm 119:11
       </Text>
     </Screen>
   );

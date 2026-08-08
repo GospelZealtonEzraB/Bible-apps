@@ -45,7 +45,7 @@ export default function CircleHubScreen() {
 
   const onShare = () => {
     Share.share({
-      message: `Join our circle "${circle?.meta.name ?? 'Growing Together'}" on Engraved — open the app, go to Together → Join with a code, and enter: ${code}`,
+      message: `Join our circle "${circle?.meta.name ?? 'Growing Together'}" on Versed — open the app, go to Together → Join with a code, and enter: ${code}`,
     }).catch(() => {});
   };
 
@@ -136,7 +136,7 @@ export default function CircleHubScreen() {
 
       {/* Progress board */}
       <View>
-        <SectionTitle>Progress board</SectionTitle>
+        <SectionTitle>How we're growing</SectionTitle>
         <View style={{ gap: spacing.sm }}>
           {members.map((m) => (
             <MemberRow
@@ -274,7 +274,7 @@ function WhoKnowsWhatCard({ members, myId }: { members: CircleMember[]; myId: st
   if (!shared) {
     return (
       <View>
-        <SectionTitle>Who knows what</SectionTitle>
+        <SectionTitle>Verses between us</SectionTitle>
         <Card>
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.sm }}>
             As you and your circle memorize verses, you’ll see who knows what here.
@@ -331,7 +331,7 @@ function ActivityFeedCard({ members, myId }: { members: CircleMember[]; myId: st
   if (feed.length === 0) return null;
   return (
     <View>
-      <SectionTitle>Recent activity</SectionTitle>
+      <SectionTitle>Lately</SectionTitle>
       <Card>
         {feed.map((f, i) => {
           const meta = ACTIVITY_META[f.type] ?? { emoji: '•', verb: f.type };
@@ -373,7 +373,7 @@ function PlansCard({ code }: { code: string }) {
 
   return (
     <View>
-      <SectionTitle>Study plans</SectionTitle>
+      <SectionTitle>Plans we're walking</SectionTitle>
       {plans.map((p) => (
         <PlanRow key={p.planId} plan={p} circleCode={code} />
       ))}
@@ -466,7 +466,7 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
 
   return (
     <View>
-      <SectionTitle>Prayer wall</SectionTitle>
+      <SectionTitle>Praying together</SectionTitle>
       <Card>
         <TextInput value={text} onChangeText={setText} placeholder="Share a prayer request…" placeholderTextColor={colors.textFaint} multiline style={[fieldStyle(colors), { minHeight: 60 }]} />
         <View style={{ marginTop: spacing.sm }}>
@@ -480,7 +480,7 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
 
       {answered.length > 0 ? (
         <View style={{ marginTop: spacing.sm }}>
-          <SectionTitle>🙌 Testimonies</SectionTitle>
+          <SectionTitle>🙌 Answered prayers</SectionTitle>
           {answered.map((p) => (
             <Card key={p.prayerId} style={{ marginBottom: spacing.sm }}>
               <Text style={{ color: colors.text, fontSize: font.sizes.md }}>{p.text}</Text>
@@ -539,7 +539,7 @@ function NotesCard({ code, myId }: { code: string; myId: string }) {
 
   return (
     <View>
-      <SectionTitle>Notes wall</SectionTitle>
+      <SectionTitle>Notes to each other</SectionTitle>
       <Card>
         <TextInput value={text} onChangeText={setText} placeholder="Share a note or reflection with your circle…" placeholderTextColor={colors.textFaint} multiline style={[fieldStyle(colors), { minHeight: 60 }]} />
         <View style={{ marginTop: spacing.sm }}>
@@ -603,7 +603,7 @@ function GoalCard({ code }: { code: string }) {
   return (
     <Card>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <SectionTitle style={{ marginBottom: 0 }}>Shared goal</SectionTitle>
+        <SectionTitle style={{ marginBottom: 0 }}>Our goal</SectionTitle>
         {!editing ? (
           <Button title={goal ? 'Edit' : 'Set'} variant="secondary" small onPress={() => { setKind(goal?.kind ?? 'memorizeCount'); setTarget(goal?.target ?? 5); setEditing(true); }} />
         ) : null}
@@ -694,7 +694,7 @@ function SharedVersesCard({ code, members, myId }: { code: string; members: Circ
 
   return (
     <View>
-      <SectionTitle>Shared verses</SectionTitle>
+      <SectionTitle>Verses we're learning</SectionTitle>
       <Card>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, paddingHorizontal: spacing.md }}>
           <Ionicons name="book-outline" size={18} color={colors.textFaint} />
@@ -888,7 +888,7 @@ function ChallengesCard({ code, members, myId }: { code: string; members: Circle
 
   return (
     <View>
-      <SectionTitle>Accountability</SectionTitle>
+      <SectionTitle>Spur each other on</SectionTitle>
 
       {/* Things waiting on me */}
       {toComplete.map((c) => (

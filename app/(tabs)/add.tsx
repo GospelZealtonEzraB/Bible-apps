@@ -68,7 +68,7 @@ export default function AddScreen() {
 
       {/* Reference lookup */}
       <Card>
-        <SectionTitle>Search by reference</SectionTitle>
+        <SectionTitle>Look up a verse</SectionTitle>
         <View
           style={{
             flexDirection: 'row',
@@ -156,7 +156,7 @@ export default function AddScreen() {
 
       {/* Starter packs */}
       <View>
-        <SectionTitle>Starter packs</SectionTitle>
+        <SectionTitle>Starter collections</SectionTitle>
         <View style={{ gap: spacing.md }}>
           {STARTER_PACKS.map((pack) => (
             <PackCard key={pack.id} pack={pack} translation={translation} serverUrl={serverUrl} />
@@ -296,9 +296,9 @@ function AiPackCard({
 
   return (
     <Card>
-      <SectionTitle>✨ Build a pack with AI</SectionTitle>
+      <SectionTitle>✨ Find verses with Ember</SectionTitle>
       <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
-        Describe a theme and Ember suggests verses to memorize.
+        Tell Ember a theme and he’ll suggest verses to hide in your heart.
       </Text>
       <View
         style={{
