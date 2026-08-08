@@ -244,7 +244,7 @@ function BackupCard() {
   const onCloudBackup = async () => {
     setBackingUp(true);
     try {
-      await cloudBackup();
+      await cloudBackup(true);
       Alert.alert('Backed up', 'Your data is safely saved to the cloud, tied to your transfer code.');
     } finally {
       setBackingUp(false);

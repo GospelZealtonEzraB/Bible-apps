@@ -166,7 +166,7 @@ interface StoreState {
   /** Restore all data from a backup string. Returns ok/error; never throws. */
   importBackup: (json: string) => { ok: boolean; error?: string };
   /** Push a full backup to the server, keyed by this device's transfer id. Best-effort. */
-  cloudBackup: () => Promise<void>;
+  cloudBackup: (force?: boolean) => Promise<void>;
   /** Pull + restore the server backup for a transfer id (defaults to mine). */
   cloudRestore: (memberId?: string) => Promise<{ ok: boolean; error?: string }>;
   /** When the last successful cloud backup happened (ms), or null. */
@@ -1024,9 +1024,11 @@ export const useStore = create<StoreState>()(
         return { ok: true };
       },
 
-      cloudBackup: async () => {
+      cloudBackup: async (force = false) => {
         const s = get();
         if (!s.profile.memberId) return; // no identity yet — nothing to key on
+        // Throttle automatic backups so rapid backgrounding doesn't re-upload.
+        if (!force && s.lastCloudBackupAt && Date.now() - s.lastCloudBackupAt < 90_000) return;
         try {
           await circleApi.pushBackup(s.settings.serverUrl, s.profile.memberId, s.exportBackup());
           set({ lastCloudBackupAt: Date.now() });

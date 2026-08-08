@@ -49,7 +49,7 @@ function AppShell() {
   // backgrounded, so a new phone with the same code restores everything.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'background' || next === 'inactive') {
+      if (next === 'background') {
         useStore.getState().cloudBackup().catch(() => {});
       }
     });
