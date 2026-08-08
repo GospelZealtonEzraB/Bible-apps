@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, Alert, Platform, TextInput, Switch } from 'react-native';
+import { View, Text, Pressable, Alert, Platform, TextInput, Switch, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
@@ -214,6 +214,9 @@ export default function SettingsScreen() {
         </Card>
       </View>
 
+      {/* Back up & restore */}
+      <BackupCard />
+
       {/* Danger zone */}
       <View>
         <SectionTitle>Reset</SectionTitle>
@@ -224,6 +227,92 @@ export default function SettingsScreen() {
         Versed · "Your word I have hidden in my heart" — Psalm 119:11
       </Text>
     </Screen>
+  );
+}
+
+function BackupCard() {
+  const { colors } = useTheme();
+  const exportBackup = useStore((s) => s.exportBackup);
+  const importBackup = useStore((s) => s.importBackup);
+  const [restoring, setRestoring] = React.useState(false);
+  const [pasted, setPasted] = React.useState('');
+
+  const onBackUp = async () => {
+    try {
+      await Share.share({
+        message: exportBackup(),
+        title: 'Versed backup',
+      });
+    } catch {
+      // user dismissed the share sheet — nothing to do
+    }
+  };
+
+  const onRestore = () => {
+    if (!pasted.trim()) return;
+    Alert.alert(
+      'Restore from this backup?',
+      'This replaces your current verses, progress, and circles with the backup.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Restore',
+          style: 'destructive',
+          onPress: () => {
+            const res = importBackup(pasted);
+            if (res.ok) {
+              setPasted('');
+              setRestoring(false);
+              Alert.alert('Restored', 'Your data has been restored from the backup.');
+            } else {
+              Alert.alert('Couldn’t restore', res.error ?? 'Please check the backup text.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  return (
+    <View>
+      <SectionTitle>Back up &amp; restore</SectionTitle>
+      <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
+        Save a copy of your verses, progress, and circles. Keep it somewhere safe — you can restore it on a new phone.
+      </Text>
+      <Button
+        title="Back up my data"
+        variant="secondary"
+        icon={<Ionicons name="cloud-upload-outline" size={16} color={colors.text} />}
+        onPress={onBackUp}
+      />
+      {restoring ? (
+        <View style={{ marginTop: spacing.sm, gap: spacing.sm }}>
+          <TextInput
+            value={pasted}
+            onChangeText={setPasted}
+            placeholder="Paste your backup text here…"
+            placeholderTextColor={colors.textFaint}
+            multiline
+            style={{
+              color: colors.text,
+              fontSize: font.sizes.sm,
+              backgroundColor: colors.surfaceAlt,
+              borderRadius: radius.md,
+              padding: spacing.md,
+              minHeight: 90,
+            }}
+          />
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => { setRestoring(false); setPasted(''); }} />
+            <Button title="Restore" small style={{ flex: 1 }} disabled={!pasted.trim()} onPress={onRestore} />
+          </View>
+        </View>
+      ) : (
+        <View style={{ marginTop: spacing.sm }}>
+          <Button title="Restore from a backup" variant="ghost" small onPress={() => setRestoring(true)} />
+        </View>
+      )}
+    </View>
   );
 }
 

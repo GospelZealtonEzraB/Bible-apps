@@ -161,6 +161,10 @@ interface StoreState {
   setVerseAi: (id: string, patch: { memoryHook?: string; explanation?: string }) => void;
   clearCelebration: () => void;
   resetAll: () => void;
+  /** Serialize all saved data to a JSON string the user can save as a backup. */
+  exportBackup: () => string;
+  /** Restore all data from a backup string. Returns ok/error; never throws. */
+  importBackup: (json: string) => { ok: boolean; error?: string };
 }
 
 const defaultStats: Stats = {
@@ -965,6 +969,53 @@ export const useStore = create<StoreState>()(
           stats: defaultStats,
           settings: defaultSettings,
         }),
+
+      exportBackup: () => {
+        const s = get();
+        return JSON.stringify({
+          app: 'versed',
+          schema: 2,
+          exportedAt: Date.now(),
+          data: {
+            verses: s.verses,
+            stats: s.stats,
+            settings: s.settings,
+            profile: s.profile,
+            circles: s.circles,
+            studySessions: s.studySessions,
+            applications: s.applications,
+            notes: s.notes,
+            session: s.session,
+            activityLog: s.activityLog,
+          },
+        });
+      },
+
+      importBackup: (json) => {
+        let parsed: any;
+        try {
+          parsed = JSON.parse(json.trim());
+        } catch {
+          return { ok: false, error: 'Couldn’t read that backup — the text looks incomplete or invalid.' };
+        }
+        const d = parsed?.data ?? parsed;
+        if (!d || typeof d !== 'object' || (!('verses' in d) && !('profile' in d))) {
+          return { ok: false, error: 'That doesn’t look like a Versed backup.' };
+        }
+        set((state) => ({
+          verses: d.verses ?? state.verses,
+          stats: { ...defaultStats, ...(d.stats ?? {}) },
+          settings: { ...defaultSettings, ...(d.settings ?? {}) },
+          profile: { ...defaultProfile, ...(d.profile ?? {}) },
+          circles: d.circles ?? state.circles,
+          studySessions: d.studySessions ?? state.studySessions,
+          applications: d.applications ?? state.applications,
+          notes: d.notes ?? state.notes,
+          session: d.session ?? state.session,
+          activityLog: Array.isArray(d.activityLog) ? d.activityLog : state.activityLog,
+        }));
+        return { ok: true };
+      },
     }),
     {
       name: 'engraved-store-v1',
