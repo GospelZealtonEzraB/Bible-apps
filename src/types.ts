@@ -165,7 +165,30 @@ export interface Prayer {
   answeredAt?: number;
   answerNote?: string;
   prayedByCount: number;
-  didIPray: boolean;
+  prayedByIds?: string[];
+  didIPray?: boolean;
+}
+
+export type NoteScope = 'verse' | 'passage' | 'free';
+
+/** A note shared into a circle (visible to all members). */
+export interface Note {
+  noteId: string;
+  by: string;
+  byName: string;
+  scope: NoteScope;
+  ref?: string;
+  text: string;
+  updatedAt: number;
+}
+
+/** A private note kept only on this device. */
+export interface LocalNote {
+  noteId: string;
+  scope: NoteScope;
+  ref?: string;
+  text: string;
+  updatedAt: number;
 }
 
 export interface ChallengeSubmission {
@@ -240,6 +263,7 @@ export interface CircleSnapshot {
   members: CircleMember[];
   sharedVerses: SharedVerseRef[];
   plans: StudyPlan[];
+  notes: Note[];
   prayers: Prayer[];
   challenges: Challenge[];
   cheersFor: Record<string, number>;

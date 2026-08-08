@@ -144,6 +144,61 @@ export function reviewChallenge(
   });
 }
 
+export function createPlan(
+  serverUrl: string | null,
+  code: string,
+  memberId: string,
+  title: string,
+  items: string[],
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'createPlan', code, memberId, title, items });
+}
+
+export function saveNote(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  note: { noteId?: string; scope: string; ref?: string; text: string },
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, {
+    action: 'saveNote',
+    code,
+    memberId: member.memberId,
+    displayName: member.displayName,
+    ...note,
+  });
+}
+
+export function deleteNote(serverUrl: string | null, code: string, memberId: string, noteId: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'deleteNote', code, memberId, noteId });
+}
+
+export function addPrayer(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  text: string,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'addPrayer', code, memberId: member.memberId, displayName: member.displayName, text });
+}
+
+export function prayFor(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  prayerId: string,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'prayFor', code, memberId: member.memberId, displayName: member.displayName, prayerId });
+}
+
+export function answerPrayer(serverUrl: string | null, code: string, memberId: string, prayerId: string, answerNote?: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'answerPrayer', code, memberId, prayerId, answerNote });
+}
+
+export function cheer(serverUrl: string | null, code: string, memberId: string, toMemberId: string, kind = 'cheer'): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'cheer', code, memberId, toMemberId, kind });
+}
+
 export async function leaveCircle(
   serverUrl: string | null,
   code: string,

@@ -435,8 +435,49 @@ async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | n
   }
   challenges.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
-  // Later phases populate plans/prayers from their own key families.
-  return { meta, members, sharedVerses, plans: [], prayers: [], challenges, cheersFor: {} };
+  // Study plans.
+  const planKeys = await kvListKeys(kv, `circle:${code}:plan:`);
+  const plans: any[] = [];
+  for (const key of planKeys) {
+    const p = await kvGetJson<any>(kv, key);
+    if (p) plans.push(p);
+  }
+  plans.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+
+  // Shared notes (each member writes only their own note keys).
+  const noteKeys = await kvListKeys(kv, `circle:${code}:note:`);
+  const notes: any[] = [];
+  for (const key of noteKeys) {
+    const n = await kvGetJson<any>(kv, key);
+    if (n) notes.push(n);
+  }
+  notes.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+
+  // Prayers: meta key `...:prayer:{id}`; "prayed" marks are deeper keys.
+  const prayerPrefix = `circle:${code}:prayer:`;
+  const prayerKeys = await kvListKeys(kv, prayerPrefix);
+  const prayerIds = prayerKeys
+    .map((k) => k.substring(prayerPrefix.length))
+    .filter((rest) => rest.length > 0 && !rest.includes(':'));
+  const prayers: any[] = [];
+  for (const id of prayerIds) {
+    const pm = await kvGetJson<any>(kv, `${prayerPrefix}${id}`);
+    if (!pm) continue;
+    const prayMarks = await kvListKeys(kv, `${prayerPrefix}${id}:pray:`);
+    prayers.push({ ...pm, prayedByCount: prayMarks.length, prayedByIds: prayMarks.map((k) => k.split(':pray:')[1]) });
+  }
+  prayers.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+
+  // Cheers received, summed per target member (key `...:cheer:{from}:{to}`).
+  const cheerKeys = await kvListKeys(kv, `circle:${code}:cheer:`);
+  const cheersFor: Record<string, number> = {};
+  for (const key of cheerKeys) {
+    const c = await kvGetJson<any>(kv, key);
+    const to = key.split(':').pop() || '';
+    if (to) cheersFor[to] = (cheersFor[to] ?? 0) + (Number(c?.count ?? 1) || 1);
+  }
+
+  return { meta, members, sharedVerses, plans, notes, prayers, challenges, cheersFor };
 }
 
 async function handleCircle(req: Request, env: Env): Promise<Response> {
@@ -598,6 +639,98 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
         at: Date.now(),
       };
       await kvPutJson(kv, `circle:${code}:chal:${chalId}:review`, review);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'createPlan': {
+      const code = normCode(body.code);
+      const meta = await kvGetJson(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      const title = str(body.title, 80).trim();
+      const items = Array.isArray(body.items)
+        ? body.items.filter((x: any) => typeof x === 'string').map((x: string) => str(x, 60).trim()).slice(0, 200)
+        : [];
+      if (!title || items.length === 0) return json({ error: 'Missing plan title or items.' }, 400);
+      const planId = genId();
+      await kvPutJson(kv, `circle:${code}:plan:${planId}`, {
+        planId, title, items, createdBy: memberId, createdAt: Date.now(),
+      });
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'saveNote': {
+      const code = normCode(body.code);
+      const meta = await kvGetJson(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      const noteId = String(body.noteId ?? genId());
+      const rec = {
+        noteId,
+        by: memberId,
+        byName: str(body.displayName, 40),
+        scope: String(body.scope ?? 'free'),
+        ref: body.ref ? str(body.ref, 60) : undefined,
+        text: str(body.text, 2000),
+        updatedAt: Date.now(),
+      };
+      await kvPutJson(kv, `circle:${code}:note:${memberId}:${noteId}`, rec);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'deleteNote': {
+      const code = normCode(body.code);
+      const noteId = String(body.noteId ?? '');
+      if (memberId && noteId) await kv.delete(`circle:${code}:note:${memberId}:${noteId}`);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'addPrayer': {
+      const code = normCode(body.code);
+      const meta = await kvGetJson(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      const text = str(body.text, 1000).trim();
+      if (!text) return json({ error: 'Missing prayer request.' }, 400);
+      const prayerId = genId();
+      await kvPutJson(kv, `circle:${code}:prayer:${prayerId}`, {
+        prayerId, text, by: memberId, byName: str(body.displayName, 40),
+        createdAt: Date.now(), status: 'active',
+      });
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'prayFor': {
+      const code = normCode(body.code);
+      const prayerId = String(body.prayerId ?? '');
+      const pm = await kvGetJson(kv, `circle:${code}:prayer:${prayerId}`);
+      if (!pm) return json({ error: 'Prayer not found.' }, 404);
+      await kvPutJson(kv, `circle:${code}:prayer:${prayerId}:pray:${memberId}`, {
+        id: memberId, name: str(body.displayName, 40), at: Date.now(),
+      });
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'answerPrayer': {
+      const code = normCode(body.code);
+      const prayerId = String(body.prayerId ?? '');
+      const pm = await kvGetJson<any>(kv, `circle:${code}:prayer:${prayerId}`);
+      if (!pm) return json({ error: 'Prayer not found.' }, 404);
+      pm.status = 'answered';
+      pm.answeredAt = Date.now();
+      pm.answerNote = body.answerNote ? str(body.answerNote, 500) : undefined;
+      await kvPutJson(kv, `circle:${code}:prayer:${prayerId}`, pm);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'cheer': {
+      const code = normCode(body.code);
+      const to = String(body.toMemberId ?? '');
+      if (!memberId || !to) return json({ error: 'Missing member.' }, 400);
+      const key = `circle:${code}:cheer:${memberId}:${to}`;
+      const prev = await kvGetJson<any>(kv, key);
+      await kvPutJson(kv, key, {
+        count: (Number(prev?.count ?? 0) || 0) + 1,
+        lastAt: Date.now(),
+        kind: str(body.kind, 20) || 'cheer',
+      });
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

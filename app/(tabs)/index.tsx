@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,6 +48,65 @@ function StatTile({
         {value}
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs }}>{label}</Text>
+    </Card>
+  );
+}
+
+function WelcomeBackCard() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const studySessions = useStore((s) => s.studySessions);
+  const applications = useStore((s) => s.applications);
+  const lastOpenedDay = useStore((s) => s.session.lastOpenedDay);
+  const markOpened = useStore((s) => s.markOpened);
+  const revisitApplication = useStore((s) => s.revisitApplication);
+  const verses = useVerseList();
+
+  // Capture "were we away?" once on mount, then stamp today.
+  const [returning] = useState(() => !!lastOpenedDay && lastOpenedDay !== dayKey());
+  useEffect(() => {
+    markOpened();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dueCount = useMemo(() => verses.filter((v) => isDue(v.srs)).length, [verses]);
+  const lastStudy = useMemo(
+    () => Object.values(studySessions).sort((a, b) => b.fetchedAt - a.fetchedAt)[0],
+    [studySessions],
+  );
+  const pendingApp = useMemo(
+    () => Object.values(applications).filter((a) => !a.revisitedAt).sort((a, b) => b.createdAt - a.createdAt)[0],
+    [applications],
+  );
+
+  if (!returning || (!lastStudy && dueCount === 0 && !pendingApp)) return null;
+
+  return (
+    <Card>
+      <SectionTitle>Welcome back 👋</SectionTitle>
+      {lastStudy ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.md }}>
+            Last time you studied <Text style={{ fontWeight: '700' }}>{lastStudy.passage}</Text>.
+          </Text>
+          <Button title="Continue" variant="secondary" small onPress={() => router.push(`/study/${encodeURIComponent(lastStudy.passage)}`)} />
+        </View>
+      ) : null}
+      {pendingApp ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Text style={{ color: colors.text, fontSize: font.sizes.md }}>
+            How did living out <Text style={{ fontWeight: '700' }}>{pendingApp.passage}</Text> go?
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, fontStyle: 'italic', marginTop: 2 }}>“{pendingApp.text}”</Text>
+          <View style={{ alignSelf: 'flex-start', marginTop: spacing.sm }}>
+            <Button title="It went well 🙌" variant="ghost" small onPress={() => revisitApplication(pendingApp.passageKey, 'Went well')} />
+          </View>
+        </View>
+      ) : null}
+      {dueCount > 0 ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Button title={`Review ${dueCount} verse${dueCount === 1 ? '' : 's'} due`} onPress={() => router.push('/review')} />
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -124,6 +183,9 @@ export default function TodayScreen() {
           </View>
         </View>
       </Card>
+
+      {/* Welcome-back recap */}
+      <WelcomeBackCard />
 
       {/* Stats */}
       <View style={{ flexDirection: 'row', gap: spacing.md }}>

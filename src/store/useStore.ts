@@ -8,6 +8,8 @@ import type {
   Circle,
   CircleGoal,
   CircleSnapshot,
+  LocalNote,
+  NoteScope,
   Profile,
   Settings,
   Stats,
@@ -52,6 +54,10 @@ interface StoreState {
   studySessions: Record<string, StudySession>;
   /** "One thing I'll live out" applications, keyed by passage. */
   applications: Record<string, StudyApplication>;
+  /** Private notes kept only on this device. */
+  notes: Record<string, LocalNote>;
+  /** Session memory for the welcome-back recap. */
+  session: { lastOpenedDay: string | null };
   hydrated: boolean;
   /** Id of a badge just earned, for the celebration overlay (transient). */
   recentBadgeId: string | null;
@@ -104,6 +110,19 @@ interface StoreState {
   addApplication: (passageKey: string, passage: string, text: string) => void;
   /** Mark an application revisited, optionally recording how it went. */
   revisitApplication: (passageKey: string, outcome?: string) => void;
+
+  // Growing Together — plans, notes, prayer, cheers
+  createCirclePlan: (code: string, title: string, items: string[]) => Promise<void>;
+  shareNote: (code: string, text: string, scope?: NoteScope, ref?: string) => Promise<void>;
+  deleteSharedNote: (code: string, noteId: string) => Promise<void>;
+  addPrivateNote: (scope: NoteScope, text: string, ref?: string) => void;
+  deletePrivateNote: (noteId: string) => void;
+  addPrayer: (code: string, text: string) => Promise<void>;
+  prayForRequest: (code: string, prayerId: string) => Promise<void>;
+  answerPrayer: (code: string, prayerId: string, answerNote?: string) => Promise<void>;
+  cheerMember: (code: string, toMemberId: string) => Promise<void>;
+  /** Record that the app was opened today (for the welcome-back recap). */
+  markOpened: () => void;
   /** Leave a circle (removes my member record + local cache). */
   leaveCircle: (code: string) => Promise<void>;
   /** Set the partnership covenant (agreed rhythm + goal). */
@@ -176,14 +195,18 @@ const defaultSettings: Settings = {
 const defaultProfile: Profile = { memberId: '', displayName: '', backupCode: '' };
 
 /** Build the progress snapshot this device pushes up to a circle. */
-function myMemberSnapshot(state: StoreState, sharedRefs: string[] = []): MemberSnapshotInput {
+function myMemberSnapshot(
+  state: StoreState,
+  sharedRefs: string[] = [],
+  planRefs: string[] = [],
+): MemberSnapshotInput {
   return {
     memberId: state.profile.memberId,
     displayName: state.profile.displayName,
     memorizedCount: memorizedCount(state.verses),
     streak: state.stats.streak,
     versesDone: versesDoneFrom(state.verses, sharedRefs),
-    planDone: [],
+    planDone: versesDoneFrom(state.verses, planRefs),
     lastActiveDay: state.stats.lastActiveDay,
     lastActivity: null,
   };
@@ -314,6 +337,8 @@ export const useStore = create<StoreState>()(
       circles: {},
       studySessions: {},
       applications: {},
+      notes: {},
+      session: { lastOpenedDay: null },
       hydrated: false,
       recentBadgeId: null,
       recentXp: null,
@@ -491,8 +516,10 @@ export const useStore = create<StoreState>()(
 
       syncCircle: async (code) => {
         const s = get();
-        const sharedRefs = (s.circles[code]?.sharedVerses ?? []).map((v) => v.reference);
-        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs));
+        const circle = s.circles[code];
+        const sharedRefs = (circle?.sharedVerses ?? []).map((v) => v.reference);
+        const planRefs = (circle?.plans ?? []).flatMap((p) => p.items);
+        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs, planRefs));
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
@@ -565,6 +592,83 @@ export const useStore = create<StoreState>()(
           };
         }),
 
+      createCirclePlan: async (code, title, items) => {
+        const s = get();
+        const snap = await circleApi.createPlan(s.settings.serverUrl, code, s.profile.memberId, title, items);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      shareNote: async (code, text, scope = 'free', ref) => {
+        const s = get();
+        const snap = await circleApi.saveNote(
+          s.settings.serverUrl,
+          code,
+          { memberId: s.profile.memberId, displayName: s.profile.displayName },
+          { scope, ref, text: text.trim() },
+        );
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      deleteSharedNote: async (code, noteId) => {
+        const s = get();
+        const snap = await circleApi.deleteNote(s.settings.serverUrl, code, s.profile.memberId, noteId);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      addPrivateNote: (scope, text, ref) =>
+        set((state) => {
+          const noteId = newMemberId().replace('m_', 'n_');
+          return {
+            notes: {
+              ...state.notes,
+              [noteId]: { noteId, scope, ref, text: text.trim(), updatedAt: Date.now() },
+            },
+          };
+        }),
+
+      deletePrivateNote: (noteId) =>
+        set((state) => {
+          const next = { ...state.notes };
+          delete next[noteId];
+          return { notes: next };
+        }),
+
+      addPrayer: async (code, text) => {
+        const s = get();
+        const snap = await circleApi.addPrayer(
+          s.settings.serverUrl,
+          code,
+          { memberId: s.profile.memberId, displayName: s.profile.displayName },
+          text.trim(),
+        );
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      prayForRequest: async (code, prayerId) => {
+        const s = get();
+        const snap = await circleApi.prayFor(
+          s.settings.serverUrl,
+          code,
+          { memberId: s.profile.memberId, displayName: s.profile.displayName },
+          prayerId,
+        );
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      answerPrayer: async (code, prayerId, answerNote) => {
+        const s = get();
+        const snap = await circleApi.answerPrayer(s.settings.serverUrl, code, s.profile.memberId, prayerId, answerNote);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      cheerMember: async (code, toMemberId) => {
+        const s = get();
+        const snap = await circleApi.cheer(s.settings.serverUrl, code, s.profile.memberId, toMemberId);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+      },
+
+      markOpened: () => set({ session: { lastOpenedDay: dayKey() } }),
+
       leaveCircle: async (code) => {
         const s = get();
         try {
@@ -617,6 +721,8 @@ export const useStore = create<StoreState>()(
         circles: state.circles,
         studySessions: state.studySessions,
         applications: state.applications,
+        notes: state.notes,
+        session: state.session,
       }),
       // Merge persisted data over current defaults so state saved by an older
       // version (missing newer fields like stats.earnedBadges) is always
@@ -632,6 +738,8 @@ export const useStore = create<StoreState>()(
           circles: p.circles ?? {},
           studySessions: p.studySessions ?? {},
           applications: p.applications ?? {},
+          notes: p.notes ?? {},
+          session: { lastOpenedDay: null, ...(p.session ?? {}) },
           verses: p.verses ?? {},
         };
       },

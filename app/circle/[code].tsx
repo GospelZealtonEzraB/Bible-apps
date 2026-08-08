@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, TextInput, Alert, Share } from 'react-native';
+import { View, Text, TextInput, Alert, Share, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -8,7 +8,8 @@ import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useCircle, useProfile, useStore } from '@/store/useStore';
 import { getVerse, normalizeKey, verseId } from '@/data/bibleApi';
-import type { Challenge, ChallengeKind, CircleGoal, CircleMember, SharedVerseRef } from '@/types';
+import { PLAN_TEMPLATES } from '@/data/plans';
+import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
 export default function CircleHubScreen() {
   const { colors } = useTheme();
@@ -21,6 +22,7 @@ export default function CircleHubScreen() {
   const syncCircle = useStore((s) => s.syncCircle);
   const refreshCircle = useStore((s) => s.refreshCircle);
   const leaveCircle = useStore((s) => s.leaveCircle);
+  const cheerMember = useStore((s) => s.cheerMember);
 
   const [syncError, setSyncError] = useState<string | null>(null);
 
@@ -128,13 +130,29 @@ export default function CircleHubScreen() {
         <SectionTitle>Progress board</SectionTitle>
         <View style={{ gap: spacing.sm }}>
           {members.map((m) => (
-            <MemberRow key={m.id} member={m} isMe={m.id === profile.memberId} goal={meta.goal} />
+            <MemberRow
+              key={m.id}
+              member={m}
+              isMe={m.id === profile.memberId}
+              goal={meta.goal}
+              cheers={circle.cheersFor?.[m.id] ?? 0}
+              onCheer={m.id !== profile.memberId ? () => cheerMember(code, m.id).catch(() => {}) : undefined}
+            />
           ))}
         </View>
       </View>
 
       {/* Shared verses */}
       <SharedVersesCard code={code} members={members} myId={profile.memberId} />
+
+      {/* Study plans */}
+      <PlansCard code={code} />
+
+      {/* Prayer wall */}
+      <PrayerCard code={code} myId={profile.memberId} />
+
+      {/* Notes wall */}
+      <NotesCard code={code} myId={profile.memberId} />
 
       <View style={{ marginTop: spacing.sm }}>
         <Button title="Leave circle" variant="ghost" onPress={onLeave} />
@@ -143,7 +161,19 @@ export default function CircleHubScreen() {
   );
 }
 
-function MemberRow({ member, isMe, goal }: { member: CircleMember; isMe: boolean; goal: CircleGoal | null }) {
+function MemberRow({
+  member,
+  isMe,
+  goal,
+  cheers,
+  onCheer,
+}: {
+  member: CircleMember;
+  isMe: boolean;
+  goal: CircleGoal | null;
+  cheers: number;
+  onCheer?: () => void;
+}) {
   const { colors } = useTheme();
   const initial = (member.displayName || '?').trim().charAt(0).toUpperCase();
 
@@ -168,8 +198,229 @@ function MemberRow({ member, isMe, goal }: { member: CircleMember; isMe: boolean
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>{line}</Text>
         </View>
+        {onCheer ? (
+          <Pressable onPress={onCheer} style={{ alignItems: 'center', paddingHorizontal: spacing.sm }}>
+            <Text style={{ fontSize: 20 }}>👏</Text>
+            {cheers > 0 ? <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{cheers}</Text> : null}
+          </Pressable>
+        ) : cheers > 0 ? (
+          <View style={{ alignItems: 'center', paddingHorizontal: spacing.sm }}>
+            <Text style={{ fontSize: 18 }}>👏</Text>
+            <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{cheers}</Text>
+          </View>
+        ) : null}
       </View>
     </Card>
+  );
+}
+
+function PlansCard({ code }: { code: string }) {
+  const { colors } = useTheme();
+  const circle = useCircle(code);
+  const createCirclePlan = useStore((s) => s.createCirclePlan);
+  const plans = circle?.plans ?? [];
+  const [picking, setPicking] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const start = async (title: string, items: string[]) => {
+    setBusy(title);
+    try {
+      await createCirclePlan(code, title, items);
+      setPicking(false);
+    } catch (e) {
+      Alert.alert('Couldn’t start plan', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <View>
+      <SectionTitle>Study plans</SectionTitle>
+      {plans.map((p) => (
+        <PlanRow key={p.planId} plan={p} circleCode={code} />
+      ))}
+
+      {picking ? (
+        <Card>
+          <SectionTitle>Choose a plan</SectionTitle>
+          <View style={{ gap: spacing.sm }}>
+            {PLAN_TEMPLATES.map((t) => (
+              <Card key={t.id} onPress={() => start(t.title, t.items)}>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }}>{t.title}</Text>
+                <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>{t.description} · {t.items.length} verses</Text>
+                {busy === t.title ? <Text style={{ color: colors.primary, fontSize: font.sizes.xs, marginTop: 4 }}>Starting…</Text> : null}
+              </Card>
+            ))}
+          </View>
+          <View style={{ marginTop: spacing.sm }}>
+            <Button title="Cancel" variant="ghost" small onPress={() => setPicking(false)} />
+          </View>
+        </Card>
+      ) : (
+        <Button title="Start a plan together" variant="secondary" icon={<Ionicons name="map-outline" size={16} color={colors.text} />} onPress={() => setPicking(true)} />
+      )}
+    </View>
+  );
+}
+
+function PlanRow({ plan, circleCode }: { plan: StudyPlan; circleCode: string }) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const hasVerse = useStore((s) => s.hasVerse);
+  const translation = useStore((s) => s.settings.translation);
+  const [open, setOpen] = useState(false);
+
+  const doneCount = plan.items.filter((r) => hasVerse(verseId(r, translation))).length;
+
+  return (
+    <Card style={{ marginBottom: spacing.sm }}>
+      <Pressable onPress={() => setOpen((o) => !o)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+        <Ionicons name="map" size={18} color={colors.primary} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>{plan.title}</Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{doneCount} / {plan.items.length} in your library</Text>
+        </View>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textFaint} />
+      </Pressable>
+      {open ? (
+        <View style={{ marginTop: spacing.sm, gap: 6 }}>
+          {plan.items.map((r) => {
+            const inLib = hasVerse(verseId(r, translation));
+            return (
+              <Pressable key={r} onPress={() => inLib && router.push(`/verse/${encodeURIComponent(verseId(r, translation))}`)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                <Ionicons name={inLib ? 'checkmark-circle' : 'ellipse-outline'} size={16} color={inLib ? colors.success : colors.textFaint} />
+                <Text style={{ color: colors.text, fontSize: font.sizes.sm }}>{r}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
+function PrayerCard({ code, myId }: { code: string; myId: string }) {
+  const { colors } = useTheme();
+  const circle = useCircle(code);
+  const addPrayer = useStore((s) => s.addPrayer);
+  const prayForRequest = useStore((s) => s.prayForRequest);
+  const answerPrayer = useStore((s) => s.answerPrayer);
+
+  const prayers = circle?.prayers ?? [];
+  const active = prayers.filter((p) => p.status === 'active');
+  const answered = prayers.filter((p) => p.status === 'answered');
+
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const add = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    try {
+      await addPrayer(code, text);
+      setText('');
+    } catch (e) {
+      Alert.alert('Couldn’t add', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View>
+      <SectionTitle>Prayer wall</SectionTitle>
+      <Card>
+        <TextInput value={text} onChangeText={setText} placeholder="Share a prayer request…" placeholderTextColor={colors.textFaint} multiline style={[fieldStyle(colors), { minHeight: 60 }]} />
+        <View style={{ marginTop: spacing.sm }}>
+          <Button title={busy ? 'Adding…' : 'Add request'} small loading={busy} disabled={!text.trim()} onPress={add} />
+        </View>
+      </Card>
+
+      {active.map((p) => (
+        <PrayerRow key={p.prayerId} prayer={p} myId={myId} onPray={() => prayForRequest(code, p.prayerId).catch(() => {})} onAnswer={() => answerPrayer(code, p.prayerId).catch(() => {})} />
+      ))}
+
+      {answered.length > 0 ? (
+        <View style={{ marginTop: spacing.sm }}>
+          <SectionTitle>🙌 Testimonies</SectionTitle>
+          {answered.map((p) => (
+            <Card key={p.prayerId} style={{ marginBottom: spacing.sm }}>
+              <Text style={{ color: colors.text, fontSize: font.sizes.md }}>{p.text}</Text>
+              <Text style={{ color: colors.success, fontSize: font.sizes.sm, marginTop: 4 }}>✅ Answered{p.answerNote ? ` — ${p.answerNote}` : ''}</Text>
+            </Card>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function PrayerRow({ prayer, myId, onPray, onAnswer }: { prayer: Prayer; myId: string; onPray: () => void; onAnswer: () => void }) {
+  const { colors } = useTheme();
+  const didIPray = prayer.prayedByIds?.includes(myId);
+  const mine = prayer.by === myId;
+  return (
+    <Card style={{ marginBottom: spacing.sm }}>
+      <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{prayer.byName || 'someone'}</Text>
+      <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>{prayer.text}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm }}>
+        <Button
+          title={didIPray ? `🙏 Prayed (${prayer.prayedByCount})` : `🙏 I prayed${prayer.prayedByCount ? ` (${prayer.prayedByCount})` : ''}`}
+          variant="secondary"
+          small
+          onPress={onPray}
+        />
+        {mine ? <Button title="Mark answered" variant="ghost" small onPress={onAnswer} /> : null}
+      </View>
+    </Card>
+  );
+}
+
+function NotesCard({ code, myId }: { code: string; myId: string }) {
+  const { colors } = useTheme();
+  const circle = useCircle(code);
+  const shareNote = useStore((s) => s.shareNote);
+  const deleteSharedNote = useStore((s) => s.deleteSharedNote);
+  const notes = circle?.notes ?? [];
+
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const add = async () => {
+    if (!text.trim()) return;
+    setBusy(true);
+    try {
+      await shareNote(code, text);
+      setText('');
+    } catch (e) {
+      Alert.alert('Couldn’t share note', e instanceof Error ? e.message : 'Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View>
+      <SectionTitle>Notes wall</SectionTitle>
+      <Card>
+        <TextInput value={text} onChangeText={setText} placeholder="Share a note or reflection with your circle…" placeholderTextColor={colors.textFaint} multiline style={[fieldStyle(colors), { minHeight: 60 }]} />
+        <View style={{ marginTop: spacing.sm }}>
+          <Button title={busy ? 'Sharing…' : 'Share note'} small loading={busy} disabled={!text.trim()} onPress={add} />
+        </View>
+      </Card>
+      {notes.map((n) => (
+        <Card key={n.noteId} style={{ marginBottom: spacing.sm }}>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{n.byName || 'someone'}{n.ref ? ` · ${n.ref}` : ''}</Text>
+          <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>{n.text}</Text>
+          {n.by === myId ? (
+            <View style={{ marginTop: spacing.sm, alignSelf: 'flex-start' }}>
+              <Button title="Delete" variant="ghost" small onPress={() => deleteSharedNote(code, n.noteId).catch(() => {})} />
+            </View>
+          ) : null}
+        </Card>
+      ))}
+    </View>
   );
 }
 
