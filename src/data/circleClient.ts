@@ -40,7 +40,25 @@ async function circleCall(
 }
 
 /** The API version this app build expects from the Worker. */
-export const EXPECTED_API_VERSION = 5;
+export const EXPECTED_API_VERSION = 6;
+
+/** Upload an opaque backup blob keyed by the device/transfer id. Best-effort. */
+export async function pushBackup(serverUrl: string | null, memberId: string, blob: string): Promise<void> {
+  await postServer<{ ok: boolean }>(serverUrl, '/circle', { action: 'backupPush', memberId, blob });
+}
+
+/** Fetch the latest backup blob for a transfer id, or null if none exists. */
+export async function pullBackup(
+  serverUrl: string | null,
+  memberId: string,
+): Promise<{ blob: string; updatedAt: number } | null> {
+  const { backup } = await postServer<{ backup: { blob: string; updatedAt: number } | null }>(
+    serverUrl,
+    '/circle',
+    { action: 'backupPull', memberId },
+  );
+  return backup ?? null;
+}
 
 export function createCircle(
   serverUrl: string | null,

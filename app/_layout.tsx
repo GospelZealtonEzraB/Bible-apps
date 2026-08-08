@@ -3,7 +3,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
-import { View } from 'react-native';
+import { View, AppState } from 'react-native';
 
 import { useTheme } from '@/theme';
 import { configureNotificationHandler } from '@/notifications';
@@ -44,6 +44,17 @@ function useOnboardingGate() {
 function AppShell() {
   const { colors, dark } = useTheme();
   useOnboardingGate();
+
+  // Auto-save a cloud backup (keyed by the transfer id) whenever the app is
+  // backgrounded, so a new phone with the same code restores everything.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'background' || next === 'inactive') {
+        useStore.getState().cloudBackup().catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>

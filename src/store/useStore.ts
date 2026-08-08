@@ -165,6 +165,12 @@ interface StoreState {
   exportBackup: () => string;
   /** Restore all data from a backup string. Returns ok/error; never throws. */
   importBackup: (json: string) => { ok: boolean; error?: string };
+  /** Push a full backup to the server, keyed by this device's transfer id. Best-effort. */
+  cloudBackup: () => Promise<void>;
+  /** Pull + restore the server backup for a transfer id (defaults to mine). */
+  cloudRestore: (memberId?: string) => Promise<{ ok: boolean; error?: string }>;
+  /** When the last successful cloud backup happened (ms), or null. */
+  lastCloudBackupAt: number | null;
 }
 
 const defaultStats: Stats = {
@@ -457,6 +463,7 @@ export const useStore = create<StoreState>()(
       recentXp: null,
       recentQuestComplete: false,
       recentCelebration: null,
+      lastCloudBackupAt: null,
 
       hasVerse: (id) => !!get().verses[id],
 
@@ -1016,6 +1023,30 @@ export const useStore = create<StoreState>()(
         }));
         return { ok: true };
       },
+
+      cloudBackup: async () => {
+        const s = get();
+        if (!s.profile.memberId) return; // no identity yet — nothing to key on
+        try {
+          await circleApi.pushBackup(s.settings.serverUrl, s.profile.memberId, s.exportBackup());
+          set({ lastCloudBackupAt: Date.now() });
+        } catch {
+          // best-effort — a stale/absent server must never surface an error here
+        }
+      },
+
+      cloudRestore: async (memberId) => {
+        const s = get();
+        const id = memberId ?? s.profile.memberId;
+        if (!id) return { ok: false, error: 'No transfer code to restore from.' };
+        try {
+          const rec = await circleApi.pullBackup(s.settings.serverUrl, id);
+          if (!rec?.blob) return { ok: false, error: 'No cloud backup found for that transfer code.' };
+          return get().importBackup(rec.blob);
+        } catch (e) {
+          return { ok: false, error: e instanceof Error ? e.message : 'Couldn’t reach the server.' };
+        }
+      },
     }),
     {
       name: 'engraved-store-v1',
@@ -1033,6 +1064,7 @@ export const useStore = create<StoreState>()(
         session: state.session,
         activityLog: state.activityLog,
         pushToken: state.pushToken,
+        lastCloudBackupAt: state.lastCloudBackupAt,
       }),
       // Merge persisted data over current defaults so state saved by an older
       // version (missing newer fields like stats.earnedBadges) is always
@@ -1065,6 +1097,7 @@ export const useStore = create<StoreState>()(
             session: { lastOpenedDay: null, ...(p.session ?? {}) },
             activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
             pushToken: p.pushToken ?? null,
+            lastCloudBackupAt: p.lastCloudBackupAt ?? null,
             verses,
           };
         } catch {

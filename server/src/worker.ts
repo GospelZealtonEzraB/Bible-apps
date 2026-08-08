@@ -324,7 +324,7 @@ async function kvDeletePrefix(kv: KVNamespaceLike, prefix: string): Promise<void
 
 // Bumped whenever /circle gains actions the client depends on. Returned in every
 // snapshot so the app can warn when a deployed Worker is out of date.
-const API_VERSION = 5;
+const API_VERSION = 6;
 
 // Invite codes: 6 chars, unambiguous base32 (no O/0/I/1).
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -886,6 +886,25 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       const code = normCode(body.code);
       if (memberId) await kv.delete(`circle:${code}:member:${memberId}`);
       return json({ ok: true });
+    }
+
+    // --- Full-account backup, keyed by the device/transfer id -----------------
+    // Stores an opaque client-exported blob so a new phone with the same
+    // transfer code can restore the whole library + progress automatically.
+    case 'backupPush': {
+      const id = String(body.memberId ?? '');
+      const blob = typeof body.blob === 'string' ? body.blob : '';
+      if (!id || !blob) return json({ error: 'Missing backup.' }, 400);
+      if (blob.length > 20_000_000) return json({ error: 'Backup too large.' }, 413);
+      await kvPutJson(kv, `backup:${id}`, { blob, updatedAt: Date.now() });
+      return json({ ok: true });
+    }
+
+    case 'backupPull': {
+      const id = String(body.memberId ?? '');
+      if (!id) return json({ error: 'Missing member.' }, 400);
+      const rec = await kvGetJson<any>(kv, `backup:${id}`);
+      return json({ backup: rec ?? null });
     }
 
     default:

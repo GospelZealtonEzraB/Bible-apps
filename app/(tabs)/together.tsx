@@ -16,6 +16,7 @@ export default function TogetherScreen() {
   const circles = useCircleList();
   const setDisplayName = useStore((s) => s.setDisplayName);
   const restoreFromBackup = useStore((s) => s.restoreFromBackup);
+  const cloudRestore = useStore((s) => s.cloudRestore);
 
   const [name, setName] = useState(profile.displayName);
   const [editingName, setEditingName] = useState(false);
@@ -30,14 +31,21 @@ export default function TogetherScreen() {
     setEditingName(false);
   };
 
-  const onRestore = () => {
-    const ok = restoreFromBackup(restoreCode);
-    if (ok) {
-      setRestoreCode('');
-      setShowRestore(false);
-      Alert.alert('Identity restored', 'This device now uses your transfer code.');
-    } else {
+  const onRestore = async () => {
+    const code = restoreCode.trim();
+    const ok = restoreFromBackup(code);
+    if (!ok) {
       Alert.alert('That code doesn’t look right', 'A transfer code looks like “m_…”. Check and try again.');
+      return;
+    }
+    setRestoreCode('');
+    setShowRestore(false);
+    // Also pull this identity's cloud backup (verses, streaks, everything).
+    const res = await cloudRestore(code);
+    if (res.ok) {
+      Alert.alert('Welcome back', 'Your verses, progress, and circles have been restored to this phone.');
+    } else {
+      Alert.alert('Identity restored', 'This device now uses your transfer code. Your circles will sync; no saved library backup was found for this code yet.');
     }
   };
 

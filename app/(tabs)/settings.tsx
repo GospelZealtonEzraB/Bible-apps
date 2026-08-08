@@ -8,6 +8,7 @@ import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore, useSettings, useStats } from '@/store/useStore';
 import { TRANSLATIONS } from '@/data/bibleApi';
 import { DEFAULT_SERVER_URL, resolveServerUrl } from '@/config';
+import { relativeTimeAgo } from '@/utils/date';
 import {
   scheduleDailyReminder,
   cancelDailyReminder,
@@ -234,8 +235,21 @@ function BackupCard() {
   const { colors } = useTheme();
   const exportBackup = useStore((s) => s.exportBackup);
   const importBackup = useStore((s) => s.importBackup);
+  const cloudBackup = useStore((s) => s.cloudBackup);
+  const lastCloudBackupAt = useStore((s) => s.lastCloudBackupAt);
   const [restoring, setRestoring] = React.useState(false);
   const [pasted, setPasted] = React.useState('');
+  const [backingUp, setBackingUp] = React.useState(false);
+
+  const onCloudBackup = async () => {
+    setBackingUp(true);
+    try {
+      await cloudBackup();
+      Alert.alert('Backed up', 'Your data is safely saved to the cloud, tied to your transfer code.');
+    } finally {
+      setBackingUp(false);
+    }
+  };
 
   const onBackUp = async () => {
     try {
@@ -277,12 +291,22 @@ function BackupCard() {
     <View>
       <SectionTitle>Back up &amp; restore</SectionTitle>
       <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
-        Save a copy of your verses, progress, and circles. Keep it somewhere safe — you can restore it on a new phone.
+        Your data is auto-saved to the cloud and tied to your transfer code — on a new phone, enter that
+        code in the Together tab to bring everything back. You can also save a manual copy below.
       </Text>
       <Button
-        title="Back up my data"
+        title={backingUp ? 'Backing up…' : 'Back up to cloud now'}
+        loading={backingUp}
+        icon={<Ionicons name="cloud-upload-outline" size={16} color={colors.onPrimary} />}
+        onPress={onCloudBackup}
+      />
+      <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: 6, marginBottom: spacing.sm }}>
+        {lastCloudBackupAt ? `Last cloud backup ${relativeTimeAgo(lastCloudBackupAt)}.` : 'Not backed up to the cloud yet.'}
+      </Text>
+      <Button
+        title="Save a copy to my phone"
         variant="secondary"
-        icon={<Ionicons name="cloud-upload-outline" size={16} color={colors.text} />}
+        icon={<Ionicons name="download-outline" size={16} color={colors.text} />}
         onPress={onBackUp}
       />
       {restoring ? (
