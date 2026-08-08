@@ -3,8 +3,9 @@ import { parseReference, formatReference } from './books';
 
 const BIBLE_API_BASE = 'https://bible-api.com';
 const GETBIBLE_BASE = 'https://api.getbible.net/v2';
+const BOLLS_BASE = 'https://bolls.life';
 
-type Provider = 'bible-api' | 'getbible' | 'esv';
+type Provider = 'bible-api' | 'getbible' | 'bolls' | 'esv';
 
 export interface TranslationInfo {
   id: string;
@@ -28,7 +29,7 @@ export const TRANSLATIONS: TranslationInfo[] = [
   { id: 'oeb-us', name: 'Open English Bible (US)', language: 'en', provider: 'bible-api' },
   { id: 'webbe', name: 'WEB British Edition', language: 'en', provider: 'bible-api' },
   { id: 'clementine', name: 'Clementine Latin Vulgate', language: 'la', provider: 'bible-api' },
-  { id: 'tamil', name: 'தமிழ் (Tamil)', language: 'ta', provider: 'getbible', providerCode: 'tamil' },
+  { id: 'tamil', name: 'தமிழ் (Tamil)', language: 'ta', provider: 'bolls', providerCode: 'TAOVBSI' },
 ];
 
 const LATIN_LANGS = new Set(['en', 'la']);
@@ -75,7 +76,12 @@ export function verseId(reference: string, translation: string): string {
 }
 
 function cleanText(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+  // Strip any HTML markup (some providers wrap Strong's numbers / italics) then
+  // collapse whitespace.
+  return text
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // ---- Providers ------------------------------------------------------------
@@ -150,6 +156,44 @@ async function fetchFromGetBible(
   };
 }
 
+interface BollsVerse {
+  verse: number;
+  text: string;
+}
+
+async function fetchFromBolls(
+  ref: string,
+  info: TranslationInfo,
+): Promise<FetchedVerse> {
+  const parsed = parseReference(ref);
+  if (!parsed) {
+    throw new Error(
+      `Please enter a reference with a verse, e.g. "John 3:16" or "Romans 12:1-2".`,
+    );
+  }
+  const code = info.providerCode ?? info.id;
+  const url = `${BOLLS_BASE}/get-text/${code}/${parsed.bookNumber}/${parsed.chapter}/`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} from bolls (${url})`);
+  const data: BollsVerse[] = await res.json();
+  if (!Array.isArray(data)) throw new Error('Unexpected response shape from bolls.');
+
+  const picked = data
+    .filter((v) => v.verse >= parsed.verseStart && v.verse <= parsed.verseEnd)
+    .sort((a, b) => a.verse - b.verse)
+    .map((v) => cleanText(v.text));
+
+  if (picked.length === 0) throw new Error('Verse not found in that chapter.');
+
+  return {
+    reference: formatReference(parsed),
+    text: picked.join(' '),
+    translation: info.id,
+    translationName: info.name,
+    offline: false,
+  };
+}
+
 async function fetchFromEsv(): Promise<FetchedVerse> {
   // ESV is copyrighted: its API key must live on a server (added in Phase 3).
   throw new Error(
@@ -173,6 +217,8 @@ export async function getVerse(
 
   try {
     switch (info.provider) {
+      case 'bolls':
+        return await fetchFromBolls(ref, info);
       case 'getbible':
         return await fetchFromGetBible(ref, info);
       case 'esv':
@@ -198,8 +244,9 @@ export async function getVerse(
     if (err instanceof Error && /needs a one-time setup|enter a reference/.test(err.message)) {
       throw err; // already a friendly message
     }
+    const detail = err instanceof Error ? ` (${err.message})` : '';
     throw new Error(
-      `Couldn't load "${ref}" (${info.name}). Check your connection and the reference (e.g. "John 3:16").`,
+      `Couldn't load "${ref}" in ${info.name}. Check your connection and the reference (e.g. "John 3:16").${detail}`,
     );
   }
 }

@@ -6,11 +6,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen, Header } from '@/components/layout';
 import { Card, Chip, StatusBadge, EmptyState, Button } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
-import { useTheme, spacing, font } from '@/theme';
+import { JourneyMap } from '@/components/JourneyMap';
+import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerseList, useStore } from '@/store/useStore';
 import { isDue } from '@/srs/sm2';
 import { relativeDueLabel } from '@/utils/date';
 import type { Verse } from '@/types';
+
+type ViewMode = 'list' | 'journey';
 
 type Filter = 'all' | 'due' | 'learning' | 'memorized';
 
@@ -27,6 +30,9 @@ export default function LibraryScreen() {
   const verses = useVerseList();
   const removeVerse = useStore((s) => s.removeVerse);
   const [filter, setFilter] = useState<Filter>('all');
+  const [view, setView] = useState<ViewMode>('list');
+
+  const openVerse = (id: string) => router.push(`/verse/${encodeURIComponent(id)}`);
 
   const filtered = useMemo(() => {
     switch (filter) {
@@ -55,22 +61,65 @@ export default function LibraryScreen() {
         subtitle={`${verses.length} verse${verses.length === 1 ? '' : 's'} saved`}
       />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: spacing.sm }}
+      {/* List / Journey toggle */}
+      <View
+        style={{
+          flexDirection: 'row',
+          backgroundColor: colors.surfaceAlt,
+          borderRadius: radius.pill,
+          padding: 4,
+        }}
       >
-        {FILTERS.map((f) => (
-          <Chip
-            key={f.key}
-            label={f.label}
-            active={filter === f.key}
-            onPress={() => setFilter(f.key)}
-          />
+        {(['list', 'journey'] as ViewMode[]).map((m) => (
+          <Pressable
+            key={m}
+            onPress={() => setView(m)}
+            style={{
+              flex: 1,
+              paddingVertical: spacing.sm,
+              borderRadius: radius.pill,
+              alignItems: 'center',
+              backgroundColor: view === m ? colors.primary : 'transparent',
+            }}
+          >
+            <Text style={{ color: view === m ? colors.onPrimary : colors.textMuted, fontWeight: '700' }}>
+              {m === 'list' ? 'List' : 'Journey'}
+            </Text>
+          </Pressable>
         ))}
-      </ScrollView>
+      </View>
 
-      {filtered.length === 0 ? (
+      {view === 'journey' ? (
+        verses.length === 0 ? (
+          <Card>
+            <EmptyState
+              emoji="🗺️"
+              title="Your journey starts here"
+              subtitle="Add verses and watch them climb the path as you master them."
+              action={<Button title="Add a verse" onPress={() => router.push('/add')} />}
+            />
+          </Card>
+        ) : (
+          <JourneyMap verses={[...verses].reverse()} onSelect={openVerse} />
+        )
+      ) : (
+        <>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: spacing.sm }}
+          >
+            {FILTERS.map((f) => (
+              <Chip
+                key={f.key}
+                label={f.label}
+                active={filter === f.key}
+                onPress={() => setFilter(f.key)}
+              />
+            ))}
+          </ScrollView>
+
+          {filtered.length === 0 ? (
         <Card>
           <EmptyState
             emoji={verses.length === 0 ? '📖' : '🔍'}
@@ -118,6 +167,8 @@ export default function LibraryScreen() {
             </Card>
           ))}
         </View>
+          )}
+        </>
       )}
     </Screen>
   );

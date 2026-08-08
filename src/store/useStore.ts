@@ -19,6 +19,8 @@ import {
   newlyEarnedBadges,
   type BadgeContext,
 } from '@/gamification';
+import { allQuestsDone, QUEST_BONUS_XP } from '@/quests';
+import type { DailyProgress } from '@/types';
 
 /** Interval (days) at which a verse is considered memorized. */
 const MEMORIZED_INTERVAL = 21;
@@ -32,6 +34,8 @@ interface StoreState {
   recentBadgeId: string | null;
   /** XP just awarded, for inline feedback (transient). */
   recentXp: number | null;
+  /** True right after finishing all daily quests, for a celebration (transient). */
+  recentQuestComplete: boolean;
 
   addFetchedVerse: (fetched: FetchedVerse, packId?: string) => Verse;
   removeVerse: (id: string) => void;
@@ -59,7 +63,46 @@ const defaultStats: Stats = {
   earnedBadges: [],
   perfectRecitations: 0,
   earlyReviews: 0,
+  daily: { day: '', reviews: 0, drills: 0, perfect: 0, added: 0, questBonusClaimed: false },
 };
+
+/** Today's quest counters, resetting to zero when the stored day isn't today. */
+export function todaysDaily(stats: Stats, now: number = Date.now()): DailyProgress {
+  const today = dayKey(now);
+  if (stats.daily && stats.daily.day === today) return stats.daily;
+  return { day: today, reviews: 0, drills: 0, perfect: 0, added: 0, questBonusClaimed: false };
+}
+
+interface DailyResult {
+  daily: DailyProgress;
+  xpBonus: number;
+  questJustCompleted: boolean;
+}
+
+/** Apply per-metric increments to today's quest counters, awarding the bonus
+ * once when every quest is complete. */
+function advanceDaily(
+  stats: Stats,
+  now: number,
+  inc: Partial<Pick<DailyProgress, 'reviews' | 'drills' | 'perfect' | 'added'>>,
+): DailyResult {
+  const base = todaysDaily(stats, now);
+  let daily: DailyProgress = {
+    ...base,
+    reviews: base.reviews + (inc.reviews ?? 0),
+    drills: base.drills + (inc.drills ?? 0),
+    perfect: base.perfect + (inc.perfect ?? 0),
+    added: base.added + (inc.added ?? 0),
+  };
+  let xpBonus = 0;
+  let questJustCompleted = false;
+  if (!daily.questBonusClaimed && allQuestsDone(daily)) {
+    daily = { ...daily, questBonusClaimed: true };
+    xpBonus = QUEST_BONUS_XP;
+    questJustCompleted = true;
+  }
+  return { daily, xpBonus, questJustCompleted };
+}
 
 const defaultSettings: Settings = {
   translation: 'web',
@@ -178,6 +221,7 @@ export const useStore = create<StoreState>()(
       hydrated: false,
       recentBadgeId: null,
       recentXp: null,
+      recentQuestComplete: false,
 
       hasVerse: (id) => !!get().verses[id],
 
@@ -209,13 +253,15 @@ export const useStore = create<StoreState>()(
             earlyReviews: state.stats.earlyReviews,
           };
           const newBadges = newlyEarnedBadges(ctx, state.stats.earnedBadges);
-          const stats = newBadges.length
+          const withBadges = newBadges.length
             ? { ...state.stats, earnedBadges: [...state.stats.earnedBadges, ...newBadges] }
             : state.stats;
+          const d = advanceDaily(withBadges, now, { added: 1 });
           return {
             verses,
-            stats,
+            stats: { ...withBadges, daily: d.daily, xp: withBadges.xp + d.xpBonus },
             recentBadgeId: newBadges[0] ?? state.recentBadgeId,
+            recentQuestComplete: d.questJustCompleted,
           };
         });
         return verse;
@@ -255,7 +301,17 @@ export const useStore = create<StoreState>()(
             now,
             versesOverride: verses,
           });
-          return { verses, ...progress };
+          const d = advanceDaily(progress.stats, now, {
+            drills: 1,
+            perfect: accuracy >= 90 ? 1 : 0,
+          });
+          return {
+            verses,
+            recentBadgeId: progress.recentBadgeId,
+            recentXp: (progress.recentXp ?? 0) + d.xpBonus,
+            recentQuestComplete: d.questJustCompleted,
+            stats: { ...progress.stats, daily: d.daily, xp: progress.stats.xp + d.xpBonus },
+          };
         }),
 
       gradeReview: (id, rating) =>
@@ -278,10 +334,18 @@ export const useStore = create<StoreState>()(
             now,
             versesOverride: verses,
           });
-          return { verses, ...progress };
+          const d = advanceDaily(progress.stats, now, { reviews: 1 });
+          return {
+            verses,
+            recentBadgeId: progress.recentBadgeId,
+            recentXp: (progress.recentXp ?? 0) + d.xpBonus,
+            recentQuestComplete: d.questJustCompleted,
+            stats: { ...progress.stats, daily: d.daily, xp: progress.stats.xp + d.xpBonus },
+          };
         }),
 
-      clearCelebration: () => set({ recentBadgeId: null, recentXp: null }),
+      clearCelebration: () =>
+        set({ recentBadgeId: null, recentXp: null, recentQuestComplete: false }),
 
       setSettings: (patch) =>
         set((state) => ({ settings: { ...state.settings, ...patch } })),

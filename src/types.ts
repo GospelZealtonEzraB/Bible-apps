@@ -53,6 +53,20 @@ export interface Stats {
   perfectRecitations: number;
   /** Count of reviews completed before 7am (drives the Early Light badge). */
   earlyReviews: number;
+  /** Today's quest counters (reset when the day changes). */
+  daily: DailyProgress;
+}
+
+export interface DailyProgress {
+  /** Day key (YYYY-MM-DD) these counters belong to. */
+  day: string;
+  reviews: number;
+  drills: number;
+  /** Drills scored 90%+ today. */
+  perfect: number;
+  added: number;
+  /** Whether the all-quests-complete bonus was already awarded today. */
+  questBonusClaimed: boolean;
 }
 
 export type ThemePreference = 'system' | 'light' | 'dark';

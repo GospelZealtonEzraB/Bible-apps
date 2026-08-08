@@ -4,22 +4,25 @@ import * as Haptics from 'expo-haptics';
 
 import { useRecentBadgeId, useStore } from '@/store/useStore';
 import { badgeById } from '@/gamification';
+import { QUEST_BONUS_XP } from '@/quests';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { Ember } from '@/components/Ember';
 import { Confetti } from '@/components/Confetti';
 
 /**
- * Global overlay that celebrates a newly earned badge. Mounted once at the root
- * so any action that awards a badge triggers it. Auto-dismisses.
+ * Global overlay that celebrates a newly earned badge or finishing all daily
+ * quests. Mounted once at the root; auto-dismisses.
  */
 export function Celebration() {
   const { colors } = useTheme();
   const badgeId = useRecentBadgeId();
+  const questComplete = useStore((s) => s.recentQuestComplete);
   const clear = useStore((s) => s.clearCelebration);
   const badge = badgeId ? badgeById(badgeId) : undefined;
+  const show = !!badge || questComplete;
 
   useEffect(() => {
-    if (!badge) return;
+    if (!show) return;
     if (Platform.OS !== 'web') {
       try {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -29,9 +32,14 @@ export function Celebration() {
     }
     const t = setTimeout(clear, 3200);
     return () => clearTimeout(t);
-  }, [badge, clear]);
+  }, [show, clear]);
 
-  if (!badge) return null;
+  if (!show) return null;
+
+  const eyebrow = badge ? 'BADGE UNLOCKED' : 'DAILY QUESTS DONE';
+  const emoji = badge ? badge.emoji : '🎯';
+  const title = badge ? badge.name : 'All quests complete!';
+  const subtitle = badge ? badge.description : `Nice work today. +${QUEST_BONUS_XP} XP bonus!`;
 
   return (
     <Modal transparent visible animationType="fade" onRequestClose={clear}>
@@ -59,11 +67,11 @@ export function Celebration() {
         >
           <Ember mood="celebrating" size={110} />
           <Text style={{ color: colors.accent, fontWeight: '800', letterSpacing: 1, marginTop: spacing.sm }}>
-            BADGE UNLOCKED
+            {eyebrow}
           </Text>
-          <Text style={{ fontSize: 40, marginVertical: spacing.xs }}>{badge.emoji}</Text>
+          <Text style={{ fontSize: 40, marginVertical: spacing.xs }}>{emoji}</Text>
           <Text style={{ color: colors.text, fontSize: font.sizes.xl, fontWeight: '800' }}>
-            {badge.name}
+            {title}
           </Text>
           <Text
             style={{
@@ -73,7 +81,7 @@ export function Celebration() {
               fontSize: font.sizes.sm,
             }}
           >
-            {badge.description}
+            {subtitle}
           </Text>
           <Pressable
             onPress={clear}

@@ -8,9 +8,10 @@ import { Card, Button, SectionTitle, StatusBadge, EmptyState } from '@/component
 import { ProgressRing } from '@/components/ProgressRing';
 import { Ember, type EmberMood } from '@/components/Ember';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useStats, useVerseList, useStore } from '@/store/useStore';
+import { useStats, useVerseList, useStore, todaysDaily } from '@/store/useStore';
 import { isDue } from '@/srs/sm2';
 import { levelInfo, BADGES } from '@/gamification';
+import { DAILY_QUESTS, questCount, questDone, questsCompletedCount } from '@/quests';
 import { dayKey } from '@/utils/date';
 import { WEB_FIXTURES } from '@/data/fixtures';
 import { normalizeKey } from '@/data/bibleApi';
@@ -74,6 +75,8 @@ export default function TodayScreen() {
 
   const activeToday = stats.lastActiveDay === dayKey();
   const level = levelInfo(stats.xp);
+  const daily = todaysDaily(stats);
+  const questsDoneCount = questsCompletedCount(daily);
   let mood: EmberMood = 'content';
   if (verseCount > 0 && stats.streak > 0 && !activeToday) mood = 'worried';
   else if (activeToday) mood = 'celebrating';
@@ -139,6 +142,65 @@ export default function TodayScreen() {
           </Text>
         </Card>
       </View>
+
+      {/* Daily quests */}
+      {verseCount > 0 ? (
+        <View>
+          <SectionTitle>
+            Daily quests · {questsDoneCount}/{DAILY_QUESTS.length}
+          </SectionTitle>
+          <Card style={{ gap: spacing.md }}>
+            {DAILY_QUESTS.map((q) => {
+              const count = questCount(q, daily);
+              const done = questDone(q, daily);
+              return (
+                <View key={q.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+                  <Text style={{ fontSize: 22, opacity: done ? 1 : 0.9 }}>{q.emoji}</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                      <Text
+                        style={{
+                          color: done ? colors.textMuted : colors.text,
+                          fontWeight: '600',
+                          textDecorationLine: done ? 'line-through' : 'none',
+                        }}
+                      >
+                        {q.name}
+                      </Text>
+                      <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+                        {count}/{q.goal}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        height: 6,
+                        backgroundColor: colors.surfaceAlt,
+                        borderRadius: 3,
+                        marginTop: 5,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: `${(count / q.goal) * 100}%`,
+                          height: 6,
+                          backgroundColor: done ? colors.success : colors.primary,
+                          borderRadius: 3,
+                        }}
+                      />
+                    </View>
+                  </View>
+                  {done ? (
+                    <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+                  ) : (
+                    <Ionicons name="ellipse-outline" size={22} color={colors.textFaint} />
+                  )}
+                </View>
+              );
+            })}
+          </Card>
+        </View>
+      ) : null}
 
       {/* Review CTA */}
       {verseCount === 0 ? (
