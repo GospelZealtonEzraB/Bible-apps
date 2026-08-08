@@ -46,6 +46,26 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return req.granted;
 }
 
+/**
+ * Get this device's Expo push token so a partner's activity can notify it.
+ * Returns null in Expo Go / web / when permission is denied.
+ */
+export async function getExpoPushToken(): Promise<string | null> {
+  const N = getNotifications();
+  if (!N) return null;
+  try {
+    const granted = await requestNotificationPermission();
+    if (!granted) return null;
+    const projectId =
+      (Constants.expoConfig as any)?.extra?.eas?.projectId ??
+      (Constants as any)?.easConfig?.projectId;
+    const res = await N.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    return res.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Parse 'HH:MM' into { hour, minute }; returns null when invalid. */
 export function parseTime(time: string): { hour: number; minute: number } | null {
   const m = time.match(/^(\d{1,2}):(\d{2})$/);

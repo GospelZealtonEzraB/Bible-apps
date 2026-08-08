@@ -8,6 +8,7 @@ import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useCircle, useProfile, useStore } from '@/store/useStore';
 import { getVerse, normalizeKey, verseId } from '@/data/bibleApi';
+import { dayKey, daysBetweenKeys } from '@/utils/date';
 import { PLAN_TEMPLATES } from '@/data/plans';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
@@ -115,6 +116,9 @@ export default function CircleHubScreen() {
           </Text>
         </Card>
       ) : null}
+
+      {/* Quiet-partner nudge */}
+      <QuietPartnerNudge members={members} myId={profile.memberId} />
 
       {/* Accountability inbox */}
       <ChallengesCard code={code} members={members} myId={profile.memberId} />
@@ -854,6 +858,26 @@ function ReviewRow({ code, challenge }: { code: string; challenge: Challenge }) 
       <View style={{ marginTop: spacing.md }}>
         <Button title={saving ? 'Sending…' : 'Send encouragement'} small loading={saving} disabled={!note.trim()} onPress={onReview} />
       </View>
+    </Card>
+  );
+}
+
+function QuietPartnerNudge({ members, myId }: { members: CircleMember[]; myId: string }) {
+  const { colors } = useTheme();
+  const today = dayKey();
+  const quiet = members.filter(
+    (m) => m.id !== myId && m.lastActiveDay && daysBetweenKeys(m.lastActiveDay, today) >= 3,
+  );
+  if (quiet.length === 0) return null;
+  const names = quiet.map((m) => m.displayName || 'your partner').join(' and ');
+  return (
+    <Card>
+      <Text style={{ color: colors.text, fontSize: font.sizes.md }}>
+        💛 {names} {quiet.length === 1 ? "hasn't" : "haven't"} practiced in a few days.
+      </Text>
+      <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginTop: 4 }}>
+        A word of encouragement — or a challenge — might be just what they need today.
+      </Text>
     </Card>
   );
 }

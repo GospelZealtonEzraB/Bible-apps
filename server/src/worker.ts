@@ -387,9 +387,41 @@ async function writeMember(kv: KVNamespaceLike, code: string, member: any): Prom
     planDone: Array.isArray(member?.planDone) ? member.planDone.slice(0, 500) : [],
     lastActiveDay: member?.lastActiveDay ?? null,
     lastActivity: member?.lastActivity ?? null,
+    pushToken: member?.pushToken ?? null,
     updatedAt: Date.now(),
   };
   await kvPutJson(kv, `circle:${code}:member:${memberId}`, rec);
+}
+
+/** Best-effort push via the Expo Push API. Never throws. */
+async function sendPush(tokens: (string | null | undefined)[], title: string, body: string): Promise<void> {
+  const valid = tokens.filter((t): t is string => typeof t === 'string' && t.startsWith('ExponentPushToken'));
+  if (valid.length === 0) return;
+  try {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(valid.map((to) => ({ to, title, body, sound: 'default' }))),
+    });
+  } catch {
+    // Push is best-effort; never let it break the action.
+  }
+}
+
+/** Push tokens of all members except `exceptId`. */
+async function otherMemberTokens(kv: KVNamespaceLike, code: string, exceptId: string): Promise<string[]> {
+  const keys = await kvListKeys(kv, `circle:${code}:member:`);
+  const tokens: string[] = [];
+  for (const key of keys) {
+    const m = await kvGetJson<any>(kv, key);
+    if (m && m.id !== exceptId && m.pushToken) tokens.push(m.pushToken);
+  }
+  return tokens;
+}
+
+async function memberPushToken(kv: KVNamespaceLike, code: string, id: string): Promise<string | null> {
+  const m = await kvGetJson<any>(kv, `circle:${code}:member:${id}`);
+  return m?.pushToken ?? null;
 }
 
 /** Assemble the full circle snapshot returned to clients. */
@@ -609,13 +641,14 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
         createdAt: Date.now(),
       };
       await kvPutJson(kv, `circle:${code}:chal:${chalId}`, rec);
+      await sendPush([await memberPushToken(kv, code, to)], 'New challenge 💪', `${rec.fromName || 'Your partner'} challenged you: ${reference}`);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 
     case 'submitChallenge': {
       const code = normCode(body.code);
       const chalId = String(body.chalId ?? '');
-      const cm = await kvGetJson(kv, `circle:${code}:chal:${chalId}`);
+      const cm = await kvGetJson<any>(kv, `circle:${code}:chal:${chalId}`);
       if (!cm) return json({ error: 'Challenge not found.' }, 404);
       const submission = {
         by: memberId,
@@ -624,13 +657,14 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
         submittedAt: Date.now(),
       };
       await kvPutJson(kv, `circle:${code}:chal:${chalId}:submission`, submission);
+      await sendPush([await memberPushToken(kv, code, cm.from)], 'Ready to review ✍️', `${cm.toName || 'Your partner'} answered your challenge on ${cm.reference}`);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 
     case 'reviewChallenge': {
       const code = normCode(body.code);
       const chalId = String(body.chalId ?? '');
-      const cm = await kvGetJson(kv, `circle:${code}:chal:${chalId}`);
+      const cm = await kvGetJson<any>(kv, `circle:${code}:chal:${chalId}`);
       if (!cm) return json({ error: 'Challenge not found.' }, 404);
       const review = {
         by: memberId,
@@ -639,6 +673,7 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
         at: Date.now(),
       };
       await kvPutJson(kv, `circle:${code}:chal:${chalId}:review`, review);
+      await sendPush([await memberPushToken(kv, code, cm.to)], 'Encouragement from your partner 💛', `${cm.fromName || 'Your partner'} reviewed your ${cm.reference}`);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 
@@ -690,10 +725,12 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       const text = str(body.text, 1000).trim();
       if (!text) return json({ error: 'Missing prayer request.' }, 400);
       const prayerId = genId();
+      const byName = str(body.displayName, 40);
       await kvPutJson(kv, `circle:${code}:prayer:${prayerId}`, {
-        prayerId, text, by: memberId, byName: str(body.displayName, 40),
+        prayerId, text, by: memberId, byName,
         createdAt: Date.now(), status: 'active',
       });
+      await sendPush(await otherMemberTokens(kv, code, memberId), 'A prayer request 🙏', `${byName || 'Someone'} shared a prayer request`);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

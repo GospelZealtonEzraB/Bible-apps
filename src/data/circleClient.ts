@@ -15,6 +15,7 @@ export interface MemberSnapshotInput {
   planDone: string[];
   lastActiveDay: string | null;
   lastActivity?: { type: string; ref?: string; at: number } | null;
+  pushToken?: string | null;
 }
 
 async function circleCall(

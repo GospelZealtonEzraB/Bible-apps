@@ -19,6 +19,7 @@ import type {
   VerseStatus,
 } from '@/types';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
+import { getExpoPushToken } from '@/notifications';
 import * as circleApi from '@/data/circleClient';
 import type { MemberSnapshotInput } from '@/data/circleClient';
 import { initialSRS, review as sm2Review, RATING_TO_QUALITY } from '@/srs/sm2';
@@ -58,6 +59,8 @@ interface StoreState {
   notes: Record<string, LocalNote>;
   /** Session memory for the welcome-back recap. */
   session: { lastOpenedDay: string | null };
+  /** Expo push token for partner-activity notifications (null until registered). */
+  pushToken: string | null;
   hydrated: boolean;
   /** Id of a badge just earned, for the celebration overlay (transient). */
   recentBadgeId: string | null;
@@ -123,6 +126,8 @@ interface StoreState {
   cheerMember: (code: string, toMemberId: string) => Promise<void>;
   /** Record that the app was opened today (for the welcome-back recap). */
   markOpened: () => void;
+  /** Register this device for partner-activity push notifications (real builds only). */
+  registerPush: () => Promise<void>;
   /** Leave a circle (removes my member record + local cache). */
   leaveCircle: (code: string) => Promise<void>;
   /** Set the partnership covenant (agreed rhythm + goal). */
@@ -209,6 +214,7 @@ function myMemberSnapshot(
     planDone: versesDoneFrom(state.verses, planRefs),
     lastActiveDay: state.stats.lastActiveDay,
     lastActivity: null,
+    pushToken: state.pushToken,
   };
 }
 
@@ -339,6 +345,7 @@ export const useStore = create<StoreState>()(
       applications: {},
       notes: {},
       session: { lastOpenedDay: null },
+      pushToken: null,
       hydrated: false,
       recentBadgeId: null,
       recentXp: null,
@@ -496,6 +503,7 @@ export const useStore = create<StoreState>()(
       },
 
       createCircle: async (name) => {
+        get().registerPush().catch(() => {});
         const s = get();
         const snap = await circleApi.createCircle(s.settings.serverUrl, myMemberSnapshot(s), { name });
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
@@ -503,6 +511,7 @@ export const useStore = create<StoreState>()(
       },
 
       joinCircle: async (code) => {
+        get().registerPush().catch(() => {});
         const s = get();
         const snap = await circleApi.joinCircle(s.settings.serverUrl, code.trim().toUpperCase(), myMemberSnapshot(s));
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
@@ -669,6 +678,12 @@ export const useStore = create<StoreState>()(
 
       markOpened: () => set({ session: { lastOpenedDay: dayKey() } }),
 
+      registerPush: async () => {
+        if (get().pushToken) return; // already registered
+        const token = await getExpoPushToken();
+        if (token) set({ pushToken: token });
+      },
+
       leaveCircle: async (code) => {
         const s = get();
         try {
@@ -723,6 +738,7 @@ export const useStore = create<StoreState>()(
         applications: state.applications,
         notes: state.notes,
         session: state.session,
+        pushToken: state.pushToken,
       }),
       // Merge persisted data over current defaults so state saved by an older
       // version (missing newer fields like stats.earnedBadges) is always
@@ -740,6 +756,7 @@ export const useStore = create<StoreState>()(
           applications: p.applications ?? {},
           notes: p.notes ?? {},
           session: { lastOpenedDay: null, ...(p.session ?? {}) },
+          pushToken: p.pushToken ?? null,
           verses: p.verses ?? {},
         };
       },
