@@ -39,6 +39,10 @@
           "color": "#7C9CF5"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "defaultServerUrl": "https://biblememory.biblememory.workers.dev",
+      "appSecret": ""
+    }
   }
 }

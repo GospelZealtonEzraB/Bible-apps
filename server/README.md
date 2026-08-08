@@ -42,6 +42,11 @@ Paste that into the app: **Settings → AI & Server → Server URL**.
 > `engraved-server` on its own.
 
 Optional extra protection: `npx wrangler secret put APP_SHARED_SECRET` (any random string).
+If you set this, put the **same** value in the app at `app.json` → `extra.appSecret` (or the
+`EXPO_PUBLIC_APP_SECRET` build env var) — the app sends it as the `x-app-secret` header, and a
+mismatch makes the Worker return `401`. Set both or neither. This is a speed bump against
+strangers who find your URL; the real cost guarantee is an **OpenAI spend cap** (platform.openai.com
+→ Billing → Limits).
 
 ## Model / cost
 

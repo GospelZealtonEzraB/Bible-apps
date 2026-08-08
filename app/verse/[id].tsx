@@ -11,6 +11,7 @@ import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerse, useStore, useSettings } from '@/store/useStore';
 import { isLatinTranslation } from '@/data/bibleApi';
 import { fetchMemoryHook, fetchExplanation } from '@/data/aiClient';
+import { resolveServerUrl } from '@/config';
 import { relativeDueLabel } from '@/utils/date';
 import type { DrillMode } from '@/types';
 
@@ -28,6 +29,7 @@ export default function VerseDetailScreen() {
   const id = typeof params.id === 'string' ? decodeURIComponent(params.id) : '';
   const verse = useVerse(id);
   const serverUrl = useSettings((s) => s.serverUrl);
+  const aiEnabled = !!resolveServerUrl(serverUrl);
   const setVerseAi = useStore((s) => s.setVerseAi);
   const [speaking, setSpeaking] = useState(false);
   const [aiLoading, setAiLoading] = useState<null | 'hook' | 'explain'>(null);
@@ -158,7 +160,7 @@ export default function VerseDetailScreen() {
       {/* AI insights */}
       <View>
         <SectionTitle>Insights</SectionTitle>
-        {!serverUrl ? (
+        {!aiEnabled ? (
           <Card>
             <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>
               Add your Server URL in Settings to unlock AI memory hooks and plain-English

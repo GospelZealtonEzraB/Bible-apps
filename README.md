@@ -76,17 +76,36 @@ Then either:
   notifications, and text-to-speech all work here.
 - **Web preview (layout only):** press `w`. (Notifications/TTS are native-only.)
 
-### Building an installable app
+### Building an installable app (share it with others)
 
 Use [EAS Build](https://docs.expo.dev/build/introduction/) to produce a real,
-installable binary:
+installable binary — its own **Engraved** icon on the home screen, no Expo Go
+required. A one-time free Expo account is all you need to start.
 
 ```bash
 npm install -g eas-cli
-eas login
-eas build -p android   # APK/AAB
-eas build -p ios       # requires an Apple Developer account
+eas login                        # free Expo account
+eas build -p android --profile preview   # shareable .apk (see eas.json)
 ```
+
+When it finishes, EAS gives you a download link. Send that link to anyone —
+they tap it on an Android phone, allow "install from this source," and Engraved
+installs like any app. The `preview` profile (in `eas.json`) is tuned for exactly
+this: internal distribution as a direct-install **APK**.
+
+```bash
+eas build -p android --profile production   # .aab for the Play Store
+eas build -p ios --profile production       # requires an Apple Developer account
+```
+
+> 📲 **Reminders** (the daily notification) only work in a real build like this —
+> not in Expo Go. So this is also the first place you can test them.
+
+> 🤖 **AI for everyone, no setup.** The built-in AI server URL is baked into the
+> build (`app.json` → `extra.defaultServerUrl`), so everyone who installs the APK
+> gets memory hooks / explanations / build-a-pack with **zero configuration**.
+> All those calls bill to *your* AI key, so set a spend cap — see
+> [AI features](#-ai-features-optional-server) below.
 
 ---
 
@@ -120,6 +139,27 @@ without it; these features stay off until you deploy the server and paste its UR
 - Results are cached per verse, so you pay only once per hook/explanation.
 - *(ESV is coded but disabled — it needs a separate free Crossway key; see server/README.md
   to turn it on.)*
+
+### Zero-setup AI for a shared build
+
+Set `app.json` → `extra.defaultServerUrl` to your deployed Worker URL (already done for the
+maintainer's build). That URL is baked into every APK, so **anyone who installs the app gets
+AI immediately** — no Settings step. A user can still override it in **Settings → AI & Server**
+to point at their own server.
+
+Because every AI tap bills to *your* key, protect yourself before sharing widely:
+
+1. **Set a hard spend cap** at platform.openai.com → **Billing → Limits** (e.g. $5/month). This
+   is the real guarantee — usage can never exceed it.
+2. **(Optional) Shared secret** — a light speed bump so a stranger who finds the URL can't use
+   your server. Pick any random string and set it in **both** places (they must match, or AI
+   returns 401):
+   - App: `app.json` → `extra.appSecret` (or the `EXPO_PUBLIC_APP_SECRET` build env var).
+   - Worker: `npx wrangler secret put APP_SHARED_SECRET`.
+   Leave both empty to keep it off (the spend cap alone is fine for a small group).
+3. **Cost scales with users.** Per-verse caching lives on each phone, so heavy public use
+   multiplies calls. For hundreds of users, add server-side caching (Cloudflare KV) so each
+   verse's AI is generated once for everyone — not needed for a small group.
 
 ## 📜 Scripture text & licensing
 

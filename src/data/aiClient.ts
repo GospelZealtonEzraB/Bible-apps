@@ -4,6 +4,7 @@
  * throw a friendly error the UI turns into a "set up AI in Settings" hint.
  */
 import type { Verse } from '@/types';
+import { resolveServerUrl, serverHeaders } from '@/config';
 
 export class NoServerError extends Error {
   constructor() {
@@ -20,10 +21,13 @@ async function postAi<T>(
   serverUrl: string | null,
   body: Record<string, unknown>,
 ): Promise<T> {
-  if (!serverUrl || !serverUrl.trim()) throw new NoServerError();
-  const res = await fetch(`${normalizeBase(serverUrl)}/ai`, {
+  // A user's override in Settings wins; otherwise fall back to the URL baked
+  // into the build so AI works with no setup.
+  const base = resolveServerUrl(serverUrl);
+  if (!base) throw new NoServerError();
+  const res = await fetch(`${normalizeBase(base)}/ai`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: serverHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));

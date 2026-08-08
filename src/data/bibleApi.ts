@@ -1,5 +1,6 @@
 import { WEB_FIXTURES } from './fixtures';
 import { parseReference, formatReference } from './books';
+import { resolveServerUrl, serverHeaders } from '@/config';
 
 const BIBLE_API_BASE = 'https://bible-api.com';
 const GETBIBLE_BASE = 'https://api.getbible.net/v2';
@@ -203,14 +204,16 @@ async function fetchFromEsv(
   info: TranslationInfo,
   serverUrl?: string | null,
 ): Promise<FetchedVerse> {
-  // ESV is copyrighted: its key lives on the user's server. Route through it.
-  if (!serverUrl || !serverUrl.trim()) {
+  // ESV is copyrighted: its key lives on the user's server. Route through it,
+  // falling back to the baked-in server URL when Settings has no override.
+  const resolved = resolveServerUrl(serverUrl);
+  if (!resolved) {
     throw new Error('ESV needs a Server URL — add it in Settings → AI & Server.');
   }
-  const base = serverUrl.trim().replace(/\/+$/, '');
+  const base = resolved.replace(/\/+$/, '');
   const res = await fetch(`${base}/esv`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: serverHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify({ reference: ref }),
   });
   const data: { reference?: string; text?: string; error?: string } = await res

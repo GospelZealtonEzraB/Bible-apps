@@ -7,6 +7,7 @@ import { Card, Chip, SectionTitle, Button } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore, useSettings, useStats } from '@/store/useStore';
 import { TRANSLATIONS } from '@/data/bibleApi';
+import { DEFAULT_SERVER_URL, resolveServerUrl } from '@/config';
 import {
   scheduleDailyReminder,
   cancelDailyReminder,
@@ -159,13 +160,14 @@ export default function SettingsScreen() {
         <SectionTitle>AI &amp; Server</SectionTitle>
         <Card>
           <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
-            Paste your deployed server URL to unlock AI memory hooks, verse explanations,
-            and build-a-pack. See server/README.md to deploy one.
+            {DEFAULT_SERVER_URL
+              ? 'AI memory hooks, verse explanations, and build-a-pack are ready to use. This field is optional — set it only to point the app at your own server instead of the built-in one.'
+              : 'Paste your deployed server URL to unlock AI memory hooks, verse explanations, and build-a-pack. See server/README.md to deploy one.'}
           </Text>
           <TextInput
             value={settings.serverUrl ?? ''}
             onChangeText={(t) => setSettings({ serverUrl: t.trim() ? t.trim() : null })}
-            placeholder="https://engraved-server.you.workers.dev"
+            placeholder={DEFAULT_SERVER_URL ?? 'https://engraved-server.you.workers.dev'}
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
             autoCorrect={false}
@@ -180,7 +182,11 @@ export default function SettingsScreen() {
             }}
           />
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
-            {settings.serverUrl ? 'AI features are enabled.' : 'Optional — the app works fully without it.'}
+            {resolveServerUrl(settings.serverUrl)
+              ? settings.serverUrl
+                ? 'AI features are enabled (using your custom server).'
+                : 'AI features are enabled (using the built-in server).'
+              : 'Optional — the app works fully without it.'}
           </Text>
         </Card>
       </View>
