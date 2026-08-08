@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Modal, View, Text, Pressable, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
-import { useRecentBadgeId, useStore } from '@/store/useStore';
+import { useRecentBadgeId, useRecentCelebration, useStore } from '@/store/useStore';
 import { badgeById } from '@/gamification';
 import { QUEST_BONUS_XP } from '@/quests';
 import { useTheme, spacing, font, radius } from '@/theme';
@@ -17,9 +17,10 @@ export function Celebration() {
   const { colors } = useTheme();
   const badgeId = useRecentBadgeId();
   const questComplete = useStore((s) => s.recentQuestComplete);
+  const milestone = useRecentCelebration();
   const clear = useStore((s) => s.clearCelebration);
   const badge = badgeId ? badgeById(badgeId) : undefined;
-  const show = !!badge || questComplete;
+  const show = !!badge || questComplete || !!milestone;
 
   useEffect(() => {
     if (!show) return;
@@ -36,10 +37,15 @@ export function Celebration() {
 
   if (!show) return null;
 
-  const eyebrow = badge ? 'BADGE UNLOCKED' : 'DAILY QUESTS DONE';
-  const emoji = badge ? badge.emoji : '🎯';
-  const title = badge ? badge.name : 'All quests complete!';
-  const subtitle = badge ? badge.description : `Nice work today. +${QUEST_BONUS_XP} XP bonus!`;
+  // Priority: a newly earned badge, then all-quests-done, then a milestone.
+  const eyebrow = badge ? 'BADGE UNLOCKED' : questComplete ? 'DAILY QUESTS DONE' : milestone!.eyebrow;
+  const emoji = badge ? badge.emoji : questComplete ? '🎯' : milestone!.emoji;
+  const title = badge ? badge.name : questComplete ? 'All quests complete!' : milestone!.title;
+  const subtitle = badge
+    ? badge.description
+    : questComplete
+      ? `Nice work today. +${QUEST_BONUS_XP} XP bonus!`
+      : milestone!.subtitle;
 
   return (
     <Modal transparent visible animationType="fade" onRequestClose={clear}>
@@ -65,7 +71,7 @@ export function Celebration() {
             maxWidth: 320,
           }}
         >
-          <Ember mood="celebrating" size={110} />
+          <Ember mood="celebrating" size={110} react={1} />
           <Text style={{ color: colors.accent, fontWeight: '800', letterSpacing: 1, marginTop: spacing.sm }}>
             {eyebrow}
           </Text>

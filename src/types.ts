@@ -137,6 +137,15 @@ export interface Activity {
 /** Back-compat alias for a single recent activity. */
 export type MemberActivity = Activity;
 
+/** A transient milestone shown in the full-screen celebration overlay. */
+export interface CelebrationEvent {
+  /** Small uppercase eyebrow, e.g. "VERSE MEMORIZED". */
+  eyebrow: string;
+  title: string;
+  subtitle: string;
+  emoji: string;
+}
+
 export interface CircleMember {
   id: string;
   displayName: string;

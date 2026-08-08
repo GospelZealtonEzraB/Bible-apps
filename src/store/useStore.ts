@@ -5,6 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type {
   Activity,
+  CelebrationEvent,
   ChallengeKind,
   Circle,
   CircleGoal,
@@ -71,6 +72,8 @@ interface StoreState {
   recentXp: number | null;
   /** True right after finishing all daily quests, for a celebration (transient). */
   recentQuestComplete: boolean;
+  /** A generic milestone to celebrate (memorized verse, streak, plan) — transient. */
+  recentCelebration: CelebrationEvent | null;
 
   addFetchedVerse: (fetched: FetchedVerse, packId?: string) => Verse;
   removeVerse: (id: string) => void;
@@ -354,6 +357,40 @@ function withProgress(
   return { stats, recentBadgeId: newBadges[0] ?? null, recentXp: opts.xpDelta };
 }
 
+/** Streak lengths worth a full-screen celebration. */
+const STREAK_MILESTONES = [7, 30, 100, 365];
+
+/**
+ * Choose the most exciting milestone to celebrate from a scoring event.
+ * A crossed streak milestone outranks a freshly memorized verse.
+ */
+function pickCelebration(opts: {
+  becameMemorized: boolean;
+  reference: string;
+  prevStreak: number;
+  nextStreak: number;
+}): CelebrationEvent | null {
+  const crossed =
+    opts.nextStreak > opts.prevStreak && STREAK_MILESTONES.includes(opts.nextStreak);
+  if (crossed) {
+    return {
+      eyebrow: 'STREAK MILESTONE',
+      title: `${opts.nextStreak}-day streak!`,
+      subtitle: 'Faithful, day after day. Keep going!',
+      emoji: '🔥',
+    };
+  }
+  if (opts.becameMemorized) {
+    return {
+      eyebrow: 'VERSE MEMORIZED',
+      title: opts.reference,
+      subtitle: 'You’ve hidden it in your heart! 🎉',
+      emoji: '💛',
+    };
+  }
+  return null;
+}
+
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
@@ -372,6 +409,7 @@ export const useStore = create<StoreState>()(
       recentBadgeId: null,
       recentXp: null,
       recentQuestComplete: false,
+      recentCelebration: null,
 
       hasVerse: (id) => !!get().verses[id],
 
@@ -457,11 +495,18 @@ export const useStore = create<StoreState>()(
             drills: 1,
             perfect: accuracy >= 90 ? 1 : 0,
           });
+          const celebration = pickCelebration({
+            becameMemorized,
+            reference: v.reference,
+            prevStreak: state.stats.streak,
+            nextStreak: progress.stats.streak,
+          });
           return {
             verses,
             recentBadgeId: progress.recentBadgeId,
             recentXp: (progress.recentXp ?? 0) + d.xpBonus,
             recentQuestComplete: d.questJustCompleted,
+            recentCelebration: celebration ?? state.recentCelebration,
             stats: { ...progress.stats, daily: d.daily, xp: progress.stats.xp + d.xpBonus },
             activityLog: becameMemorized
               ? pushActivity(state.activityLog, { type: 'memorized', ref: v.reference, at: now })
@@ -491,11 +536,18 @@ export const useStore = create<StoreState>()(
             versesOverride: verses,
           });
           const d = advanceDaily(progress.stats, now, { reviews: 1 });
+          const celebration = pickCelebration({
+            becameMemorized,
+            reference: v.reference,
+            prevStreak: state.stats.streak,
+            nextStreak: progress.stats.streak,
+          });
           return {
             verses,
             recentBadgeId: progress.recentBadgeId,
             recentXp: (progress.recentXp ?? 0) + d.xpBonus,
             recentQuestComplete: d.questJustCompleted,
+            recentCelebration: celebration ?? state.recentCelebration,
             stats: { ...progress.stats, daily: d.daily, xp: progress.stats.xp + d.xpBonus },
             activityLog: pushActivity(
               state.activityLog,
@@ -507,7 +559,7 @@ export const useStore = create<StoreState>()(
         }),
 
       clearCelebration: () =>
-        set({ recentBadgeId: null, recentXp: null, recentQuestComplete: false }),
+        set({ recentBadgeId: null, recentXp: null, recentQuestComplete: false, recentCelebration: null }),
 
       setSettings: (patch) =>
         set((state) => ({ settings: { ...state.settings, ...patch } })),
@@ -886,4 +938,8 @@ export function useMemorizedCount(): number {
 
 export function useRecentBadgeId(): string | null {
   return useStore((state) => state.recentBadgeId);
+}
+
+export function useRecentCelebration(): CelebrationEvent | null {
+  return useStore((state) => state.recentCelebration);
 }
