@@ -11,6 +11,8 @@ import type {
   Profile,
   Settings,
   Stats,
+  StudyApplication,
+  StudySession,
   Verse,
   VerseStatus,
 } from '@/types';
@@ -46,6 +48,10 @@ interface StoreState {
   profile: Profile;
   /** Growing Together circles, cached by invite code. */
   circles: Record<string, Circle>;
+  /** Cached AI study briefs, keyed by normalized passage. */
+  studySessions: Record<string, StudySession>;
+  /** "One thing I'll live out" applications, keyed by passage. */
+  applications: Record<string, StudyApplication>;
   hydrated: boolean;
   /** Id of a badge just earned, for the celebration overlay (transient). */
   recentBadgeId: string | null;
@@ -91,6 +97,13 @@ interface StoreState {
   submitChallenge: (code: string, chalId: string, text: string, accuracy?: number) => Promise<void>;
   /** Review a partner's submission with an encouraging note. */
   reviewChallenge: (code: string, chalId: string, note: string, meaningPrompt?: string) => Promise<void>;
+
+  /** Cache a fetched study brief. */
+  setStudySession: (session: StudySession) => void;
+  /** Capture "one thing I'll live out this week" for a studied passage. */
+  addApplication: (passageKey: string, passage: string, text: string) => void;
+  /** Mark an application revisited, optionally recording how it went. */
+  revisitApplication: (passageKey: string, outcome?: string) => void;
   /** Leave a circle (removes my member record + local cache). */
   leaveCircle: (code: string) => Promise<void>;
   /** Set the partnership covenant (agreed rhythm + goal). */
@@ -299,6 +312,8 @@ export const useStore = create<StoreState>()(
       settings: defaultSettings,
       profile: defaultProfile,
       circles: {},
+      studySessions: {},
+      applications: {},
       hydrated: false,
       recentBadgeId: null,
       recentXp: null,
@@ -525,6 +540,31 @@ export const useStore = create<StoreState>()(
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
+      setStudySession: (session) =>
+        set((state) => ({
+          studySessions: { ...state.studySessions, [session.passageKey]: session },
+        })),
+
+      addApplication: (passageKey, passage, text) =>
+        set((state) => ({
+          applications: {
+            ...state.applications,
+            [passageKey]: { passageKey, passage, text: text.trim(), createdAt: Date.now() },
+          },
+        })),
+
+      revisitApplication: (passageKey, outcome) =>
+        set((state) => {
+          const a = state.applications[passageKey];
+          if (!a) return {};
+          return {
+            applications: {
+              ...state.applications,
+              [passageKey]: { ...a, revisitedAt: Date.now(), outcome: outcome?.trim() || a.outcome },
+            },
+          };
+        }),
+
       leaveCircle: async (code) => {
         const s = get();
         try {
@@ -575,6 +615,8 @@ export const useStore = create<StoreState>()(
         settings: state.settings,
         profile: state.profile,
         circles: state.circles,
+        studySessions: state.studySessions,
+        applications: state.applications,
       }),
       // Merge persisted data over current defaults so state saved by an older
       // version (missing newer fields like stats.earnedBadges) is always
@@ -588,6 +630,8 @@ export const useStore = create<StoreState>()(
           settings: { ...defaultSettings, ...(p.settings ?? {}) },
           profile: { ...defaultProfile, ...(p.profile ?? {}) },
           circles: p.circles ?? {},
+          studySessions: p.studySessions ?? {},
+          applications: p.applications ?? {},
           verses: p.verses ?? {},
         };
       },
@@ -624,6 +668,14 @@ export function useCircleList(): Circle[] {
 
 export function useCircle(code: string | undefined): Circle | undefined {
   return useStore((state) => (code ? state.circles[code] : undefined));
+}
+
+export function useStudySession(passageKey: string | undefined): StudySession | undefined {
+  return useStore((state) => (passageKey ? state.studySessions[passageKey] : undefined));
+}
+
+export function useApplication(passageKey: string | undefined): StudyApplication | undefined {
+  return useStore((state) => (passageKey ? state.applications[passageKey] : undefined));
 }
 
 /**

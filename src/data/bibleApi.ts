@@ -1,5 +1,5 @@
 import { WEB_FIXTURES } from './fixtures';
-import { parseReference, formatReference } from './books';
+import { parseReference, formatReference, parsePassage, formatPassage } from './books';
 import { resolveServerUrl, serverHeaders } from '@/config';
 
 const BIBLE_API_BASE = 'https://bible-api.com';
@@ -278,4 +278,86 @@ export async function getVerse(
       `Couldn't load "${ref}" in ${info.name}. Check your connection and the reference (e.g. "John 3:16").${detail}`,
     );
   }
+}
+
+// ---- Whole-chapter / passage fetch (for the study reader) -----------------
+
+export interface ChapterVerse {
+  verse: number;
+  text: string;
+}
+export interface FetchedChapter {
+  reference: string;
+  verses: ChapterVerse[];
+  translationName: string;
+}
+
+async function chapterFromBibleApi(info: TranslationInfo, bookName: string, chapter: number): Promise<ChapterVerse[]> {
+  const url = `${BIBLE_API_BASE}/${encodeURIComponent(`${bookName} ${chapter}`)}?translation=${info.id}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data: any = await res.json();
+  if (data.error) throw new Error(data.error);
+  const arr: any[] = Array.isArray(data.verses) ? data.verses : [];
+  return arr
+    .map((v) => ({ verse: Number(v.verse), text: cleanText(String(v.text ?? '')) }))
+    .filter((v) => v.text);
+}
+
+async function chapterFromGetBible(info: TranslationInfo, bookNumber: number, chapter: number): Promise<ChapterVerse[]> {
+  const code = info.providerCode ?? info.id;
+  const res = await fetch(`${GETBIBLE_BASE}/${code}/${bookNumber}/${chapter}.json`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data: GetBibleChapter = await res.json();
+  const list: GetBibleVerse[] = Array.isArray(data.verses) ? data.verses : Object.values(data.verses ?? {});
+  return list.map((v) => ({ verse: v.verse, text: cleanText(v.text) })).sort((a, b) => a.verse - b.verse);
+}
+
+async function chapterFromBolls(info: TranslationInfo, bookNumber: number, chapter: number): Promise<ChapterVerse[]> {
+  const code = info.providerCode ?? info.id;
+  const res = await fetch(`${BOLLS_BASE}/get-text/${code}/${bookNumber}/${chapter}/`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data: BollsVerse[] = await res.json();
+  if (!Array.isArray(data)) throw new Error('Unexpected response shape from bolls.');
+  return data.map((v) => ({ verse: v.verse, text: cleanText(v.text) })).sort((a, b) => a.verse - b.verse);
+}
+
+/**
+ * Fetch a whole chapter or a verse range for reading/study. Unlike `getVerse`
+ * this accepts a verseless chapter ("John 3"). No offline fixtures (chapters
+ * aren't bundled), so it needs a connection.
+ */
+export async function getChapterVerses(
+  reference: string,
+  translation = 'web',
+  _opts: { serverUrl?: string | null } = {},
+): Promise<FetchedChapter> {
+  const passage = parsePassage(reference);
+  if (!passage) {
+    throw new Error('Enter a chapter or passage, e.g. "John 3" or "John 3:1-21".');
+  }
+  const info = translationInfo(translation) ?? TRANSLATIONS[0];
+
+  let all: ChapterVerse[];
+  switch (info.provider) {
+    case 'bolls':
+      all = await chapterFromBolls(info, passage.bookNumber, passage.chapter);
+      break;
+    case 'getbible':
+      all = await chapterFromGetBible(info, passage.bookNumber, passage.chapter);
+      break;
+    case 'esv':
+      throw new Error('ESV chapter view isn’t available yet.');
+    case 'bible-api':
+    default:
+      all = await chapterFromBibleApi(info, passage.bookName, passage.chapter);
+      break;
+  }
+
+  const verses = passage.whole
+    ? all
+    : all.filter((v) => v.verse >= (passage.verseStart ?? 1) && v.verse <= (passage.verseEnd ?? 99999));
+  if (verses.length === 0) throw new Error('No verses found for that passage.');
+
+  return { reference: formatPassage(passage), verses, translationName: info.name };
 }

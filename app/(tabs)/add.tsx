@@ -52,6 +52,20 @@ export default function AddScreen() {
     <Screen>
       <Header title="Add a verse" subtitle="Look one up, or start with a pack" />
 
+      {/* AI Bible study entry */}
+      <Card onPress={() => router.push('/study')}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="reader-outline" size={22} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>Study a passage</Text>
+            <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>AI sets the scene for today’s reading</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+        </View>
+      </Card>
+
       {/* Reference lookup */}
       <Card>
         <SectionTitle>Search by reference</SectionTitle>

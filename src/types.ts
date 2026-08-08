@@ -196,6 +196,44 @@ export interface Challenge {
   review?: ChallengeReview;
 }
 
+// ---- AI study ----
+
+export interface StudyCharacter {
+  name: string;
+  insight: string;
+}
+export interface StudyWord {
+  term: string;
+  language: string;
+  insight: string;
+}
+export interface StudyBrief {
+  summaryBefore: string;
+  setting: string;
+  characters: StudyCharacter[];
+  speakerAudience: string;
+  location: string;
+  background: string;
+  discussionQuestions: string[];
+  wordStudy: StudyWord[];
+  crossReferences: string[];
+}
+export interface StudySession {
+  passage: string;
+  passageKey: string;
+  brief: StudyBrief;
+  fetchedAt: number;
+}
+/** "One thing I'll live out this week" captured after a study. */
+export interface StudyApplication {
+  passageKey: string;
+  passage: string;
+  text: string;
+  createdAt: number;
+  revisitedAt?: number;
+  outcome?: string;
+}
+
 /** The full shared state of a circle, as returned by the server. */
 export interface CircleSnapshot {
   meta: CircleMeta;

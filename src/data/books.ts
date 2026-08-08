@@ -141,3 +141,49 @@ export function formatReference(p: ParsedReference): string {
   const range = p.verseEnd > p.verseStart ? `${p.verseStart}-${p.verseEnd}` : `${p.verseStart}`;
   return `${p.bookName} ${p.chapter}:${range}`;
 }
+
+/**
+ * A passage that may be a whole chapter ("John 3") or a verse range
+ * ("John 3:1-21"). Unlike `parseReference`, the verse part is optional.
+ */
+export interface PassageRef {
+  bookNumber: number;
+  bookName: string;
+  chapter: number;
+  verseStart?: number;
+  verseEnd?: number;
+  /** True when no verse was given (the whole chapter). */
+  whole: boolean;
+}
+
+/**
+ * Parse a passage like "John 3" (whole chapter) or "John 3:1-21" (range).
+ * Returns null if unparseable or the book is unknown. `parseReference` is left
+ * untouched because the structured Bible providers depend on its stricter
+ * chapter:verse contract.
+ */
+export function parsePassage(input: string): PassageRef | null {
+  const cleaned = input.trim().replace(/\s+/g, ' ');
+  const m = cleaned.match(/^(.+?)\s+(\d+)(?::(\d+)(?:\s*-\s*(\d+))?)?$/);
+  if (!m) return null;
+
+  const book = BOOK_LOOKUP[normBook(m[1])];
+  if (!book) return null;
+
+  const chapter = Number(m[2]);
+  if (m[3] == null) {
+    return { bookNumber: book.n, bookName: book.name, chapter, whole: true };
+  }
+  const verseStart = Number(m[3]);
+  const verseEnd = m[4] ? Number(m[4]) : verseStart;
+  if (verseEnd < verseStart) return null;
+
+  return { bookNumber: book.n, bookName: book.name, chapter, verseStart, verseEnd, whole: false };
+}
+
+/** Canonical display string for a passage ("John 3" or "John 3:1-21"). */
+export function formatPassage(p: PassageRef): string {
+  if (p.whole || p.verseStart == null) return `${p.bookName} ${p.chapter}`;
+  const range = p.verseEnd && p.verseEnd > p.verseStart ? `${p.verseStart}-${p.verseEnd}` : `${p.verseStart}`;
+  return `${p.bookName} ${p.chapter}:${range}`;
+}

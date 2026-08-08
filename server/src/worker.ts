@@ -173,6 +173,95 @@ async function handleAi(req: Request, env: Env): Promise<Response> {
   return json({ error: 'Unknown task. Use hook | explain | pack.' }, 400);
 }
 
+// ===========================================================================
+// AI study brief (/study) — passage context for a Bible-study session
+// ===========================================================================
+
+const STUDY_BRIEF_SYSTEM =
+  'You produce a STUDY BRIEF for a Bible passage a reader is about to study. You are given ' +
+  'ONLY a reference (e.g. "John 3:1-21" or "John 3"). Return ONLY a JSON object with these keys: ' +
+  '"summaryBefore" (what happens in the preceding verses/chapter leading into this passage), ' +
+  '"setting" (the scene, time, and place), "characters" (array of {"name","insight"} for who is ' +
+  'involved), "speakerAudience" (who is speaking and to whom), "location" (geography plus relevant ' +
+  'historical/cultural background and demographics), "background" (any other helpful context), ' +
+  '"discussionQuestions" (array of 3-5 thoughtful questions), "wordStudy" (array of ' +
+  '{"term","language","insight"} for 1-3 key Greek or Hebrew words), and "crossReferences" (array of ' +
+  '3-6 related passage reference strings, references ONLY). Write original commentary in your own ' +
+  'words. Do NOT quote, paraphrase, or reproduce any Scripture text — no verse text at all. ' +
+  'Output JSON only, no preamble.';
+
+function parseStudyBrief(text: string): any {
+  const empty = {
+    summaryBefore: '', setting: '', characters: [], speakerAudience: '',
+    location: '', background: '', discussionQuestions: [], wordStudy: [], crossReferences: [],
+  };
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return empty;
+  try {
+    const o: any = JSON.parse(m[0]);
+    const strArr = (v: any, n: number) =>
+      Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, n) : [];
+    return {
+      summaryBefore: String(o.summaryBefore ?? ''),
+      setting: String(o.setting ?? ''),
+      characters: Array.isArray(o.characters)
+        ? o.characters
+            .filter((c: any) => c && typeof c === 'object')
+            .map((c: any) => ({ name: String(c.name ?? ''), insight: String(c.insight ?? '') }))
+            .slice(0, 12)
+        : [],
+      speakerAudience: String(o.speakerAudience ?? ''),
+      location: String(o.location ?? ''),
+      background: String(o.background ?? ''),
+      discussionQuestions: strArr(o.discussionQuestions, 8),
+      wordStudy: Array.isArray(o.wordStudy)
+        ? o.wordStudy
+            .filter((w: any) => w && typeof w === 'object')
+            .map((w: any) => ({
+              term: String(w.term ?? ''),
+              language: String(w.language ?? ''),
+              insight: String(w.insight ?? ''),
+            }))
+            .slice(0, 8)
+        : [],
+      crossReferences: strArr(o.crossReferences, 12),
+    };
+  } catch {
+    return empty;
+  }
+}
+
+async function handleStudy(req: Request, env: Env): Promise<Response> {
+  const body: any = await req.json().catch(() => ({}));
+  const action = String(body.action ?? 'brief');
+
+  if (action === 'brief') {
+    const passage = str(body.passage, 60).trim();
+    if (!passage) return json({ error: 'Missing passage.' }, 400);
+
+    // Global cache by passage — one LLM call per distinct passage, app-wide.
+    const key = `study:brief:${normPassage(passage)}`;
+    if (env.ENGRAVED_KV && !body.force) {
+      const cached = await kvGetJson<any>(env.ENGRAVED_KV, key);
+      if (cached?.brief) return json({ brief: cached.brief, cached: true });
+    }
+
+    const out = await callLLM(env, STUDY_BRIEF_SYSTEM, `Reference: ${passage}`, 950);
+    const brief = parseStudyBrief(out);
+    if (env.ENGRAVED_KV) {
+      await kvPutJson(env.ENGRAVED_KV, key, {
+        passage,
+        brief,
+        model: env.AI_MODEL || '',
+        createdAt: Date.now(),
+      });
+    }
+    return json({ brief, cached: false });
+  }
+
+  return json({ error: 'Unknown study action. Use brief.' }, 400);
+}
+
 /*
  * ESV is disabled for now (it needs a separate free Crossway API key). To
  * re-enable: uncomment this handler, uncomment the /esv route below, set the
@@ -250,6 +339,11 @@ function str(v: unknown, max: number): string {
 /** Normalized reference key (lowercase, single-spaced) — stable per-verse key. */
 function normRef(reference: string): string {
   return String(reference ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Normalized passage key for the global study-brief cache. */
+function normPassage(passage: string): string {
+  return String(passage ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 /** Whole-day difference b - a for two YYYY-MM-DD keys (NaN if unparseable). */
@@ -531,9 +625,10 @@ export default {
     const path = new URL(request.url).pathname.replace(/\/$/, '');
     try {
       if (path === '/ai') return await handleAi(request, env);
+      if (path === '/study') return await handleStudy(request, env);
       if (path === '/circle') return await handleCircle(request, env);
       // if (path === '/esv') return await handleEsv(request, env); // ESV disabled for now
-      return json({ error: 'Not found. Use /ai or /circle.' }, 404);
+      return json({ error: 'Not found. Use /ai, /study, or /circle.' }, 404);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Server error';
       return json({ error: message }, 500);
