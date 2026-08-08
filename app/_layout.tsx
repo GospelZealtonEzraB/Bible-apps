@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { View } from 'react-native';
 
 import { useTheme } from '@/theme';
@@ -16,18 +16,21 @@ configureNotificationHandler();
 function useOnboardingGate() {
   const router = useRouter();
   const segments = useSegments();
+  // Wait until the root navigator is actually mounted before navigating —
+  // redirecting too early throws "navigate before mounting the Root Layout".
+  const navReady = !!useRootNavigationState()?.key;
   const hydrated = useStore((s) => s.hydrated);
   const onboarded = useSettings((s) => s.onboarded);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!navReady || !hydrated) return;
     const onOnboarding = segments[0] === 'onboarding';
     if (!onboarded && !onOnboarding) {
       router.replace('/onboarding');
     } else if (onboarded && onOnboarding) {
       router.replace('/(tabs)');
     }
-  }, [hydrated, onboarded, segments, router]);
+  }, [navReady, hydrated, onboarded, segments, router]);
 }
 
 export default function RootLayout() {
