@@ -23,21 +23,25 @@ it, and turns these features on once you paste the deployed URL into
 > 🔐 Never paste the key into the app, into git, or into chat. It goes **only** into the
 > Worker's secret below.
 
-## Deploy
+## Deploy (command line — recommended)
 
 ```bash
 cd server
-npm install -g wrangler        # one time
-wrangler login                 # opens the browser
-
-wrangler secret put OPENAI_API_KEY       # paste your sk-… key when prompted
-wrangler secret put APP_SHARED_SECRET    # optional — any random string
-
-wrangler deploy
+npm install                          # installs wrangler locally
+npx wrangler login                   # opens the browser to sign in / sign up
+npx wrangler secret put OPENAI_API_KEY   # paste your sk-… key when prompted
+npx wrangler deploy
 ```
 
-`wrangler deploy` prints your URL, e.g. `https://engraved-server.<you>.workers.dev`.
+`npx wrangler deploy` prints your URL, e.g. `https://engraved-server.<you>.workers.dev`.
 Paste that into the app: **Settings → AI & Server → Server URL**.
+
+> The worker is named `engraved-server` (from `wrangler.toml`). If you already created a
+> worker with a different name in the Cloudflare dashboard, either change the `name` line in
+> `wrangler.toml` to match it, or ignore/delete that empty one — `wrangler deploy` manages
+> `engraved-server` on its own.
+
+Optional extra protection: `npx wrangler secret put APP_SHARED_SECRET` (any random string).
 
 ## Model / cost
 
