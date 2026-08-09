@@ -3,7 +3,7 @@
  * Kept UI-free and side-effect-free so they can be unit-tested; the store's
  * topic actions are thin wrappers over these.
  */
-import type { Topic, TopicEntry } from '@/types';
+import type { Topic, TopicEntry, TopicReflection } from '@/types';
 import { normalizeKey } from '@/data/bibleApi';
 import { parseReference } from '@/data/books';
 
@@ -90,4 +90,76 @@ export function topicsForRef(topics: Record<string, Topic>, ref: string): string
   return Object.values(topics)
     .filter((t) => (t.entries ?? []).some((e) => normalizeKey(e.ref) === key))
     .map((t) => t.id);
+}
+
+// ---- Workspace: free-form thoughts / journal / draft blocks ---------------
+
+/** Append a thought/journal block to a topic. No-op on empty text. */
+export function addReflection(topic: Topic, id: string, text: string, now: number): Topic {
+  const t = text.trim();
+  if (!t) return topic;
+  const reflection: TopicReflection = { id, text: t, updatedAt: now };
+  return { ...topic, reflections: [...(topic.reflections ?? []), reflection], updatedAt: now };
+}
+
+/** Edit a thought block. Empty text removes it (a natural "clear to delete"). */
+export function updateReflection(topic: Topic, id: string, text: string, now: number): Topic {
+  const t = text.trim();
+  if (!t) return removeReflection(topic, id, now);
+  return {
+    ...topic,
+    reflections: (topic.reflections ?? []).map((r) => (r.id === id ? { ...r, text: t, updatedAt: now } : r)),
+    updatedAt: now,
+  };
+}
+
+/** Remove a thought block. */
+export function removeReflection(topic: Topic, id: string, now: number): Topic {
+  const reflections = (topic.reflections ?? []).filter((r) => r.id !== id);
+  if (reflections.length === (topic.reflections ?? []).length) return topic;
+  return { ...topic, reflections, updatedAt: now };
+}
+
+/** Move a thought block up (dir=-1) or down (dir=+1) in the list. */
+export function moveReflection(topic: Topic, id: string, dir: -1 | 1, now: number): Topic {
+  const list = [...(topic.reflections ?? [])];
+  const i = list.findIndex((r) => r.id === id);
+  const j = i + dir;
+  if (i === -1 || j < 0 || j >= list.length) return topic;
+  [list[i], list[j]] = [list[j], list[i]];
+  return { ...topic, reflections: list, updatedAt: now };
+}
+
+/**
+ * Assemble a topic into a single plain-text document for message prep, an
+ * article, or a journal entry — title, description, your thoughts, then every
+ * collected verse (reference + text via `hydrate` + your note). Non-throwing.
+ */
+export function composeTopic(topic: Topic, hydrate: (ref: string) => string | null, order: TopicOrder = 'canonical'): string {
+  const lines: string[] = [];
+  lines.push(topic.title.trim() || 'Untitled topic');
+  if (topic.description?.trim()) lines.push('', topic.description.trim());
+
+  const reflections = topic.reflections ?? [];
+  if (reflections.length) {
+    lines.push('', 'THOUGHTS', '');
+    reflections.forEach((r, i) => {
+      lines.push(r.text.trim());
+      if (i < reflections.length - 1) lines.push('');
+    });
+  }
+
+  const entries = sortedEntries(topic, order);
+  if (entries.length) {
+    lines.push('', 'VERSES', '');
+    for (const e of entries) {
+      const text = hydrate(e.ref);
+      lines.push(`${e.ref}`);
+      if (text) lines.push(`  "${text}"`);
+      if (e.note?.trim()) lines.push(`  — ${e.note.trim()}`);
+      lines.push('');
+    }
+  }
+
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }

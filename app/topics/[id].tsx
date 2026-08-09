@@ -1,17 +1,17 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, Alert, Share } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
-import { Card, Button, Chip, EmptyState } from '@/components/ui';
+import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
 import { VerseActionSheet } from '@/components/VerseActionSheet';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useTopic, useStore } from '@/store/useStore';
-import { sortedEntries, type TopicOrder } from '@/utils/topics';
+import { sortedEntries, composeTopic, type TopicOrder } from '@/utils/topics';
 import { hydrateReference } from '@/data/localSearch';
 import { translationName as translationNameOf, type FetchedVerse } from '@/data/bibleApi';
-import type { TopicEntry } from '@/types';
+import type { TopicEntry, TopicReflection } from '@/types';
 
 export default function TopicDetailScreen() {
   const { colors } = useTheme();
@@ -26,6 +26,10 @@ export default function TopicDetailScreen() {
   const setTopicEntryNote = useStore((s) => s.setTopicEntryNote);
   const addFetchedVerse = useStore((s) => s.addFetchedVerse);
   const hasVerse = useStore((s) => s.hasVerse);
+  const addTopicThought = useStore((s) => s.addTopicThought);
+  const editTopicThought = useStore((s) => s.editTopicThought);
+  const removeTopicThought = useStore((s) => s.removeTopicThought);
+  const moveTopicThought = useStore((s) => s.moveTopicThought);
 
   const [order, setOrder] = useState<TopicOrder>('canonical');
   const [editingTitle, setEditingTitle] = useState(false);
@@ -79,7 +83,14 @@ export default function TopicDetailScreen() {
     );
   };
 
+  // Assemble the whole workspace (thoughts + verses) into shareable text.
+  const compose = async () => {
+    const doc = composeTopic(topic, (ref) => hydrateReference(ref)?.text ?? null, order);
+    try { await Share.share({ message: doc }); } catch {}
+  };
+
   const count = (topic.entries ?? []).length;
+  const thoughts = topic.reflections ?? [];
 
   return (
     <Screen>
@@ -109,11 +120,39 @@ export default function TopicDetailScreen() {
           </View>
         </Card>
       ) : (
-        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-          <Button title="Memorize all" onPress={memorizeAll} icon={<Ionicons name="sparkles" size={16} color={colors.onPrimary} />} style={{ flex: 1 }} small />
-          <Button title="Rename" variant="secondary" onPress={() => { setTitleDraft(topic.title); setEditingTitle(true); }} icon={<Ionicons name="pencil" size={15} color={colors.text} />} style={{ flex: 1 }} small />
+        <View style={{ gap: spacing.sm }}>
+          <Button title="Compose & share" onPress={compose} icon={<Ionicons name="share-outline" size={16} color={colors.onPrimary} />} />
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Button title="Memorize all" variant="secondary" onPress={memorizeAll} icon={<Ionicons name="sparkles" size={15} color={colors.text} />} style={{ flex: 1 }} small />
+            <Button title="Rename" variant="secondary" onPress={() => { setTitleDraft(topic.title); setEditingTitle(true); }} icon={<Ionicons name="pencil" size={15} color={colors.text} />} style={{ flex: 1 }} small />
+          </View>
         </View>
       )}
+
+      {/* Thoughts / journal — the workspace for message prep, an article, journaling. */}
+      <View style={{ gap: spacing.sm }}>
+        <SectionTitle style={{ marginBottom: 0 }}>Thoughts & journal</SectionTitle>
+        {thoughts.length === 0 ? (
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+            Record what you’re seeing — build this topic toward a message, an article, or a journal entry.
+          </Text>
+        ) : (
+          thoughts.map((r, i) => (
+            <ThoughtBlock
+              key={r.id}
+              reflection={r}
+              isFirst={i === 0}
+              isLast={i === thoughts.length - 1}
+              onSave={(text) => editTopicThought(topic.id, r.id, text)}
+              onRemove={() => removeTopicThought(topic.id, r.id)}
+              onMove={(dir) => moveTopicThought(topic.id, r.id, dir)}
+            />
+          ))
+        )}
+        <AddThought onAdd={(text) => addTopicThought(topic.id, text)} />
+      </View>
+
+      {count > 0 ? <SectionTitle style={{ marginBottom: 0, marginTop: spacing.sm }}>Collected verses</SectionTitle> : null}
 
       {count > 1 ? (
         <View style={{ flexDirection: 'row', gap: spacing.sm }}>
@@ -144,6 +183,108 @@ export default function TopicDetailScreen() {
 
       <VerseActionSheet visible={!!selected} onClose={() => setSelected(null)} reference={selected?.reference ?? ''} text={selected?.text ?? ''} translation="kjv" />
     </Screen>
+  );
+}
+
+function AddThought({ onAdd }: { onAdd: (text: string) => void }) {
+  const { colors } = useTheme();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const save = () => { if (draft.trim()) onAdd(draft); setDraft(''); setOpen(false); };
+
+  if (!open) {
+    return (
+      <Pressable onPress={() => setOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm }}>
+        <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
+        <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>Add a thought</Text>
+      </Pressable>
+    );
+  }
+  return (
+    <Card style={{ gap: spacing.sm }}>
+      <TextInput
+        value={draft}
+        onChangeText={setDraft}
+        placeholder="Write freely — an insight, an outline point, a paragraph for your message…"
+        placeholderTextColor={colors.textFaint}
+        multiline
+        autoFocus
+        textAlignVertical="top"
+        style={{ color: colors.text, fontSize: font.sizes.md, minHeight: 90, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
+      />
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        <Pressable onPress={() => { setDraft(''); setOpen(false); }} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center' }}>
+          <Text style={{ color: colors.textFaint, fontWeight: '700' }}>Cancel</Text>
+        </Pressable>
+        <Pressable onPress={save} disabled={!draft.trim()} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: draft.trim() ? colors.primary : colors.surfaceAlt, borderRadius: radius.md }}>
+          <Text style={{ color: draft.trim() ? colors.onPrimary : colors.textFaint, fontWeight: '800' }}>Save</Text>
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
+
+function ThoughtBlock({
+  reflection,
+  isFirst,
+  isLast,
+  onSave,
+  onRemove,
+  onMove,
+}: {
+  reflection: TopicReflection;
+  isFirst: boolean;
+  isLast: boolean;
+  onSave: (text: string) => void;
+  onRemove: () => void;
+  onMove: (dir: -1 | 1) => void;
+}) {
+  const { colors } = useTheme();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(reflection.text);
+
+  const save = () => { onSave(draft); setEditing(false); };
+
+  if (editing) {
+    return (
+      <Card style={{ gap: spacing.sm }}>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          multiline
+          autoFocus
+          textAlignVertical="top"
+          style={{ color: colors.text, fontSize: font.sizes.md, minHeight: 90, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
+        />
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <Pressable onPress={() => { setDraft(reflection.text); setEditing(false); }} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center' }}>
+            <Text style={{ color: colors.textFaint, fontWeight: '700' }}>Cancel</Text>
+          </Pressable>
+          <Pressable onPress={save} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.primary, borderRadius: radius.md }}>
+            <Text style={{ color: colors.onPrimary, fontWeight: '800' }}>Save</Text>
+          </Pressable>
+        </View>
+      </Card>
+    );
+  }
+
+  return (
+    <Card style={{ gap: spacing.sm }}>
+      <Pressable onPress={() => { setDraft(reflection.text); setEditing(true); }}>
+        <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }}>{reflection.text}</Text>
+      </Pressable>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.lg }}>
+        <Pressable onPress={() => { setDraft(reflection.text); setEditing(true); }} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Ionicons name="create-outline" size={15} color={colors.textFaint} />
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>Edit</Text>
+        </Pressable>
+        {!isFirst ? <Pressable onPress={() => onMove(-1)} hitSlop={6}><Ionicons name="arrow-up" size={16} color={colors.textFaint} /></Pressable> : null}
+        {!isLast ? <Pressable onPress={() => onMove(1)} hitSlop={6}><Ionicons name="arrow-down" size={16} color={colors.textFaint} /></Pressable> : null}
+        <View style={{ flex: 1 }} />
+        <Pressable onPress={onRemove} hitSlop={6}><Ionicons name="trash-outline" size={15} color={colors.textFaint} /></Pressable>
+      </View>
+    </Card>
   );
 }
 

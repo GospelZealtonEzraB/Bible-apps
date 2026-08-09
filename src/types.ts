@@ -351,9 +351,19 @@ export interface TopicEntry {
   addedAt: number;
 }
 
+/** A free-form thought / journal entry / draft block inside a topic workspace. */
+export interface TopicReflection {
+  /** Stable local id (`r_…`). */
+  id: string;
+  text: string;
+  updatedAt: number;
+}
+
 /**
- * A user-named study collection ("The Rapture", "Grace", "Names of God").
- * Private (Personal Space) in this phase; shares to a circle come later.
+ * A user-named study collection ("The Rapture", "Grace", "Names of God") that
+ * doubles as a workspace: collect verses AND record your own thoughts, then
+ * compose it into a message / article / journal entry. Private (Personal Space)
+ * in this phase; shares to a circle come later.
  */
 export interface Topic {
   /** Stable local id (`t_…`). */
@@ -362,6 +372,8 @@ export interface Topic {
   description?: string;
   /** Verses tagged into this topic (newest first as stored). */
   entries: TopicEntry[];
+  /** Free-form thoughts / journal / draft blocks (ordered). */
+  reflections?: TopicReflection[];
   createdAt: number;
   updatedAt: number;
 }

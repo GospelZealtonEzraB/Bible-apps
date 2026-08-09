@@ -23,7 +23,15 @@ import type {
   Verse,
   VerseStatus,
 } from '@/types';
-import { addEntry as addTopicEntry, removeEntry as removeTopicEntry, updateEntryNote } from '@/utils/topics';
+import {
+  addEntry as addTopicEntry,
+  removeEntry as removeTopicEntry,
+  updateEntryNote,
+  addReflection as addTopicReflection,
+  updateReflection as updateTopicReflection,
+  removeReflection as removeTopicReflection,
+  moveReflection as moveTopicReflection,
+} from '@/utils/topics';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
 import * as circleApi from '@/data/circleClient';
@@ -177,6 +185,14 @@ interface StoreState {
   removeFromTopic: (id: string, ref: string) => void;
   /** Edit the note on an already-tagged verse. */
   setTopicEntryNote: (id: string, ref: string, note: string) => void;
+  /** Add a free-form thought/journal block to a topic workspace. */
+  addTopicThought: (id: string, text: string) => void;
+  /** Edit a thought block (empty text removes it). */
+  editTopicThought: (id: string, reflectionId: string, text: string) => void;
+  /** Remove a thought block. */
+  removeTopicThought: (id: string, reflectionId: string) => void;
+  /** Reorder a thought block up (-1) or down (+1). */
+  moveTopicThought: (id: string, reflectionId: string, dir: -1 | 1) => void;
   /** Post a message to a circle's discussion (optionally anchored to a reference). */
   postCircleMessage: (code: string, text: string, context?: string) => Promise<void>;
   /** Delete one of my own circle messages. */
@@ -1017,6 +1033,35 @@ export const useStore = create<StoreState>()(
           const t = state.topics[id];
           if (!t) return {};
           return { topics: { ...state.topics, [id]: updateEntryNote(t, ref, note, Date.now()) } };
+        }),
+
+      addTopicThought: (id, text) =>
+        set((state) => {
+          const t = state.topics[id];
+          if (!t) return {};
+          const rid = 'r_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+          return { topics: { ...state.topics, [id]: addTopicReflection(t, rid, text, Date.now()) } };
+        }),
+
+      editTopicThought: (id, reflectionId, text) =>
+        set((state) => {
+          const t = state.topics[id];
+          if (!t) return {};
+          return { topics: { ...state.topics, [id]: updateTopicReflection(t, reflectionId, text, Date.now()) } };
+        }),
+
+      removeTopicThought: (id, reflectionId) =>
+        set((state) => {
+          const t = state.topics[id];
+          if (!t) return {};
+          return { topics: { ...state.topics, [id]: removeTopicReflection(t, reflectionId, Date.now()) } };
+        }),
+
+      moveTopicThought: (id, reflectionId, dir) =>
+        set((state) => {
+          const t = state.topics[id];
+          if (!t) return {};
+          return { topics: { ...state.topics, [id]: moveTopicReflection(t, reflectionId, dir, Date.now()) } };
         }),
 
       addPrayer: async (code, text) => {

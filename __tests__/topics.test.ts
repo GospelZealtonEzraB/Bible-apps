@@ -5,6 +5,11 @@ import {
   sortedEntries,
   topicHasRef,
   topicsForRef,
+  addReflection,
+  updateReflection,
+  removeReflection,
+  moveReflection,
+  composeTopic,
 } from '../src/utils/topics';
 import type { Topic } from '../src/types';
 
@@ -105,5 +110,66 @@ describe('topicsForRef', () => {
     const c = addEntry(makeTopic({ id: 't_c' }), 'John 3:16', undefined, 2000);
     const ids = topicsForRef({ t_a: a, t_b: b, t_c: c }, 'john 3:16').sort();
     expect(ids).toEqual(['t_a', 't_c']);
+  });
+});
+
+describe('topic workspace (thoughts / journal)', () => {
+  test('addReflection appends, ignores empty', () => {
+    let t = addReflection(makeTopic(), 'r1', 'The trumpet call', 2000);
+    expect(t.reflections).toHaveLength(1);
+    t = addReflection(t, 'r2', '   ', 3000);
+    expect(t.reflections).toHaveLength(1);
+    t = addReflection(t, 'r2', 'A second thought', 3000);
+    expect(t.reflections?.map((r) => r.id)).toEqual(['r1', 'r2']);
+  });
+
+  test('updateReflection edits; clearing text deletes it', () => {
+    let t = addReflection(makeTopic(), 'r1', 'first', 2000);
+    t = updateReflection(t, 'r1', 'edited', 3000);
+    expect(t.reflections?.[0].text).toBe('edited');
+    t = updateReflection(t, 'r1', '   ', 4000);
+    expect(t.reflections).toHaveLength(0);
+  });
+
+  test('removeReflection drops the block', () => {
+    let t = addReflection(addReflection(makeTopic(), 'r1', 'a', 1), 'r2', 'b', 2);
+    t = removeReflection(t, 'r1', 3);
+    expect(t.reflections?.map((r) => r.id)).toEqual(['r2']);
+  });
+
+  test('moveReflection reorders and clamps at the ends', () => {
+    let t = makeTopic();
+    t = addReflection(t, 'r1', 'a', 1);
+    t = addReflection(t, 'r2', 'b', 2);
+    t = addReflection(t, 'r3', 'c', 3);
+    t = moveReflection(t, 'r3', -1, 4);
+    expect(t.reflections?.map((r) => r.id)).toEqual(['r1', 'r3', 'r2']);
+    const same = moveReflection(t, 'r1', -1, 5); // already at top
+    expect(same).toBe(t);
+  });
+});
+
+describe('composeTopic', () => {
+  const hydrate = (ref: string) => (ref === 'John 3:16' ? 'For God so loved the world' : ref === 'Genesis 1:1' ? 'In the beginning' : null);
+
+  test('assembles title, description, thoughts, and verses in canonical order', () => {
+    let t = makeTopic({ title: 'Grace', description: 'Unmerited favor' });
+    t = addEntry(t, 'John 3:16', 'the gospel in one verse', 2000);
+    t = addEntry(t, 'Genesis 1:1', undefined, 1000);
+    t = addReflection(t, 'r1', 'Grace begins at creation.', 3000);
+    const doc = composeTopic(t, hydrate);
+    expect(doc).toContain('Grace');
+    expect(doc).toContain('Unmerited favor');
+    expect(doc).toContain('THOUGHTS');
+    expect(doc).toContain('Grace begins at creation.');
+    expect(doc).toContain('VERSES');
+    expect(doc).toContain('"In the beginning"');
+    expect(doc).toContain('— the gospel in one verse');
+    // canonical order: Genesis before John
+    expect(doc.indexOf('Genesis 1:1')).toBeLessThan(doc.indexOf('John 3:16'));
+  });
+
+  test('an empty topic composes to just its title', () => {
+    expect(composeTopic(makeTopic({ title: 'Empty' }), hydrate)).toBe('Empty');
   });
 });
