@@ -59,6 +59,16 @@ export default function LibraryScreen() {
       <Header
         title="Library"
         subtitle={`${verses.length} verse${verses.length === 1 ? '' : 's'} saved`}
+        right={
+          <Pressable
+            onPress={() => router.push('/quiz')}
+            hitSlop={12}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.primarySoft }}
+          >
+            <Ionicons name="game-controller-outline" size={16} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>Quiz</Text>
+          </Pressable>
+        }
       />
 
       {/* List / Journey toggle */}
