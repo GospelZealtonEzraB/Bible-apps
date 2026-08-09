@@ -6,7 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen, Header } from '@/components/layout';
 import { Button, Chip, EmptyState } from '@/components/ui';
 import { VerseActionSheet } from '@/components/VerseActionSheet';
-import { useTheme, spacing, font } from '@/theme';
+import { AddToTopicSheet } from '@/components/AddToTopicSheet';
+import { useTheme, spacing, font, radius } from '@/theme';
 import { bookByNumber, chapterCount } from '@/data/structure';
 import { getChapterVerses, isLatinTranslation, type ChapterVerse } from '@/data/bibleApi';
 import { hasLocal } from '@/data/localBible';
@@ -36,7 +37,35 @@ export default function ChapterReaderScreen() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<ChapterVerse | null>(null);
 
+  // Multi-select: tag several verses into a topic at once.
+  const [selectMode, setSelectMode] = useState(false);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [topicOpen, setTopicOpen] = useState(false);
+
   const serif = isLatinTranslation(translation);
+
+  const refFor = (n: number) => `${book?.name ?? ''} ${chapter}:${n}`;
+
+  const togglePick = (n: number) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(n)) next.delete(n); else next.add(n);
+      return next;
+    });
+
+  const enterSelect = (n: number) => {
+    setSelectMode(true);
+    setPicked(new Set([n]));
+  };
+
+  const exitSelect = () => {
+    setSelectMode(false);
+    setPicked(new Set());
+  };
+
+  const pickedRefs = verses
+    ? verses.filter((v) => picked.has(v.verse)).map((v) => refFor(v.verse))
+    : [];
 
   useEffect(() => {
     if (!book) return;
@@ -45,6 +74,8 @@ export default function ChapterReaderScreen() {
     setLoading(true);
     setError(null);
     setVerses(null);
+    setSelectMode(false);
+    setPicked(new Set());
     getChapterVerses(`${book.name} ${chapter}`, translation)
       .then((r) => active && setVerses(r.verses))
       .catch((e) => active && setError(e instanceof Error ? e.message : 'Could not load this chapter.'))
@@ -66,8 +97,19 @@ export default function ChapterReaderScreen() {
   const go = (c: number) => router.replace(`/read/${bookNumber}/${c}`);
 
   return (
-    <Screen>
-      <Header title={`${book.name} ${chapter}`} subtitle="Tap a verse to memorize, study, or share" back />
+    <View style={{ flex: 1 }}>
+    <Screen contentStyle={selectMode ? { paddingBottom: 96 } : undefined}>
+      <Header
+        title={`${book.name} ${chapter}`}
+        subtitle={selectMode ? `${picked.size} selected · tap verses to add` : 'Tap a verse — or Select to collect several'}
+        back
+        right={
+          <Pressable onPress={() => (selectMode ? exitSelect() : setSelectMode(true))} hitSlop={10} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: selectMode ? colors.primarySoft : colors.surfaceAlt }}>
+            <Ionicons name={selectMode ? 'close' : 'checkbox-outline'} size={16} color={selectMode ? colors.primary : colors.text} />
+            <Text style={{ color: selectMode ? colors.primary : colors.text, fontWeight: '800', fontSize: font.sizes.sm }}>{selectMode ? 'Cancel' : 'Select'}</Text>
+          </Pressable>
+        }
+      />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }}>
         {READER_TRANSLATIONS.map((t) => (
@@ -98,23 +140,39 @@ export default function ChapterReaderScreen() {
 
       {verses ? (
         <View style={{ gap: spacing.xs }}>
-          {verses.map((v) => (
-            <Pressable
-              key={v.verse}
-              onPress={() => setSelected(v)}
-              style={({ pressed }) => ({
-                borderRadius: 10,
-                paddingVertical: 4,
-                paddingHorizontal: 6,
-                backgroundColor: pressed ? colors.surfaceAlt : 'transparent',
-              })}
-            >
-              <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 28, fontFamily: serif ? font.serif : undefined }}>
-                <Text style={{ color: colors.primary, fontSize: font.sizes.xs, fontWeight: '700' }}>{v.verse} </Text>
-                {v.text}
-              </Text>
-            </Pressable>
-          ))}
+          {verses.map((v) => {
+            const isPicked = picked.has(v.verse);
+            return (
+              <Pressable
+                key={v.verse}
+                onPress={() => (selectMode ? togglePick(v.verse) : setSelected(v))}
+                onLongPress={() => !selectMode && enterSelect(v.verse)}
+                delayLongPress={250}
+                style={({ pressed }) => ({
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: 6,
+                  borderRadius: 10,
+                  paddingVertical: 4,
+                  paddingHorizontal: 6,
+                  backgroundColor: isPicked ? colors.primarySoft : pressed ? colors.surfaceAlt : 'transparent',
+                })}
+              >
+                {selectMode ? (
+                  <Ionicons
+                    name={isPicked ? 'checkmark-circle' : 'ellipse-outline'}
+                    size={18}
+                    color={isPicked ? colors.primary : colors.textFaint}
+                    style={{ marginTop: 5 }}
+                  />
+                ) : null}
+                <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.md, lineHeight: 28, fontFamily: serif ? font.serif : undefined }}>
+                  <Text style={{ color: colors.primary, fontSize: font.sizes.xs, fontWeight: '700' }}>{v.verse} </Text>
+                  {v.text}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
       ) : null}
 
@@ -148,5 +206,19 @@ export default function ChapterReaderScreen() {
         translation={translation}
       />
     </Screen>
+
+    {/* Floating selection bar — add the whole selection to a topic at once. */}
+    {selectMode && picked.size > 0 ? (
+      <View style={{ position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.xl, flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.surface, borderRadius: radius.xl, borderWidth: 1, borderColor: colors.border, padding: spacing.md, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 6 }}>
+        <Pressable onPress={() => setPicked(new Set())} hitSlop={8} style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt }}>
+          <Ionicons name="close" size={18} color={colors.text} />
+        </Pressable>
+        <Text style={{ flex: 1, color: colors.text, fontWeight: '800', fontSize: font.sizes.sm }}>{picked.size} verse{picked.size === 1 ? '' : 's'} selected</Text>
+        <Button title="Add to topic" small onPress={() => setTopicOpen(true)} icon={<Ionicons name="pricetag-outline" size={15} color={colors.onPrimary} />} />
+      </View>
+    ) : null}
+
+    <AddToTopicSheet visible={topicOpen} onClose={() => { setTopicOpen(false); exitSelect(); }} references={pickedRefs} />
+    </View>
   );
 }
