@@ -91,7 +91,16 @@ export type ChallengeKind =
   | 'fill'
   | 'reflection'
   | 'application'
-  | 'study';
+  | 'study'
+  | 'duel';
+
+/** One member's score in a duel (both players recite the same verse). */
+export interface DuelResult {
+  by: string;
+  byName: string;
+  accuracy: number;
+  at: number;
+}
 
 export interface CircleGoal {
   kind: 'memorizeCount' | 'sharedVerses' | 'streak';
@@ -247,6 +256,8 @@ export interface Challenge {
   status: 'pending' | 'submitted' | 'reviewed';
   submission?: ChallengeSubmission;
   review?: ChallengeReview;
+  /** Per-member scores when kind is 'duel'. */
+  duel?: DuelResult[];
 }
 
 // ---- AI study ----

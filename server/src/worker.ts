@@ -540,10 +540,16 @@ async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | n
     if (!cm) continue;
     const submission = await kvGetJson<any>(kv, `${chalPrefix}${id}:submission`);
     const review = await kvGetJson<any>(kv, `${chalPrefix}${id}:review`);
+    // Duel results (per-member scores) live under `...:duel:{memberId}`.
+    const duelKeys = await kvListKeys(kv, `${chalPrefix}${id}:duel:`);
+    const duel: any[] = [];
+    for (const dk of duelKeys) { const d = await kvGetJson<any>(kv, dk); if (d) duel.push(d); }
+    duel.sort((a, b) => (b.accuracy ?? 0) - (a.accuracy ?? 0));
     challenges.push({
       ...cm,
       submission: submission ?? undefined,
       review: review ?? undefined,
+      duel: duel.length ? duel : undefined,
       status: review ? 'reviewed' : submission ? 'submitted' : 'pending',
     });
   }
@@ -844,6 +850,18 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       const code = normCode(body.code);
       const msgId = String(body.msgId ?? '');
       if (memberId && msgId) await kv.delete(`circle:${code}:msg:${memberId}:${msgId}`);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'submitDuel': {
+      const code = normCode(body.code);
+      const chalId = str(body.chalId, 40);
+      const chal = await kvGetJson(kv, `circle:${code}:chal:${chalId}`);
+      if (!chal) return json({ error: 'No such challenge.' }, 404);
+      const accuracy = Math.max(0, Math.min(100, Math.round(Number(body.accuracy) || 0)));
+      await kvPutJson(kv, `circle:${code}:chal:${chalId}:duel:${memberId}`, {
+        by: memberId, byName: str(body.displayName, 40), accuracy, at: Date.now(),
+      });
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

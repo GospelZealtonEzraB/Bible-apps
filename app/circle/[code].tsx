@@ -1192,6 +1192,7 @@ function fieldStyle(colors: ReturnType<typeof useTheme>['colors']) {
 
 const ASSIGN_KINDS: { kind: ChallengeKind; label: string }[] = [
   { kind: 'type', label: 'Recite' },
+  { kind: 'duel', label: 'Duel ⚔️' },
   { kind: 'reflection', label: 'Reflect' },
   { kind: 'application', label: 'Apply' },
   { kind: 'study', label: 'Study' },
@@ -1207,9 +1208,10 @@ function ChallengesCard({ code, members, myId }: { code: string; members: Circle
   const challenges = circle?.challenges ?? [];
   const others = members.filter((m) => m.id !== myId);
 
-  const toComplete = challenges.filter((c) => c.to === myId && c.status === 'pending');
-  const toReview = challenges.filter((c) => c.from === myId && c.status === 'submitted');
-  const reviewedForMe = challenges.filter((c) => c.to === myId && c.status === 'reviewed');
+  const duels = challenges.filter((c) => c.kind === 'duel' && (c.from === myId || c.to === myId));
+  const toComplete = challenges.filter((c) => c.kind !== 'duel' && c.to === myId && c.status === 'pending');
+  const toReview = challenges.filter((c) => c.kind !== 'duel' && c.from === myId && c.status === 'submitted');
+  const reviewedForMe = challenges.filter((c) => c.kind !== 'duel' && c.to === myId && c.status === 'reviewed');
 
   const confirmCancel = (chalId: string) =>
     Alert.alert('Remove this challenge?', 'It will be removed for both of you.', [
@@ -1241,6 +1243,31 @@ function ChallengesCard({ code, members, myId }: { code: string; members: Circle
   return (
     <View>
       <SectionTitle>Spur each other on</SectionTitle>
+
+      {/* Duels */}
+      {duels.map((c) => {
+        const scores = c.duel ?? [];
+        const iPlayed = scores.some((d) => d.by === myId);
+        return (
+          <Card key={c.chalId} style={{ marginBottom: spacing.sm, gap: spacing.xs }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md, flex: 1 }}>⚔️ Duel · {c.reference}</Text>
+              <Pressable onPress={() => confirmCancel(c.chalId)} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+                <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
+              </Pressable>
+            </View>
+            <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{c.fromName} vs {c.toName}</Text>
+            {scores.map((d, i) => (
+              <View key={d.by} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                <Text style={{ width: 20, textAlign: 'center' }}>{i === 0 && scores.length > 1 ? '🏆' : '·'}</Text>
+                <Text style={{ flex: 1, color: colors.text }}>{d.by === myId ? 'You' : d.byName}</Text>
+                <Text style={{ color: colors.primary, fontWeight: '800' }}>{d.accuracy}%</Text>
+              </View>
+            ))}
+            <Button title={iPlayed ? 'Play again' : 'Play the duel'} small variant={iPlayed ? 'secondary' : 'primary'} onPress={() => router.push(`/challenge/${code}/${c.chalId}`)} />
+          </Card>
+        );
+      })}
 
       {/* Things waiting on me */}
       {toComplete.map((c) => (

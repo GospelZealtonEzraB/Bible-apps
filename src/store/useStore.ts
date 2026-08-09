@@ -134,6 +134,8 @@ interface StoreState {
   assignChallenge: (code: string, toMemberId: string, toName: string, reference: string, kind: ChallengeKind) => Promise<void>;
   /** Submit my attempt at a challenge (text + optional accuracy). */
   submitChallenge: (code: string, chalId: string, text: string, accuracy?: number) => Promise<void>;
+  /** Submit my recite score for a duel challenge. */
+  submitDuel: (code: string, chalId: string, accuracy: number) => Promise<void>;
   /** Review a partner's submission with an encouraging note. */
   reviewChallenge: (code: string, chalId: string, note: string, meaningPrompt?: string) => Promise<void>;
 
@@ -757,6 +759,15 @@ export const useStore = create<StoreState>()(
         await optimisticCircle(set, get, code,
           (c) => ({ ...c, challenges: c.challenges.map((ch) => ch.chalId === chalId ? { ...ch, status: 'submitted', submission: { by: s.profile.memberId, text, accuracy, submittedAt: Date.now() } } : ch) }),
           () => circleApi.submitChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId, text, accuracy),
+        );
+      },
+
+      submitDuel: async (code, chalId, accuracy) => {
+        const s = get();
+        const mine = { by: s.profile.memberId, byName: s.profile.displayName, accuracy, at: Date.now() };
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, challenges: c.challenges.map((ch) => ch.chalId === chalId ? { ...ch, duel: [...(ch.duel ?? []).filter((d) => d.by !== s.profile.memberId), mine].sort((a, b) => b.accuracy - a.accuracy) } : ch) }),
+          () => circleApi.submitDuel(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, chalId, accuracy),
         );
       },
 

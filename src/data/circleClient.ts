@@ -163,6 +163,16 @@ export function submitChallenge(
   return circleCall(serverUrl, { action: 'submitChallenge', code, memberId, chalId, text, accuracy });
 }
 
+export function submitDuel(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  chalId: string,
+  accuracy: number,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'submitDuel', code, memberId: member.memberId, displayName: member.displayName, chalId, accuracy });
+}
+
 export function reviewChallenge(
   serverUrl: string | null,
   code: string,
