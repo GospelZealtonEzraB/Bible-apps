@@ -13,7 +13,8 @@ import { getVerse, normalizeKey, verseId } from '@/data/bibleApi';
 import { dayKey, daysBetweenKeys, relativeTimeAgo } from '@/utils/date';
 import { PLAN_TEMPLATES } from '@/data/plans';
 import { levelInfo } from '@/gamification';
-import { togetherTotals, coverage, mergeActivity, rankMembers, presenceToday, weeklyRecap } from '@/utils/circleProgress';
+import { togetherTotals, coverage, mergeActivity, rankMembers, presenceToday, weeklyRecap, circleMilestones, goalProgress } from '@/utils/circleProgress';
+import { ProgressRing } from '@/components/ProgressRing';
 import { EXPECTED_API_VERSION } from '@/data/circleClient';
 import { EmberTip } from '@/components/EmberGuide';
 import { usePaged, PageMore } from '@/components/Paginated';
@@ -255,6 +256,9 @@ export default function CircleHubScreen() {
       {/* Presence — who's had their time today */}
       <PresenceStrip members={members} accent={accent} onOpenMember={(id) => router.push(`/circle/${code}/member/${id}`)} />
 
+      {/* Milestones to celebrate together */}
+      <MilestoneCard members={members} goal={meta.goal} togetherStreak={meta.togetherStreak} accent={accent} />
+
       {/* This week, together */}
       <WeeklyRecapCard members={members} accent={accent} />
 
@@ -453,6 +457,32 @@ function WeeklyRecapCard({ members, accent }: { members: CircleMember[]; accent:
         <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>💛 {recap.topMemberName} led the way in memorizing.</Text>
       ) : null}
       <Text style={{ color: colors.textFaint, fontSize: 10 }}>Recent highlights across your circle.</Text>
+    </Card>
+  );
+}
+
+/** Celebrate shared achievements: "we all know this now", goal reached, streak. */
+function MilestoneCard({ members, goal, togetherStreak, accent }: { members: CircleMember[]; goal: CircleGoal | null; togetherStreak: number; accent: string }) {
+  const { colors } = useTheme();
+  const ms = useMemo(() => circleMilestones(members, goal, togetherStreak), [members, goal, togetherStreak]);
+  if (!ms.any) return null;
+  return (
+    <Card style={{ gap: spacing.sm, borderWidth: 1, borderColor: accent }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+        <Text style={{ fontSize: 20 }}>🎉</Text>
+        <SectionTitle style={{ marginBottom: 0 }}>Together, you did it</SectionTitle>
+      </View>
+      {ms.streakMilestone ? (
+        <Text style={{ color: colors.text, fontSize: font.sizes.md, fontWeight: '700' }}>🔥 {ms.streakMilestone}-day together streak — faithful, all of you.</Text>
+      ) : null}
+      {ms.goalReached ? (
+        <Text style={{ color: colors.text, fontSize: font.sizes.md, fontWeight: '700' }}>🎯 You reached your shared goal!</Text>
+      ) : null}
+      {ms.allKnow.length > 0 ? (
+        <Text style={{ color: colors.text, fontSize: font.sizes.md }}>
+          🌟 You <Text style={{ fontWeight: '800' }}>all</Text> know {ms.allKnow.length === 1 ? ms.allKnow[0].display : `${ms.allKnow.length} verses`} now.
+        </Text>
+      ) : null}
     </Card>
   );
 }
@@ -1124,7 +1154,10 @@ function GoalCard({ code }: { code: string }) {
   const circle = useCircle(code);
   const setCircleGoal = useStore((s) => s.setCircleGoal);
   const goal = circle?.meta?.goal ?? null;
+  const members = circle?.members ?? [];
+  const togetherStreak = circle?.meta?.togetherStreak ?? 0;
   const sharedCount = (circle?.sharedVerses ?? []).length;
+  const progress = goal ? goalProgress(members, goal, togetherStreak) : null;
 
   const [editing, setEditing] = useState(false);
   const [kind, setKind] = useState<CircleGoal['kind']>(goal?.kind ?? 'memorizeCount');
@@ -1195,9 +1228,13 @@ function GoalCard({ code }: { code: string }) {
           </View>
         </View>
       ) : goal ? (
-        <Text style={{ color: colors.text, fontSize: font.sizes.md, fontWeight: '600', marginTop: spacing.sm }}>
-          🎯 {goal.label ?? `${goal.kind} · ${goal.target}`}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginTop: spacing.sm }}>
+          {progress ? <ProgressRing progress={Math.round(progress.fraction * 100)} size={54} stroke={6} label={`${Math.round(progress.fraction * 100)}%`} /> : null}
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontSize: font.sizes.md, fontWeight: '700' }}>🎯 {goal.label ?? `${goal.kind} · ${goal.target}`}</Text>
+            {progress ? <Text style={{ color: progress.reached ? colors.success : colors.textMuted, fontSize: font.sizes.sm, marginTop: 2 }}>{progress.reached ? '🎉 Reached together!' : progress.label}</Text> : null}
+          </View>
+        </View>
       ) : (
         <Text style={{ color: colors.textFaint, fontSize: font.sizes.sm, marginTop: spacing.sm }}>
           Set a goal you’ll reach together.

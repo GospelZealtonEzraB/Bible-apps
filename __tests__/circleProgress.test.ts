@@ -179,3 +179,42 @@ describe('weeklyRecap', () => {
     expect(r.empty).toBe(true);
   });
 });
+
+import { circleMilestones, goalProgress } from '@/utils/circleProgress';
+import type { CircleGoal } from '@/types';
+
+describe('goalProgress', () => {
+  const m = (id: string, memorizedCount: number, streak = 0, versesDone: string[] = []): CircleMember =>
+    member(id, [], { memorizedCount, streak, versesDone });
+
+  test('memorizeCount: fraction averages capped per-member, reached when all hit target', () => {
+    const goal: CircleGoal = { kind: 'memorizeCount', target: 10 };
+    const p = goalProgress([m('a', 10), m('b', 5)], goal, 0);
+    expect(p.fraction).toBeCloseTo(0.75); // (1 + 0.5) / 2
+    expect(p.membersThere).toBe(1);
+    expect(p.reached).toBe(false);
+    expect(goalProgress([m('a', 10), m('b', 12)], goal, 0).reached).toBe(true);
+  });
+
+  test('streak goal tracks the together streak', () => {
+    const goal: CircleGoal = { kind: 'streak', target: 7 };
+    expect(goalProgress([m('a', 0, 3)], goal, 7).reached).toBe(true);
+    expect(goalProgress([m('a', 0, 3)], goal, 4).fraction).toBeCloseTo(4 / 7);
+  });
+});
+
+describe('circleMilestones', () => {
+  test('flags a verse everyone memorized, a reached goal, and a streak milestone', () => {
+    const members = [member('a', ['John 3:16']), member('b', ['John 3:16'])];
+    const ms = circleMilestones(members, { kind: 'memorizeCount', target: 1 }, 7);
+    expect(ms.allKnow.map((r) => r.display)).toEqual(['John 3:16']);
+    expect(ms.goalReached).toBe(true);
+    expect(ms.streakMilestone).toBe(7);
+    expect(ms.any).toBe(true);
+  });
+
+  test('nothing to celebrate for a fresh circle', () => {
+    const ms = circleMilestones([member('a', [])], null, 2);
+    expect(ms.any).toBe(false);
+  });
+});

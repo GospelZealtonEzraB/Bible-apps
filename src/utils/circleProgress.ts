@@ -1,5 +1,5 @@
 import { normalizeKey } from '@/data/bibleApi';
-import type { Verse, CircleMember } from '@/types';
+import type { Verse, CircleMember, CircleGoal } from '@/types';
 
 /**
  * Which references from a circle's shared list this device has *memorized*.
@@ -219,4 +219,71 @@ export function weeklyRecap(members: CircleMember[], now: number): WeeklyRecap {
     topMemberName,
     empty: memorized + reviewed + studied === 0,
   };
+}
+
+// ---- Milestones & goal progress (the celebrate-together layer) -------------
+
+export interface CircleMilestones {
+  /** Verses every member has now memorized (celebrated as "we all know this"). */
+  allKnow: RefEntry[];
+  /** True when the shared goal has been reached by the whole circle. */
+  goalReached: boolean;
+  /** A crossed together-streak milestone (7/30/100/365), or null. */
+  streakMilestone: number | null;
+  /** True when there's anything worth celebrating. */
+  any: boolean;
+}
+
+const STREAK_MILESTONES = [7, 30, 100, 365];
+
+/** Detect shared achievements worth celebrating together. */
+export function circleMilestones(
+  members: CircleMember[],
+  goal: CircleGoal | null,
+  togetherStreak: number,
+): CircleMilestones {
+  const allKnow = members.length >= 2 ? commonMemorized(members) : [];
+  const goalReached = goal ? goalProgress(members, goal, togetherStreak).reached : false;
+  const streakMilestone = STREAK_MILESTONES.includes(togetherStreak) ? togetherStreak : null;
+  return {
+    allKnow,
+    goalReached,
+    streakMilestone,
+    any: allKnow.length > 0 || goalReached || streakMilestone != null,
+  };
+}
+
+export interface GoalProgress {
+  /** 0..1 collective progress toward the goal. */
+  fraction: number;
+  /** How many members have individually reached the goal (for count/streak goals). */
+  membersThere: number;
+  total: number;
+  reached: boolean;
+  label: string;
+}
+
+/** Collective progress toward a circle goal, for the shared progress ring. */
+export function goalProgress(members: CircleMember[], goal: CircleGoal, togetherStreak: number): GoalProgress {
+  const total = members.length || 1;
+  const clamp = (n: number) => Math.max(0, Math.min(1, n));
+
+  if (goal.kind === 'streak') {
+    const membersThere = members.filter((m) => (m.streak ?? 0) >= goal.target).length;
+    const fraction = clamp(togetherStreak / goal.target);
+    return { fraction, membersThere, total, reached: togetherStreak >= goal.target, label: `${togetherStreak} / ${goal.target}-day together streak` };
+  }
+
+  if (goal.kind === 'sharedVerses') {
+    const per = members.map((m) => clamp((m.versesDone?.length ?? 0) / (goal.target || 1)));
+    const fraction = per.reduce((a, b) => a + b, 0) / total;
+    const membersThere = members.filter((m) => (m.versesDone?.length ?? 0) >= goal.target).length;
+    return { fraction, membersThere, total, reached: membersThere === total && total > 0, label: `${membersThere} of ${total} know all shared verses` };
+  }
+
+  // memorizeCount
+  const per = members.map((m) => clamp((m.memorizedCount ?? 0) / (goal.target || 1)));
+  const fraction = per.reduce((a, b) => a + b, 0) / total;
+  const membersThere = members.filter((m) => (m.memorizedCount ?? 0) >= goal.target).length;
+  return { fraction, membersThere, total, reached: membersThere === total && total > 0, label: `${membersThere} of ${total} reached ${goal.target}` };
 }
