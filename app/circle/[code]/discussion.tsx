@@ -50,7 +50,7 @@ export default function DiscussionScreen() {
           onLongPress={mine ? () => confirmDelete(m) : undefined}
           style={{ maxWidth: '82%', backgroundColor: mine ? colors.primary : colors.surface, borderWidth: mine ? 0 : 1, borderColor: colors.border, borderRadius: radius.lg, paddingVertical: spacing.sm, paddingHorizontal: spacing.md }}
         >
-          <RefText text={m.text} style={{ color: mine ? colors.onPrimary : colors.text }} />
+          <RefText text={m.text} style={{ color: mine ? colors.onPrimary : colors.text }} refColor={mine ? colors.onPrimary : colors.primary} />
         </Pressable>
       </View>
     );
