@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Button, SectionTitle } from '@/components/ui';
 import { RefText } from '@/components/RefText';
+import { useShareToCircle } from '@/components/useShareToCircle';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerseNotes, useStore } from '@/store/useStore';
 
@@ -17,6 +18,7 @@ export function VerseNotes({ reference }: { reference: string }) {
   const addPrivateNote = useStore((s) => s.addPrivateNote);
   const editPrivateNote = useStore((s) => s.editPrivateNote);
   const deletePrivateNote = useStore((s) => s.deletePrivateNote);
+  const { canShare, share } = useShareToCircle();
 
   const [draft, setDraft] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -63,6 +65,11 @@ export function VerseNotes({ reference }: { reference: string }) {
                   <Ionicons name="lock-closed" size={11} color={colors.textFaint} />
                   <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>Private</Text>
                 </View>
+                {canShare ? (
+                  <Pressable onPress={() => share(n.text, reference)} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+                    <Ionicons name="people-outline" size={16} color={colors.textFaint} />
+                  </Pressable>
+                ) : null}
                 <Pressable onPress={() => { setEditingId(n.noteId); setEditDraft(n.text); }} hitSlop={8} style={{ paddingHorizontal: 4 }}>
                   <Ionicons name="pencil" size={15} color={colors.textFaint} />
                 </Pressable>
