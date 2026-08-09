@@ -74,6 +74,17 @@ export default function ReadScreen() {
         <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
       </Card>
 
+      <Card onPress={() => router.push('/hymns')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="musical-notes-outline" size={22} color={colors.accent} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <SectionTitle style={{ marginBottom: 2 }}>Hymns</SectionTitle>
+          <Text style={{ color: colors.text, fontSize: font.sizes.md, fontWeight: '700' }}>Sing the Word — lyrics & chords</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+      </Card>
+
       <BookGroup title="Old Testament" books={ot} onPick={(b) => router.push(`/read/${b.n}`)} />
       <BookGroup title="New Testament" books={nt} onPick={(b) => router.push(`/read/${b.n}`)} />
     </Screen>
