@@ -241,6 +241,18 @@ export default function TodayScreen() {
         </View>
       </Card>
 
+      {/* Begin Abide — the guided quiet time */}
+      <Card onPress={() => router.push('/abide')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, backgroundColor: colors.primarySoft, borderColor: colors.primary }}>
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="sunny-outline" size={24} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.md }}>Begin Abide</Text>
+          <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>A quiet time: be still, read, hide His Word</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+      </Card>
+
       {/* Welcome-back recap */}
       <WelcomeBackCard />
 
