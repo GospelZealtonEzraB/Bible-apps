@@ -4,9 +4,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { Chip } from '@/components/ui';
-import { useStore } from '@/store/useStore';
+import { useStore, useTopicsForRef } from '@/store/useStore';
 import { getVerse, verseId, translationName as translationNameOf, type FetchedVerse } from '@/data/bibleApi';
 import { getCrossRefs } from '@/data/crossRefs';
+import { AddToTopicSheet } from '@/components/AddToTopicSheet';
 
 /**
  * Bottom-sheet of actions for a single verse — the "from anywhere to memorized"
@@ -37,6 +38,8 @@ export function VerseActionSheet({
   const [saved, setSaved] = useState(false);
   const [peekRef, setPeekRef] = useState<string | null>(null);
   const [peekText, setPeekText] = useState<string | null>(null);
+  const [topicOpen, setTopicOpen] = useState(false);
+  const topicCount = useTopicsForRef(reference).length;
 
   const xrefs = reference ? getCrossRefs(reference) : [];
 
@@ -48,6 +51,7 @@ export function VerseActionSheet({
       setSaved(false);
       setPeekRef(null);
       setPeekText(null);
+      setTopicOpen(false);
     }
   }, [visible, reference]);
 
@@ -142,6 +146,13 @@ export function VerseActionSheet({
                 onPress={() => { setSaved(false); setNoteOpen(true); }}
               />
             ) : null}
+            <ActionRow
+              icon="pricetag-outline"
+              label="Add to a topic"
+              hint={topicCount > 0 ? `In ${topicCount} ${topicCount === 1 ? 'topic' : 'topics'}` : 'Collect it into a study thread'}
+              color={colors.warning}
+              onPress={() => setTopicOpen(true)}
+            />
             <ActionRow icon="book-outline" label="Study this passage" hint="Setting, people, cross-refs" color={colors.accent} onPress={study} />
             <ActionRow icon="share-outline" label="Share" hint="Send to a friend" color={colors.textMuted} onPress={share} />
 
@@ -151,6 +162,7 @@ export function VerseActionSheet({
           </Pressable>
         </Pressable>
       </KeyboardAvoidingView>
+      <AddToTopicSheet visible={topicOpen} onClose={() => setTopicOpen(false)} reference={reference} />
     </Modal>
   );
 }

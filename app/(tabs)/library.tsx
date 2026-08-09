@@ -60,14 +60,24 @@ export default function LibraryScreen() {
         title="Library"
         subtitle={`${verses.length} verse${verses.length === 1 ? '' : 's'} saved`}
         right={
-          <Pressable
-            onPress={() => router.push('/quiz')}
-            hitSlop={12}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.primarySoft }}
-          >
-            <Ionicons name="game-controller-outline" size={16} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>Quiz</Text>
-          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <Pressable
+              onPress={() => router.push('/topics')}
+              hitSlop={12}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt }}
+            >
+              <Ionicons name="pricetag-outline" size={16} color={colors.warning} />
+              <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.sm }}>Topics</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => router.push('/quiz')}
+              hitSlop={12}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.primarySoft }}
+            >
+              <Ionicons name="game-controller-outline" size={16} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>Quiz</Text>
+            </Pressable>
+          </View>
         }
       />
 

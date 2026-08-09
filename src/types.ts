@@ -340,6 +340,32 @@ export type Circle = CircleSnapshot & {
   lastSyncedAt: number | null;
 };
 
+// ---- Custom study topics (tag-as-you-read) --------------------------------
+
+/** One verse tagged into a topic, with an optional "why this fits" note. */
+export interface TopicEntry {
+  /** Canonical display reference, e.g. "1 Thessalonians 4:16". */
+  ref: string;
+  /** Optional insight: why this verse belongs in the topic. */
+  note?: string;
+  addedAt: number;
+}
+
+/**
+ * A user-named study collection ("The Rapture", "Grace", "Names of God").
+ * Private (Personal Space) in this phase; shares to a circle come later.
+ */
+export interface Topic {
+  /** Stable local id (`t_…`). */
+  id: string;
+  title: string;
+  description?: string;
+  /** Verses tagged into this topic (newest first as stored). */
+  entries: TopicEntry[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type ThemePreference = 'system' | 'light' | 'dark';
 
 export interface Settings {

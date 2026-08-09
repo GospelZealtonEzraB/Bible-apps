@@ -19,9 +19,11 @@ import type {
   Stats,
   StudyApplication,
   StudySession,
+  Topic,
   Verse,
   VerseStatus,
 } from '@/types';
+import { addEntry as addTopicEntry, removeEntry as removeTopicEntry, updateEntryNote } from '@/utils/topics';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
 import * as circleApi from '@/data/circleClient';
@@ -63,6 +65,8 @@ interface StoreState {
   applications: Record<string, StudyApplication>;
   /** Private notes kept only on this device. */
   notes: Record<string, LocalNote>;
+  /** Custom study topics (tag-as-you-read collections), private to this device. */
+  topics: Record<string, Topic>;
   /** Session memory for the welcome-back recap. */
   session: { lastOpenedDay: string | null };
   /** Where the Bible reader left off (null until they've read something). */
@@ -159,6 +163,20 @@ interface StoreState {
   addPrivateNote: (scope: NoteScope, text: string, ref?: string) => void;
   editPrivateNote: (noteId: string, text: string) => void;
   deletePrivateNote: (noteId: string) => void;
+
+  // Custom study topics (tag-as-you-read)
+  /** Create a new topic; returns its id. */
+  createTopic: (title: string, description?: string) => string;
+  /** Rename / re-describe a topic. */
+  updateTopic: (id: string, title: string, description?: string) => void;
+  /** Delete a topic (and all its tagged verses). */
+  deleteTopic: (id: string) => void;
+  /** Tag a verse into a topic (deduped); optional "why this fits" note. */
+  addToTopic: (id: string, ref: string, note?: string) => void;
+  /** Remove a verse from a topic. */
+  removeFromTopic: (id: string, ref: string) => void;
+  /** Edit the note on an already-tagged verse. */
+  setTopicEntryNote: (id: string, ref: string, note: string) => void;
   /** Post a message to a circle's discussion (optionally anchored to a reference). */
   postCircleMessage: (code: string, text: string, context?: string) => Promise<void>;
   /** Delete one of my own circle messages. */
@@ -479,6 +497,7 @@ export const useStore = create<StoreState>()(
       studySessions: {},
       applications: {},
       notes: {},
+      topics: {},
       session: { lastOpenedDay: null },
       reading: null,
       readingPlanProgress: {},
@@ -945,6 +964,61 @@ export const useStore = create<StoreState>()(
           return { notes: next };
         }),
 
+      createTopic: (title, description) => {
+        const now = Date.now();
+        const id = 't_' + now.toString(36) + Math.random().toString(36).slice(2, 8);
+        const topic: Topic = {
+          id,
+          title: title.trim().slice(0, 80) || 'Untitled topic',
+          description: description?.trim() || undefined,
+          entries: [],
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((state) => ({ topics: { ...state.topics, [id]: topic } }));
+        return id;
+      },
+
+      updateTopic: (id, title, description) =>
+        set((state) => {
+          const t = state.topics[id];
+          if (!t) return {};
+          return {
+            topics: {
+              ...state.topics,
+              [id]: { ...t, title: title.trim().slice(0, 80) || t.title, description: description?.trim() || undefined, updatedAt: Date.now() },
+            },
+          };
+        }),
+
+      deleteTopic: (id) =>
+        set((state) => {
+          const next = { ...state.topics };
+          delete next[id];
+          return { topics: next };
+        }),
+
+      addToTopic: (id, ref, note) =>
+        set((state) => {
+          const t = state.topics[id];
+          if (!t) return {};
+          return { topics: { ...state.topics, [id]: addTopicEntry(t, ref, note, Date.now()) } };
+        }),
+
+      removeFromTopic: (id, ref) =>
+        set((state) => {
+          const t = state.topics[id];
+          if (!t) return {};
+          return { topics: { ...state.topics, [id]: removeTopicEntry(t, ref, Date.now()) } };
+        }),
+
+      setTopicEntryNote: (id, ref, note) =>
+        set((state) => {
+          const t = state.topics[id];
+          if (!t) return {};
+          return { topics: { ...state.topics, [id]: updateEntryNote(t, ref, note, Date.now()) } };
+        }),
+
       addPrayer: async (code, text) => {
         const s = get();
         const prayerId = genLocalId();
@@ -1087,6 +1161,7 @@ export const useStore = create<StoreState>()(
             studySessions: s.studySessions,
             applications: s.applications,
             notes: s.notes,
+            topics: s.topics,
             session: s.session,
             reading: s.reading,
             readingPlanProgress: s.readingPlanProgress,
@@ -1116,6 +1191,7 @@ export const useStore = create<StoreState>()(
           studySessions: d.studySessions ?? state.studySessions,
           applications: d.applications ?? state.applications,
           notes: d.notes ?? state.notes,
+          topics: d.topics ?? state.topics,
           session: d.session ?? state.session,
           reading: d.reading ?? state.reading,
           readingPlanProgress: d.readingPlanProgress ?? state.readingPlanProgress,
@@ -1164,6 +1240,7 @@ export const useStore = create<StoreState>()(
         studySessions: state.studySessions,
         applications: state.applications,
         notes: state.notes,
+        topics: state.topics,
         session: state.session,
         reading: state.reading,
         readingPlanProgress: state.readingPlanProgress,
@@ -1200,6 +1277,7 @@ export const useStore = create<StoreState>()(
             studySessions: p.studySessions ?? {},
             applications: p.applications ?? {},
             notes: p.notes ?? {},
+            topics: p.topics ?? {},
             session: { lastOpenedDay: null, ...(p.session ?? {}) },
             reading: p.reading ?? null,
             readingPlanProgress: p.readingPlanProgress ?? {},
@@ -1282,6 +1360,31 @@ export function useVerseNotes(reference: string | undefined): LocalNote[] {
 
 export function useApplication(passageKey: string | undefined): StudyApplication | undefined {
   return useStore((state) => (passageKey ? state.applications[passageKey] : undefined));
+}
+
+/** All custom study topics, most-recently-updated first. */
+export function useTopicList(): Topic[] {
+  const topics = useStore((state) => state.topics);
+  return useMemo(
+    () => Object.values(topics).sort((a, b) => b.updatedAt - a.updatedAt),
+    [topics],
+  );
+}
+
+export function useTopic(id: string | undefined): Topic | undefined {
+  return useStore((state) => (id ? state.topics[id] : undefined));
+}
+
+/** Ids of topics that already contain a given reference (for picker checkmarks). */
+export function useTopicsForRef(reference: string | undefined): string[] {
+  const topics = useStore((state) => state.topics);
+  return useMemo(() => {
+    if (!reference) return [];
+    const key = normalizeKey(reference);
+    return Object.values(topics)
+      .filter((t) => (t.entries ?? []).some((e) => normalizeKey(e.ref) === key))
+      .map((t) => t.id);
+  }, [topics, reference]);
 }
 
 /**
