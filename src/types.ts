@@ -281,6 +281,15 @@ export interface StudyBrief {
   discussionQuestions: string[];
   wordStudy: StudyWord[];
   crossReferences: string[];
+  // Atomic "at a glance" fields (scannable law) — optional for back-compat with
+  // briefs cached before these were added.
+  speaker?: string;
+  audience?: string;
+  where?: string;
+  when?: string;
+  occasion?: string;
+  genre?: string;
+  oneLine?: string;
 }
 export interface StudySession {
   passage: string;

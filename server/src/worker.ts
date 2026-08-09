@@ -397,7 +397,11 @@ const STUDY_BRIEF_SYSTEM =
   'You produce a STUDY BRIEF for a Bible passage a reader is about to study. You are given ' +
   'ONLY a reference — a verse ("John 3:16"), a range ("Romans 12:1-2"), a chapter ("John 3"), ' +
   'several chapters ("John 3-5"), a whole book ("Philippians"), or a list ("Romans 8:28; John 3:16"). ' +
-  'Brief the WHOLE scope given. Return ONLY a JSON object with these keys: ' +
+  'Brief the WHOLE scope given. Return ONLY a JSON object with these keys. ' +
+  'FIRST, atomic at-a-glance fields (each a short phrase or ONE sentence, not a paragraph): ' +
+  '"speaker" (who is speaking/narrating), "audience" (to whom), "where" (place), "when" (time/era), ' +
+  '"occasion" (what prompts this), "genre" (e.g. narrative, epistle, poetry, prophecy), ' +
+  '"oneLine" (the passage in one sentence). THEN the fuller fields: ' +
   '"summaryBefore" (what happens in the preceding verses/chapter leading into this passage), ' +
   '"setting" (the scene, time, and place), "characters" (array of {"name","insight"} for who is ' +
   'involved), "speakerAudience" (who is speaking and to whom), "location" (geography plus relevant ' +
@@ -412,6 +416,7 @@ function parseStudyBrief(text: string): any {
   const empty = {
     summaryBefore: '', setting: '', characters: [], speakerAudience: '',
     location: '', background: '', discussionQuestions: [], wordStudy: [], crossReferences: [],
+    speaker: '', audience: '', where: '', when: '', occasion: '', genre: '', oneLine: '',
   };
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) return empty;
@@ -419,7 +424,10 @@ function parseStudyBrief(text: string): any {
     const o: any = JSON.parse(m[0]);
     const strArr = (v: any, n: number) =>
       Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, n) : [];
+    const fld = (v: any) => String(v ?? '').slice(0, 200);
     return {
+      speaker: fld(o.speaker), audience: fld(o.audience), where: fld(o.where), when: fld(o.when),
+      occasion: fld(o.occasion), genre: fld(o.genre), oneLine: fld(o.oneLine),
       summaryBefore: String(o.summaryBefore ?? ''),
       setting: String(o.setting ?? ''),
       characters: Array.isArray(o.characters)
@@ -464,7 +472,7 @@ async function handleStudy(req: Request, env: Env): Promise<Response> {
       if (cached?.brief) return json({ brief: cached.brief, cached: true });
     }
 
-    const out = await callLLM(env, STUDY_BRIEF_SYSTEM, `Reference: ${passage}`, 950);
+    const out = await callLLM(env, STUDY_BRIEF_SYSTEM, `Reference: ${passage}`, 1100);
     const brief = parseStudyBrief(out);
     if (env.ENGRAVED_KV) {
       await kvPutJson(env.ENGRAVED_KV, key, {

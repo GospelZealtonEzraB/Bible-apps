@@ -143,8 +143,32 @@ function BriefBody({
 
   const multi = (sections?.length ?? 0) > 1;
 
+  const facts: { label: string; value?: string }[] = [
+    { label: 'Speaker', value: brief.speaker },
+    { label: 'Audience', value: brief.audience },
+    { label: 'Where', value: brief.where },
+    { label: 'When', value: brief.when },
+    { label: 'Occasion', value: brief.occasion },
+    { label: 'Genre', value: brief.genre },
+  ].filter((f) => f.value && f.value.trim());
+
   return (
     <View>
+      {facts.length > 0 || brief.oneLine ? (
+        <Card style={{ marginBottom: spacing.sm, gap: spacing.sm }}>
+          <SectionTitle style={{ marginBottom: 0 }}>At a glance</SectionTitle>
+          {brief.oneLine ? <Text style={{ color: colors.text, fontSize: font.sizes.md, fontStyle: 'italic', lineHeight: 22 }}>{brief.oneLine}</Text> : null}
+          <View style={{ gap: 6 }}>
+            {facts.map((f) => (
+              <View key={f.label} style={{ flexDirection: 'row', gap: spacing.sm }}>
+                <Text style={{ width: 78, color: colors.textFaint, fontSize: font.sizes.sm, fontWeight: '700' }}>{f.label}</Text>
+                <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, lineHeight: 20 }}>{f.value}</Text>
+              </View>
+            ))}
+          </View>
+        </Card>
+      ) : null}
+
       {brief.summaryBefore ? <Section title="Before this passage">{brief.summaryBefore}</Section> : null}
       {brief.setting ? <Section title="The scene & setting">{brief.setting}</Section> : null}
 
