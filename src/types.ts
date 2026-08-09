@@ -1,6 +1,6 @@
 export type VerseStatus = 'new' | 'learning' | 'memorized' | 'reviewing';
 
-export type DrillMode = 'flashcard' | 'vanish' | 'firstletter' | 'blank' | 'choice';
+export type DrillMode = 'flashcard' | 'vanish' | 'firstletter' | 'blank' | 'choice' | 'speed';
 
 /** SM-2 spaced-repetition scheduling state for a single verse. */
 export interface SRSState {

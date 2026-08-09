@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, TextInput, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -74,25 +74,26 @@ function WordRow({ children }: { children: React.ReactNode }) {
 
 // ---- Multiple choice ------------------------------------------------------
 
+/** Build four shuffled reference options (correct + 3 distractors). */
+function buildReferenceOptions(correctRef: string, versesRecord: Record<string, Verse>): string[] {
+  const pool = [
+    ...Object.values(versesRecord).map((v) => v.reference).filter((r) => r !== correctRef),
+    ...FALLBACK_REFS,
+  ];
+  const all = [correctRef, ...pickDistractors(correctRef, pool, 3)];
+  for (let i = all.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [all[i], all[j]] = [all[j], all[i]];
+  }
+  return all;
+}
+
 /** Show the verse text; pick the correct reference from four options. */
 export function ChoiceDrill({ verse, onComplete }: DrillProps) {
   const { colors } = useTheme();
   const versesRecord = useStore((s) => s.verses);
 
-  const options = useMemo(() => {
-    const pool = [
-      ...Object.values(versesRecord).map((v) => v.reference).filter((r) => r !== verse.reference),
-      ...FALLBACK_REFS,
-    ];
-    const distractors = pickDistractors(verse.reference, pool, 3);
-    const all = [verse.reference, ...distractors];
-    // Deterministic-enough shuffle for a quiz (runtime randomness is fine here).
-    for (let i = all.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [all[i], all[j]] = [all[j], all[i]];
-    }
-    return all;
-  }, [verse.reference, versesRecord]);
+  const options = useMemo(() => buildReferenceOptions(verse.reference, versesRecord), [verse.reference, versesRecord]);
 
   const [picked, setPicked] = useState<string | null>(null);
   const correct = picked === verse.reference;
@@ -132,6 +133,77 @@ export function ChoiceDrill({ verse, onComplete }: DrillProps) {
           onPress={() => onComplete(correct ? 100 : 40)}
         />
       ) : null}
+    </View>
+  );
+}
+
+// ---- Speed round ----------------------------------------------------------
+
+const SPEED_SECONDS = 12;
+
+/** Timed multiple-choice: pick the right reference before the clock runs out. */
+export function SpeedDrill({ verse, onComplete }: DrillProps) {
+  const { colors } = useTheme();
+  const versesRecord = useStore((s) => s.verses);
+  const options = useMemo(() => buildReferenceOptions(verse.reference, versesRecord), [verse.reference, versesRecord]);
+
+  const [left, setLeft] = useState(SPEED_SECONDS);
+  const [picked, setPicked] = useState<string | null>(null);
+  const fired = useRef(false);
+
+  const finish = (acc: number) => {
+    if (fired.current) return;
+    fired.current = true;
+    onComplete(acc);
+  };
+
+  useEffect(() => {
+    if (picked !== null) return;
+    if (left <= 0) { finish(30); return; }
+    const t = setTimeout(() => setLeft((l) => l - 1), 1000);
+    return () => clearTimeout(t);
+  }, [left, picked]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pick = (opt: string) => {
+    if (picked !== null) return;
+    setPicked(opt);
+    const correct = opt === verse.reference;
+    finish(correct ? (left > SPEED_SECONDS / 2 ? 100 : 90) : 40);
+  };
+
+  const pct = Math.max(0, (left / SPEED_SECONDS) * 100);
+  const barColor = left <= 3 ? colors.danger : left <= 6 ? colors.warning : colors.success;
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', gap: spacing.lg }}>
+      <View style={{ gap: 6 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>Which reference is this?</Text>
+          <Text style={{ color: barColor, fontWeight: '800', fontSize: font.sizes.sm }}>{left}s</Text>
+        </View>
+        <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceAlt, overflow: 'hidden' }}>
+          <View style={{ width: `${pct}%`, height: 8, backgroundColor: barColor }} />
+        </View>
+      </View>
+
+      <View style={{ backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg }}>
+        <Text style={{ color: colors.text, fontSize: font.sizes.lg, lineHeight: 30, fontFamily: verseFont(verse.translation) }}>"{verse.text}"</Text>
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        {options.map((opt) => {
+          const show = picked !== null;
+          const isAnswer = opt === verse.reference;
+          const isPicked = picked === opt;
+          const bg = show && isAnswer ? colors.success : show && isPicked ? colors.danger : colors.surfaceAlt;
+          const fg = show && (isAnswer || isPicked) ? '#fff' : colors.text;
+          return (
+            <Pressable key={opt} disabled={show} onPress={() => pick(opt)} style={{ paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radius.md, backgroundColor: bg }}>
+              <Text style={{ color: fg, fontWeight: '700', fontSize: font.sizes.md }}>{opt}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
     </View>
   );
 }

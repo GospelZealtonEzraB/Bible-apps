@@ -15,6 +15,7 @@ import {
   FirstLetterDrill,
   BlankDrill,
   ChoiceDrill,
+  SpeedDrill,
   type DrillProps,
 } from '@/components/drills';
 import type { DrillMode } from '@/types';
@@ -25,6 +26,7 @@ const TITLES: Record<DrillMode, string> = {
   firstletter: 'First Letters',
   blank: 'Fill & Type',
   choice: 'Multiple Choice',
+  speed: 'Speed Round',
 };
 
 function celebrate(accuracy: number) {
@@ -83,6 +85,8 @@ export default function DrillScreen() {
         return <BlankDrill key={runKey} {...drillProps} />;
       case 'choice':
         return <ChoiceDrill key={runKey} {...drillProps} />;
+      case 'speed':
+        return <SpeedDrill key={runKey} {...drillProps} />;
       default:
         return <FlashcardDrill key={runKey} {...drillProps} />;
     }
