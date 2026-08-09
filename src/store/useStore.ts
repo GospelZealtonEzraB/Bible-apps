@@ -302,6 +302,7 @@ const defaultSettings: Settings = {
   serverUrl: null,
   shareLibrary: true,
   onboarded: false,
+  abideRhythm: ['come', 'worship', 'word', 'deeper', 'respond', 'close'],
 };
 
 /** Append an event to a rolling activity log, keeping the most recent `cap`. */

@@ -426,4 +426,6 @@ export interface Settings {
   shareLibrary: boolean;
   /** Has the first-run onboarding flow been completed (or skipped)? */
   onboarded: boolean;
+  /** Ordered movement keys for the composable Abide quiet-time flow. */
+  abideRhythm?: string[];
 }
