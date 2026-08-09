@@ -34,6 +34,9 @@ export default function CircleHubScreen() {
   const [syncError, setSyncError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [nameInput, setNameInput] = useState('');
+  // Drill-in: the home shows a compact overview + tiles; a tile opens its section
+  // full-screen (in place) so no single page grows unbounded.
+  const [view, setView] = useState<Section>('home');
 
   // Push my progress + pull the board whenever the screen focuses.
   useFocusEffect(
@@ -85,6 +88,92 @@ export default function CircleHubScreen() {
   const meta = circle.meta;
   const members = circle.members ?? [];
 
+  // ---- A drilled-in section fills the screen (with a back-to-home header) ----
+  if (view !== 'home') {
+    return (
+      <Screen>
+        <SectionHeader title={SECTION_TITLES[view]} circleName={meta.name} onHome={() => setView('home')} />
+
+        {view === 'people' ? (
+          <>
+            <LeaderboardCard members={members} />
+            <View>
+              <SectionTitle>How we're growing</SectionTitle>
+              <View style={{ gap: spacing.sm }}>
+                {members.map((m) => (
+                  <MemberRow
+                    key={m.id}
+                    member={m}
+                    isMe={m.id === profile.memberId}
+                    goal={meta.goal}
+                    cheers={circle.cheersFor?.[m.id] ?? 0}
+                    onOpen={() => router.push(`/circle/${code}/member/${m.id}`)}
+                    onCheer={m.id !== profile.memberId ? () => cheerMember(code, m.id).catch(() => {}) : undefined}
+                  />
+                ))}
+              </View>
+            </View>
+            <WhoKnowsWhatCard members={members} myId={profile.memberId} />
+            <TogetherStatsCard members={members} togetherStreak={meta.togetherStreak} />
+          </>
+        ) : null}
+
+        {view === 'study' ? (
+          <>
+            <SharedVersesCard code={code} members={members} myId={profile.memberId} />
+            <PlansCard code={code} />
+            <NotesCard code={code} />
+          </>
+        ) : null}
+
+        {view === 'prayer' ? <PrayerCard code={code} myId={profile.memberId} /> : null}
+
+        {view === 'challenges' ? <ChallengesCard code={code} members={members} myId={profile.memberId} /> : null}
+
+        {view === 'settings' ? (
+          <>
+            <CovenantCard code={code} />
+            <GoalCard code={code} />
+            {renaming ? (
+              <Card>
+                <SectionTitle>Rename circle</SectionTitle>
+                <TextInput value={nameInput} onChangeText={setNameInput} placeholder="Circle name" placeholderTextColor={colors.textFaint} autoFocus style={fieldStyle(colors)} />
+                <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
+                  <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setRenaming(false)} />
+                  <Button title="Save" small style={{ flex: 1 }} disabled={!nameInput.trim()} onPress={async () => { try { await setCircleName(code, nameInput); } catch {} setRenaming(false); }} />
+                </View>
+              </Card>
+            ) : (
+              <Button title="Rename circle" variant="secondary" icon={<Ionicons name="pencil" size={15} color={colors.text} />} onPress={() => { setNameInput(meta.name); setRenaming(true); }} />
+            )}
+            <View style={{ marginTop: spacing.sm }}>
+              <Button title="Leave circle" variant="ghost" onPress={onLeave} />
+            </View>
+          </>
+        ) : null}
+      </Screen>
+    );
+  }
+
+  // ---- Home: a compact overview + the drill-in tile grid ----
+  const messagesCount = circle.messages?.length ?? 0;
+  const activePrayers = (circle.prayers ?? []).filter((p) => p.status === 'active').length;
+  const pendingForMe = (circle.challenges ?? []).filter((c) =>
+    (c.kind !== 'duel' && c.to === profile.memberId && c.status === 'pending') ||
+    (c.kind !== 'duel' && c.from === profile.memberId && c.status === 'submitted') ||
+    (c.kind === 'duel' && (c.from === profile.memberId || c.to === profile.memberId) && !(c.duel ?? []).some((d) => d.by === profile.memberId)),
+  ).length;
+  const studyCount = (circle.sharedVerses?.length ?? 0) + (circle.plans?.length ?? 0) + (circle.notes?.length ?? 0);
+
+  const tiles: { key: Exclude<Section, 'home'> | 'discussion'; icon: keyof typeof Ionicons.glyphMap; label: string; hint: string; badge: number }[] = [
+    { key: 'people', icon: 'people-outline', label: 'People', hint: 'Progress · who knows what', badge: members.length },
+    { key: 'study', icon: 'book-outline', label: 'Study together', hint: 'Verses · plans · notes', badge: studyCount },
+    { key: 'prayer', icon: 'heart-outline', label: 'Prayer', hint: 'Pray for each other', badge: activePrayers },
+    { key: 'challenges', icon: 'flash-outline', label: 'Challenges', hint: 'Spur each other on', badge: pendingForMe },
+    { key: 'discussion', icon: 'chatbubbles-outline', label: 'Discussion', hint: 'Talk it through', badge: messagesCount },
+    { key: 'settings', icon: 'settings-outline', label: 'Settings', hint: 'Goal · covenant · more', badge: 0 },
+  ];
+
   return (
     <Screen>
       <Header
@@ -92,22 +181,11 @@ export default function CircleHubScreen() {
         subtitle={`Invite code · ${meta.code}`}
         back
         right={
-          <Pressable onPress={() => { setNameInput(meta.name); setRenaming(true); }} hitSlop={8}>
-            <Ionicons name="pencil" size={18} color={colors.textMuted} />
+          <Pressable onPress={() => setView('settings')} hitSlop={8}>
+            <Ionicons name="settings-outline" size={20} color={colors.textMuted} />
           </Pressable>
         }
       />
-
-      {renaming ? (
-        <Card>
-          <SectionTitle>Rename circle</SectionTitle>
-          <TextInput value={nameInput} onChangeText={setNameInput} placeholder="Circle name" placeholderTextColor={colors.textFaint} autoFocus style={fieldStyle(colors)} />
-          <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
-            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setRenaming(false)} />
-            <Button title="Save" small style={{ flex: 1 }} disabled={!nameInput.trim()} onPress={async () => { try { await setCircleName(code, nameInput); } catch {} setRenaming(false); }} />
-          </View>
-        </Card>
-      ) : null}
 
       {circle.apiVersion !== undefined && circle.apiVersion < EXPECTED_API_VERSION ? (
         <Card style={{ borderColor: colors.warning }}>
@@ -129,19 +207,21 @@ export default function CircleHubScreen() {
         </Card>
       ) : null}
 
-      {/* Invite */}
-      <Card>
-        <SectionTitle>Invite a partner</SectionTitle>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
-          <Text selectable style={{ color: colors.text, fontSize: font.sizes.xl, fontWeight: '800', letterSpacing: 3 }}>
-            {meta.code}
+      {/* Invite — foregrounded only while the circle is still small */}
+      {members.length <= 2 ? (
+        <Card>
+          <SectionTitle>Invite a partner</SectionTitle>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
+            <Text selectable style={{ color: colors.text, fontSize: font.sizes.xl, fontWeight: '800', letterSpacing: 3 }}>
+              {meta.code}
+            </Text>
+            <Button title="Share" small onPress={onShare} icon={<Ionicons name="share-outline" size={16} color={colors.onPrimary} />} />
+          </View>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
+            Anyone with this code can join and see the circle’s shared progress.
           </Text>
-          <Button title="Share" small onPress={onShare} icon={<Ionicons name="share-outline" size={16} color={colors.onPrimary} />} />
-        </View>
-        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
-          Anyone with this code can join and see the circle’s shared progress.
-        </Text>
-      </Card>
+        </Card>
+      ) : null}
 
       {/* Together streak */}
       {meta.togetherStreak > 0 ? (
@@ -161,75 +241,71 @@ export default function CircleHubScreen() {
       {/* Quiet-partner nudge */}
       <QuietPartnerNudge members={members} myId={profile.memberId} />
 
-      {/* Accountability inbox */}
-      <ChallengesCard code={code} members={members} myId={profile.memberId} />
-
-      {/* Covenant */}
-      <CovenantCard code={code} />
-
-      {/* Shared goal */}
-      <GoalCard code={code} />
-
-      {/* Together stats */}
-      <TogetherStatsCard members={members} togetherStreak={meta.togetherStreak} />
-
-      {/* Leaderboard */}
-      <LeaderboardCard members={members} />
-
-      {/* Discussion */}
-      <Card onPress={() => router.push(`/circle/${code}/discussion`)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="chatbubbles-outline" size={22} color={colors.primary} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <SectionTitle style={{ marginBottom: 2 }}>Discussion</SectionTitle>
-          <Text style={{ color: colors.text, fontSize: font.sizes.md, fontWeight: '700' }}>
-            {(circle?.messages?.length ?? 0) > 0 ? `${circle?.messages?.length} message${circle?.messages?.length === 1 ? '' : 's'} — talk it through` : 'Start the conversation'}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
-      </Card>
-
-      {/* Progress board */}
-      <View>
-        <SectionTitle>How we're growing</SectionTitle>
-        <View style={{ gap: spacing.sm }}>
-          {members.map((m) => (
-            <MemberRow
-              key={m.id}
-              member={m}
-              isMe={m.id === profile.memberId}
-              goal={meta.goal}
-              cheers={circle.cheersFor?.[m.id] ?? 0}
-              onOpen={() => router.push(`/circle/${code}/member/${m.id}`)}
-              onCheer={m.id !== profile.memberId ? () => cheerMember(code, m.id).catch(() => {}) : undefined}
-            />
-          ))}
-        </View>
-      </View>
-
-      {/* Who knows what */}
-      <WhoKnowsWhatCard members={members} myId={profile.memberId} />
-
-      {/* Activity feed */}
+      {/* What's happening */}
       <ActivityFeedCard members={members} myId={profile.memberId} />
 
-      {/* Shared verses */}
-      <SharedVersesCard code={code} members={members} myId={profile.memberId} />
-
-      {/* Study plans */}
-      <PlansCard code={code} />
-
-      {/* Prayer wall */}
-      <PrayerCard code={code} myId={profile.memberId} />
-
-      {/* Notes wall */}
-      <NotesCard code={code} />
-
-      <View style={{ marginTop: spacing.sm }}>
-        <Button title="Leave circle" variant="ghost" onPress={onLeave} />
+      {/* Drill-in tiles */}
+      <View style={{ gap: spacing.sm }}>
+        {tiles.map((t) => (
+          <DrillTile
+            key={t.key}
+            icon={t.icon}
+            label={t.label}
+            hint={t.hint}
+            badge={t.badge}
+            onPress={() => (t.key === 'discussion' ? router.push(`/circle/${code}/discussion`) : setView(t.key))}
+          />
+        ))}
       </View>
     </Screen>
+  );
+}
+
+type Section = 'home' | 'people' | 'study' | 'prayer' | 'challenges' | 'settings';
+
+const SECTION_TITLES: Record<Exclude<Section, 'home'>, string> = {
+  people: 'People',
+  study: 'Study together',
+  prayer: 'Prayer',
+  challenges: 'Challenges',
+  settings: 'Settings',
+};
+
+/** Header for a drilled-in section: a back chip returns to the circle home. */
+function SectionHeader({ title, circleName, onHome }: { title: string; circleName: string; onHome: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+      <Pressable onPress={onHome} hitSlop={12} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt }}>
+        <Ionicons name="chevron-back" size={22} color={colors.text} />
+      </Pressable>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.xl }}>{title}</Text>
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }} numberOfLines={1}>{circleName}</Text>
+      </View>
+    </View>
+  );
+}
+
+/** A home tile that drills into a section, with a live count badge. */
+function DrillTile({ icon, label, hint, badge, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; hint: string; badge: number; onPress: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <Card onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={22} color={colors.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>{label}</Text>
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{hint}</Text>
+      </View>
+      {badge > 0 ? (
+        <View style={{ minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: colors.primary, fontSize: font.sizes.xs, fontWeight: '800' }}>{badge}</Text>
+        </View>
+      ) : null}
+      <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+    </Card>
   );
 }
 
