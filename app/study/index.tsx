@@ -7,7 +7,7 @@ import { Screen, Header } from '@/components/layout';
 import { Card, Button, SectionTitle } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore } from '@/store/useStore';
-import { parsePassage, formatPassage } from '@/data/books';
+import { parseScope, scopeSizeLabel } from '@/data/scope';
 
 export default function StudyIndexScreen() {
   const { colors } = useTheme();
@@ -21,13 +21,15 @@ export default function StudyIndexScreen() {
     [studySessions],
   );
 
+  const scope = useMemo(() => parseScope(passage), [passage]);
+
   const start = () => {
-    const p = parsePassage(passage);
-    if (!p) return;
-    router.push(`/study/${encodeURIComponent(formatPassage(p))}`);
+    if (!scope) return;
+    router.push(`/study/${encodeURIComponent(scope.display)}`);
   };
 
-  const valid = !!parsePassage(passage);
+  const valid = !!scope;
+  const sizeHint = scope ? scopeSizeLabel(scope) : '';
 
   return (
     <Screen>
@@ -40,18 +42,21 @@ export default function StudyIndexScreen() {
           <TextInput
             value={passage}
             onChangeText={setPassage}
-            placeholder="A chapter or passage — e.g. John 3 or John 3:1-21"
+            placeholder="Verse, range, chapter, book, or list"
             placeholderTextColor={colors.textFaint}
             autoCapitalize="words"
             returnKeyType="go"
             onSubmitEditing={start}
             style={{ flex: 1, color: colors.text, fontSize: font.sizes.md, paddingVertical: spacing.md }}
           />
+          {valid && sizeHint ? (
+            <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{sizeHint}</Text>
+          ) : null}
         </View>
         <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
-          AI sets the context: what came before, the scene, the people, who's speaking to whom, plus
-          discussion questions and word studies. It never quotes Scripture — the text comes from your
-          Bible translation.
+          Study any scope — a verse (John 3:16), a range (Romans 12:1-2), a chapter (John 3), several
+          chapters (John 3-5), a whole book (Philippians), or a list (Romans 8:28; John 3:16). AI sets
+          the context; it never quotes Scripture — the text comes from your Bible translation.
         </Text>
         <View style={{ marginTop: spacing.md }}>
           <Button title="Set the scene" onPress={start} disabled={!valid} icon={<Ionicons name="sparkles" size={16} color={colors.onPrimary} />} />

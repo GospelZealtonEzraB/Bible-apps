@@ -11,7 +11,11 @@ import { useTheme, spacing, font, radius } from '@/theme';
 import { useStudySession, useApplication, useStore } from '@/store/useStore';
 import { fetchStudyBrief } from '@/data/studyClient';
 import { getChapterVerses, normalizeKey, isLatinTranslation, type ChapterVerse } from '@/data/bibleApi';
+import { parseScope, segmentReference } from '@/data/scope';
 import type { StudyBrief } from '@/types';
+
+/** Max chapters rendered inline under "Read the passage" (a whole book is huge). */
+const MAX_INLINE_CHAPTERS = 6;
 
 export default function StudyBriefScreen() {
   const { colors } = useTheme();
@@ -109,18 +113,35 @@ function BriefBody({
   onOpenRef: (ref: string) => void;
 }) {
   const { colors } = useTheme();
-  const [verses, setVerses] = useState<ChapterVerse[] | null>(null);
+  const [sections, setSections] = useState<{ ref: string; verses: ChapterVerse[] }[] | null>(null);
   const [loadingText, setLoadingText] = useState(false);
   const [textError, setTextError] = useState<string | null>(null);
+  const [truncated, setTruncated] = useState(0);
 
-  const loadPassage = () => {
+  const loadPassage = async () => {
     setLoadingText(true);
     setTextError(null);
-    getChapterVerses(passage, translation, { serverUrl })
-      .then((r) => setVerses(r.verses))
-      .catch((e) => setTextError(e instanceof Error ? e.message : 'Could not load the passage.'))
-      .finally(() => setLoadingText(false));
+    try {
+      const scope = parseScope(passage);
+      const segments = scope?.segments ?? [];
+      if (segments.length === 0) throw new Error('Enter a verse, range, chapter, book, or list.');
+      const shown = segments.slice(0, MAX_INLINE_CHAPTERS);
+      setTruncated(Math.max(0, segments.length - shown.length));
+      const out: { ref: string; verses: ChapterVerse[] }[] = [];
+      for (const seg of shown) {
+        const ref = segmentReference(seg);
+        const r = await getChapterVerses(ref, translation, { serverUrl });
+        out.push({ ref: r.reference, verses: r.verses });
+      }
+      setSections(out);
+    } catch (e) {
+      setTextError(e instanceof Error ? e.message : 'Could not load the passage.');
+    } finally {
+      setLoadingText(false);
+    }
   };
+
+  const multi = (sections?.length ?? 0) > 1;
 
   return (
     <View>
@@ -188,21 +209,31 @@ function BriefBody({
         </Section>
       ) : null}
 
-      {/* Read the actual passage (provider text) */}
+      {/* Read the actual passage (provider text) — any scope, chapter by chapter */}
       <Card style={{ marginBottom: spacing.sm }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <SectionTitle style={{ marginBottom: 0 }}>Read the passage</SectionTitle>
-          {!verses ? <Button title={loadingText ? '…' : 'Show verses'} variant="secondary" small loading={loadingText} onPress={loadPassage} /> : null}
+          {!sections ? <Button title={loadingText ? '…' : 'Show verses'} variant="secondary" small loading={loadingText} onPress={loadPassage} /> : null}
         </View>
         {textError ? <Text style={{ color: colors.warning, fontSize: font.sizes.xs, marginTop: spacing.sm }}>{textError}</Text> : null}
-        {verses ? (
-          <View style={{ marginTop: spacing.sm, gap: 6 }}>
-            {verses.map((v) => (
-              <Text key={v.verse} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 26, fontFamily: isLatinTranslation(translation) ? font.serif : undefined }}>
-                <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{v.verse} </Text>
-                {v.text}
-              </Text>
+        {sections ? (
+          <View style={{ marginTop: spacing.sm, gap: spacing.md }}>
+            {sections.map((sec) => (
+              <View key={sec.ref} style={{ gap: 6 }}>
+                {multi ? <Text style={{ color: colors.primary, fontSize: font.sizes.sm, fontWeight: '800' }}>{sec.ref}</Text> : null}
+                {sec.verses.map((v) => (
+                  <Text key={v.verse} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 26, fontFamily: isLatinTranslation(translation) ? font.serif : undefined }}>
+                    <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{v.verse} </Text>
+                    {v.text}
+                  </Text>
+                ))}
+              </View>
             ))}
+            {truncated > 0 ? (
+              <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontStyle: 'italic' }}>
+                +{truncated} more chapter{truncated === 1 ? '' : 's'} — open the reader to read the rest.
+              </Text>
+            ) : null}
           </View>
         ) : null}
       </Card>

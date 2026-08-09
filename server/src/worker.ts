@@ -395,7 +395,9 @@ async function handleAi(req: Request, env: Env): Promise<Response> {
 
 const STUDY_BRIEF_SYSTEM =
   'You produce a STUDY BRIEF for a Bible passage a reader is about to study. You are given ' +
-  'ONLY a reference (e.g. "John 3:1-21" or "John 3"). Return ONLY a JSON object with these keys: ' +
+  'ONLY a reference — a verse ("John 3:16"), a range ("Romans 12:1-2"), a chapter ("John 3"), ' +
+  'several chapters ("John 3-5"), a whole book ("Philippians"), or a list ("Romans 8:28; John 3:16"). ' +
+  'Brief the WHOLE scope given. Return ONLY a JSON object with these keys: ' +
   '"summaryBefore" (what happens in the preceding verses/chapter leading into this passage), ' +
   '"setting" (the scene, time, and place), "characters" (array of {"name","insight"} for who is ' +
   'involved), "speakerAudience" (who is speaking and to whom), "location" (geography plus relevant ' +

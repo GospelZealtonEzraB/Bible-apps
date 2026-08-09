@@ -101,6 +101,11 @@ const BOOK_LOOKUP: Record<string, BookInfo> = (() => {
   return map;
 })();
 
+/** Resolve a book name/alias/abbreviation to its canonical info (or null). */
+export function lookupBook(token: string): BookInfo | null {
+  return BOOK_LOOKUP[normBook(token)] ?? null;
+}
+
 export interface ParsedReference {
   bookNumber: number;
   bookName: string;
