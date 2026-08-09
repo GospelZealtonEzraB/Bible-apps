@@ -8,6 +8,7 @@ import { Screen, Header } from '@/components/layout';
 import { Card, StatusBadge, Button, SectionTitle, EmptyState } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
 import { VerseNotes } from '@/components/VerseNotes';
+import { CrossRefs } from '@/components/CrossRefs';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerse, useStore, useSettings } from '@/store/useStore';
 import { isLatinTranslation } from '@/data/bibleApi';
@@ -157,6 +158,8 @@ export default function VerseDetailScreen() {
           </View>
         </View>
       </Card>
+
+      <CrossRefs reference={verse.reference} />
 
       <VerseNotes reference={verse.reference} />
 
