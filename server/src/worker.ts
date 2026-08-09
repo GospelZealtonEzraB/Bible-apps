@@ -208,20 +208,55 @@ function youtubeId(url: string): string | null {
   return m ? m[1] : null;
 }
 
-/** Best-effort YouTube caption fetch (unofficial; often unavailable). */
-async function youtubeTranscript(videoId: string): Promise<string> {
-  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: { 'user-agent': 'Mozilla/5.0', 'accept-language': 'en' } });
-  const html = await res.text();
-  const m = html.match(/"captionTracks":(\[.*?\])/);
-  if (!m) return '';
-  let tracks: any[] = [];
-  try { tracks = JSON.parse(m[1]); } catch { return ''; }
-  const track = tracks.find((t) => (t.languageCode || '').startsWith('en')) || tracks[0];
-  if (!track?.baseUrl) return '';
-  const cap = await fetch(track.baseUrl);
-  const xml = await cap.text();
+// Best-effort YouTube caption fetch (unofficial). From a datacenter IP YouTube
+// often blocks this; the app falls back to pasting the transcript. We try the
+// InnerTube ANDROID player (most robust), then the watch page, then parse the
+// caption track (json3 preferred, XML fallback).
+const YT_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122 Safari/537.36';
+const YT_INNERTUBE_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8';
+
+async function ytCaptionTracks(videoId: string): Promise<any[]> {
+  // 1) InnerTube ANDROID client — usually dodges the consent/geo wall.
+  try {
+    const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${YT_INNERTUBE_KEY}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'user-agent': YT_UA, 'accept-language': 'en' },
+      body: JSON.stringify({ videoId, context: { client: { clientName: 'ANDROID', clientVersion: '19.09.37', hl: 'en', gl: 'US' } } }),
+    });
+    const data: any = await res.json();
+    const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks;
+    if (Array.isArray(tracks) && tracks.length) return tracks;
+  } catch { /* fall through */ }
+  // 2) Watch page scrape (with consent cookie).
+  try {
+    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, { headers: { 'user-agent': YT_UA, 'accept-language': 'en', cookie: 'CONSENT=YES+1' } });
+    const html = await res.text();
+    const m = html.match(/"captionTracks":(\[.*?\])/);
+    if (m) return JSON.parse(m[1]);
+  } catch { /* fall through */ }
+  return [];
+}
+
+async function ytCaptionText(baseUrl: string): Promise<string> {
+  // json3 gives clean segments; XML is the fallback format.
+  try {
+    const r = await fetch(baseUrl + '&fmt=json3', { headers: { 'user-agent': YT_UA } });
+    const j: any = await r.json();
+    const t = (j.events || []).flatMap((e: any) => (e.segs || []).map((s: any) => s.utf8 || '')).join('');
+    if (t.trim()) return stripHtml(t);
+  } catch { /* fall through */ }
+  const r2 = await fetch(baseUrl, { headers: { 'user-agent': YT_UA } });
+  const xml = await r2.text();
   const texts = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)].map((x) => x[1]);
   return stripHtml(texts.join(' '));
+}
+
+async function youtubeTranscript(videoId: string): Promise<string> {
+  const tracks = await ytCaptionTracks(videoId);
+  if (!tracks.length) return '';
+  const track = tracks.find((t) => (t.languageCode || '').startsWith('en')) || tracks[0];
+  if (!track?.baseUrl) return '';
+  return (await ytCaptionText(track.baseUrl).catch(() => '')).slice(0, 16000);
 }
 
 /** Extract readable text from a URL — YouTube captions (best-effort) or article HTML. */
