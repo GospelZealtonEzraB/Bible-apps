@@ -27,6 +27,21 @@ interface KVNamespaceLike {
   list(opts?: { prefix?: string; cursor?: string; limit?: number }): Promise<KVListResult>;
 }
 
+/** Cloudflare Workers AI binding (only the embeddings shape we use). */
+interface WorkersAiLike {
+  run(model: string, input: { text: string[] }): Promise<{ data: number[][] }>;
+}
+
+/** Cloudflare Vectorize binding (only query). */
+interface VectorizeMatch {
+  id: string;
+  score: number;
+  metadata?: Record<string, unknown>;
+}
+interface VectorizeLike {
+  query(vector: number[], opts: { topK?: number; returnMetadata?: boolean | 'all' | 'none' }): Promise<{ matches: VectorizeMatch[] }>;
+}
+
 export interface Env {
   /** Set one of these. If both are present, OpenAI is used. */
   OPENAI_API_KEY?: string;
@@ -38,7 +53,14 @@ export interface Env {
   AI_MODEL?: string;
   /** KV store for Growing Together shared state (optional; routes 501 without it). */
   ENGRAVED_KV?: KVNamespaceLike;
+  /** Workers AI binding for semantic search embeddings (optional). */
+  AI?: WorkersAiLike;
+  /** Vectorize index of KJV verse embeddings (optional; /search 501 without it). */
+  VECTORIZE?: VectorizeLike;
 }
+
+/** Embedding model for semantic search — must match the Vectorize index dims (768). */
+const EMBED_MODEL = '@cf/baai/bge-base-en-v1.5';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -977,6 +999,41 @@ them.</p>
 <p>Questions or deletion requests: <a href="mailto:gospel.e.tgb@gmail.com">gospel.e.tgb@gmail.com</a></p>
 </body></html>`;
 
+// ===========================================================================
+// Semantic search — Workers AI (bge embeddings) + Vectorize. References only:
+// the query is embedded, the index is queried, and only verse *references*
+// (never verse text) are returned; the app hydrates snippets from its local KJV.
+// ===========================================================================
+
+async function handleSearch(request: Request, env: Env): Promise<Response> {
+  if (!env.AI || !env.VECTORIZE) {
+    return json({ error: 'Semantic search is not configured on this server yet.', results: [] }, 501);
+  }
+  const body = (await request.json().catch(() => ({}))) as { query?: unknown; topK?: unknown };
+  const query = typeof body.query === 'string' ? body.query.trim().slice(0, 200) : '';
+  if (query.length < 2) return json({ results: [] });
+
+  const cacheKey = env.ENGRAVED_KV ? `search:${query.toLowerCase()}` : null;
+  if (cacheKey) {
+    const cached = await kvGetJson<{ results: unknown[] }>(env.ENGRAVED_KV!, cacheKey);
+    if (cached) return json(cached);
+  }
+
+  const embed = await env.AI.run(EMBED_MODEL, { text: [query] });
+  const vector = embed?.data?.[0];
+  if (!vector) return json({ results: [] });
+
+  const topK = Math.min(Math.max(Number(body.topK) || 20, 1), 20);
+  const res = await env.VECTORIZE.query(vector, { topK, returnMetadata: true });
+  const results = (res.matches || [])
+    .map((m) => ({ reference: String(m.metadata?.ref ?? ''), score: m.score }))
+    .filter((r) => r.reference);
+
+  const out = { results };
+  if (cacheKey) await kvPutJson(env.ENGRAVED_KV!, cacheKey, out);
+  return json(out);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -1007,8 +1064,9 @@ export default {
       if (path === '/ai') return await handleAi(request, env);
       if (path === '/study') return await handleStudy(request, env);
       if (path === '/circle') return await handleCircle(request, env);
+      if (path === '/search') return await handleSearch(request, env);
       // if (path === '/esv') return await handleEsv(request, env); // ESV disabled for now
-      return json({ error: 'Not found. Use /ai, /study, or /circle.' }, 404);
+      return json({ error: 'Not found. Use /ai, /study, /circle, or /search.' }, 404);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Server error';
       return json({ error: message }, 500);

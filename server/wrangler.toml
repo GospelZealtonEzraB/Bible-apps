@@ -21,3 +21,17 @@ AI_MODEL = "gpt-5.4-mini"
 [[kv_namespaces]]
 binding = "ENGRAVED_KV"
 id = "a5c4f5d2f91044479c4ebcff2a7c515d"
+
+# Semantic search (optional). Enables POST /search — meaning-based verse lookup.
+# 1) Create the index (768 dims = bge-base-en-v1.5, cosine):
+#      npx wrangler vectorize create kjv-bge-base --dimensions=768 --metric=cosine
+# 2) Keep the two blocks below, then `npx wrangler deploy`.
+# 3) Populate it once:  node server/scripts/populate-vectorize.mjs
+# Until the index has data, /search returns no results and the app uses its
+# built-in offline keyword search instead.
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "VECTORIZE"
+index_name = "kjv-bge-base"

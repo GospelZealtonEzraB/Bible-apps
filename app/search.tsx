@@ -7,11 +7,14 @@ import { Card, Button, EmptyState } from '@/components/ui';
 import { VerseActionSheet } from '@/components/VerseActionSheet';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { searchScripture, type SearchResult } from '@/data/search';
+import { useStore } from '@/store/useStore';
 
 export default function SearchScreen() {
   const { colors } = useTheme();
+  const serverUrl = useStore((s) => s.settings.serverUrl);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [source, setSource] = useState<'local' | 'semantic'>('local');
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<SearchResult | null>(null);
 
@@ -22,8 +25,9 @@ export default function SearchScreen() {
     setResults(null);
     // Defer so the spinner paints before the (first-time) index build blocks.
     InteractionManager.runAfterInteractions(async () => {
-      const res = await searchScripture(q);
+      const res = await searchScripture(q, { serverUrl });
       setResults(res.results);
+      setSource(res.source);
       setLoading(false);
     });
   };
@@ -70,7 +74,7 @@ export default function SearchScreen() {
       {results && results.length > 0 ? (
         <View style={{ gap: spacing.sm }}>
           <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, fontWeight: '700' }}>
-            {results.length} result{results.length === 1 ? '' : 's'}
+            {results.length} result{results.length === 1 ? '' : 's'} · {source === 'semantic' ? '✨ meaning-based' : 'keyword'}
           </Text>
           {results.map((r) => (
             <Pressable

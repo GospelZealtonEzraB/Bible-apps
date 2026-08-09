@@ -6,6 +6,8 @@
  */
 import { KJV_LOADERS } from './kjvAssets';
 import { bookByNumber } from './structure';
+import { parseReference } from './books';
+import { getLocalChapter } from './localBible';
 
 export interface SearchResult {
   reference: string;
@@ -48,6 +50,17 @@ function getIndex(): IndexEntry[] {
 function toResult(e: IndexEntry): SearchResult {
   const name = bookByNumber(e.bookNumber)?.name ?? `Book ${e.bookNumber}`;
   return { reference: `${name} ${e.chapter}:${e.verse}`, text: e.text, bookNumber: e.bookNumber, chapter: e.chapter, verse: e.verse };
+}
+
+/** Build a SearchResult for a single-verse reference from the local KJV. */
+export function hydrateReference(reference: string): SearchResult | null {
+  const p = parseReference(reference);
+  if (!p) return null;
+  const ch = getLocalChapter(p.bookNumber, p.chapter);
+  const v = ch?.[p.verseStart - 1];
+  if (!v) return null;
+  const name = bookByNumber(p.bookNumber)?.name ?? `Book ${p.bookNumber}`;
+  return { reference: `${name} ${p.chapter}:${p.verseStart}`, text: v.text, bookNumber: p.bookNumber, chapter: p.chapter, verse: p.verseStart };
 }
 
 /**
