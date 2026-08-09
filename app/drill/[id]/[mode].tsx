@@ -14,6 +14,7 @@ import {
   VanishingDrill,
   FirstLetterDrill,
   BlankDrill,
+  ChoiceDrill,
   type DrillProps,
 } from '@/components/drills';
 import type { DrillMode } from '@/types';
@@ -23,6 +24,7 @@ const TITLES: Record<DrillMode, string> = {
   vanish: 'Vanishing Words',
   firstletter: 'First Letters',
   blank: 'Fill & Type',
+  choice: 'Multiple Choice',
 };
 
 function celebrate(accuracy: number) {
@@ -79,6 +81,8 @@ export default function DrillScreen() {
         return <FirstLetterDrill key={runKey} {...drillProps} />;
       case 'blank':
         return <BlankDrill key={runKey} {...drillProps} />;
+      case 'choice':
+        return <ChoiceDrill key={runKey} {...drillProps} />;
       default:
         return <FlashcardDrill key={runKey} {...drillProps} />;
     }

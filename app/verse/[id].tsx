@@ -23,6 +23,7 @@ const DRILLS: { mode: DrillMode; emoji: string; title: string; desc: string }[] 
   { mode: 'vanish', emoji: '🌫️', title: 'Vanishing Words', desc: 'Fade words away, pass by pass' },
   { mode: 'firstletter', emoji: '🔤', title: 'First Letters', desc: 'Recall from first letters only' },
   { mode: 'blank', emoji: '⌨️', title: 'Fill & Type', desc: 'Fill blanks or type it out' },
+  { mode: 'choice', emoji: '🔢', title: 'Multiple Choice', desc: 'Match the verse to its reference' },
 ];
 
 export default function VerseDetailScreen() {

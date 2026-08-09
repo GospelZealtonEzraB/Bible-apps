@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { Button } from '@/components/ui';
 import { isLatinTranslation } from '@/data/bibleApi';
+import { useStore } from '@/store/useStore';
 import type { Verse } from '@/types';
 import {
   tokenize,
@@ -13,8 +14,16 @@ import {
   pickBlankIndices,
   diffWords,
   normalizeWord,
+  pickDistractors,
   type Token,
 } from '@/drills/helpers';
+
+/** Well-known references used to pad multiple-choice options for small libraries. */
+const FALLBACK_REFS = [
+  'John 3:16', 'Romans 8:28', 'Philippians 4:13', 'Psalms 23:1', 'Genesis 1:1',
+  'Proverbs 3:5', 'Jeremiah 29:11', 'Isaiah 41:10', 'Matthew 6:33', 'Joshua 1:9',
+  'Romans 12:2', 'Galatians 2:20',
+];
 
 /** Verse text uses the serif face for Latin scripts, the system font otherwise
  * (Georgia has no Tamil glyphs). */
@@ -59,6 +68,70 @@ function WordRow({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+    </View>
+  );
+}
+
+// ---- Multiple choice ------------------------------------------------------
+
+/** Show the verse text; pick the correct reference from four options. */
+export function ChoiceDrill({ verse, onComplete }: DrillProps) {
+  const { colors } = useTheme();
+  const versesRecord = useStore((s) => s.verses);
+
+  const options = useMemo(() => {
+    const pool = [
+      ...Object.values(versesRecord).map((v) => v.reference).filter((r) => r !== verse.reference),
+      ...FALLBACK_REFS,
+    ];
+    const distractors = pickDistractors(verse.reference, pool, 3);
+    const all = [verse.reference, ...distractors];
+    // Deterministic-enough shuffle for a quiz (runtime randomness is fine here).
+    for (let i = all.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [all[i], all[j]] = [all[j], all[i]];
+    }
+    return all;
+  }, [verse.reference, versesRecord]);
+
+  const [picked, setPicked] = useState<string | null>(null);
+  const correct = picked === verse.reference;
+
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', gap: spacing.lg }}>
+      <Prompt>Which reference is this?</Prompt>
+      <View style={{ backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: spacing.lg }}>
+        <Text style={{ color: colors.text, fontSize: font.sizes.lg, lineHeight: 30, fontFamily: verseFont(verse.translation) }}>
+          "{verse.text}"
+        </Text>
+      </View>
+
+      <View style={{ gap: spacing.sm }}>
+        {options.map((opt) => {
+          const isPicked = picked === opt;
+          const isAnswer = opt === verse.reference;
+          const show = picked !== null;
+          const bg = show && isAnswer ? colors.success : show && isPicked ? colors.danger : colors.surfaceAlt;
+          const fg = show && (isAnswer || isPicked) ? '#fff' : colors.text;
+          return (
+            <Pressable
+              key={opt}
+              disabled={picked !== null}
+              onPress={() => setPicked(opt)}
+              style={{ paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radius.md, backgroundColor: bg }}
+            >
+              <Text style={{ color: fg, fontWeight: '700', fontSize: font.sizes.md }}>{opt}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {picked !== null ? (
+        <Button
+          title={correct ? 'Correct! Continue' : 'Continue'}
+          onPress={() => onComplete(correct ? 100 : 40)}
+        />
+      ) : null}
     </View>
   );
 }

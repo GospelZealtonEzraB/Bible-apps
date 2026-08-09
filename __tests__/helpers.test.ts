@@ -121,3 +121,18 @@ describe('normalizeWord', () => {
     expect(normalizeWord("don't")).toBe("don't");
   });
 });
+
+import { pickDistractors } from '@/drills/helpers';
+
+describe('pickDistractors', () => {
+  test('excludes the correct answer and de-duplicates', () => {
+    const pool = ['John 3:16', 'Romans 8:28', 'romans 8:28', 'Psalms 23:1'];
+    const d = pickDistractors('John 3:16', pool, 3);
+    expect(d).toEqual(['Romans 8:28', 'Psalms 23:1']);
+    expect(d).not.toContain('John 3:16');
+  });
+
+  test('caps at n', () => {
+    expect(pickDistractors('A 1:1', ['B 1:1', 'C 1:1', 'D 1:1', 'E 1:1'], 3)).toHaveLength(3);
+  });
+});

@@ -36,6 +36,23 @@ export function tokenize(text: string): Token[] {
     });
 }
 
+/**
+ * Pick up to `n` distractor references from a pool for a multiple-choice quiz —
+ * distinct, not equal to the correct one, de-duplicated, preserving order.
+ */
+export function pickDistractors(correct: string, pool: string[], n: number): string[] {
+  const seen = new Set<string>([correct.trim().toLowerCase()]);
+  const out: string[] = [];
+  for (const p of pool) {
+    const k = p.trim().toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(p);
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
 /** Normalize a word for forgiving comparison (lowercase, strip punctuation). */
 export function normalizeWord(w: string): string {
   const m = w.match(WORD_CORE);
