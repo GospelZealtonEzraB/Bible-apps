@@ -7,6 +7,7 @@ import * as Speech from 'expo-speech';
 import { Screen, Header } from '@/components/layout';
 import { Card, StatusBadge, Button, SectionTitle, EmptyState } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
+import { VerseNotes } from '@/components/VerseNotes';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerse, useStore, useSettings } from '@/store/useStore';
 import { isLatinTranslation } from '@/data/bibleApi';
@@ -156,6 +157,8 @@ export default function VerseDetailScreen() {
           </View>
         </View>
       </Card>
+
+      <VerseNotes reference={verse.reference} />
 
       {/* AI insights */}
       <View>

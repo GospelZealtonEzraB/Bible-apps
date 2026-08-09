@@ -145,6 +145,7 @@ interface StoreState {
   editSharedNote: (code: string, noteId: string, text: string, scope?: NoteScope, ref?: string) => Promise<void>;
   deleteSharedNote: (code: string, noteId: string) => Promise<void>;
   addPrivateNote: (scope: NoteScope, text: string, ref?: string) => void;
+  editPrivateNote: (noteId: string, text: string) => void;
   deletePrivateNote: (noteId: string) => void;
   addPrayer: (code: string, text: string) => Promise<void>;
   prayForRequest: (code: string, prayerId: string) => Promise<void>;
@@ -854,6 +855,13 @@ export const useStore = create<StoreState>()(
           };
         }),
 
+      editPrivateNote: (noteId, text) =>
+        set((state) => {
+          const n = state.notes[noteId];
+          if (!n) return {};
+          return { notes: { ...state.notes, [noteId]: { ...n, text: text.trim(), updatedAt: Date.now() } } };
+        }),
+
       deletePrivateNote: (noteId) =>
         set((state) => {
           const next = { ...state.notes };
@@ -1166,6 +1174,18 @@ export function useStudySession(passageKey: string | undefined): StudySession | 
 
 export function useReadingPosition() {
   return useStore((state) => state.reading);
+}
+
+/** Private notes attached to a given verse reference, newest first. */
+export function useVerseNotes(reference: string | undefined): LocalNote[] {
+  const notes = useStore((state) => state.notes);
+  return useMemo(() => {
+    if (!reference) return [];
+    const key = normalizeKey(reference);
+    return Object.values(notes)
+      .filter((n) => n.ref && normalizeKey(n.ref) === key)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [notes, reference]);
 }
 
 export function useApplication(passageKey: string | undefined): StudyApplication | undefined {

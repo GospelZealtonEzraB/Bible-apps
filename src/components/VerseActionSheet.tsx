@@ -45,6 +45,14 @@ export function VerseActionSheet({
     router.push(`/verse/${encodeURIComponent(verseId(reference, translation))}`);
   };
 
+  const note = () => {
+    if (!alreadySaved) {
+      addFetchedVerse({ reference, text, translation, translationName: translationNameOf(translation), offline: false });
+    }
+    onClose();
+    router.push(`/verse/${encodeURIComponent(verseId(reference, translation))}`);
+  };
+
   const study = () => {
     onClose();
     router.push(`/study/${encodeURIComponent(reference)}`);
@@ -88,6 +96,7 @@ export function VerseActionSheet({
             color={colors.primary}
             onPress={memorize}
           />
+          <ActionRow icon="create-outline" label="Add a note" hint="Record what you're seeing" color={colors.success} onPress={note} />
           <ActionRow icon="book-outline" label="Study this passage" hint="Setting, people, cross-refs" color={colors.accent} onPress={study} />
           <ActionRow icon="share-outline" label="Share" hint="Send to a friend" color={colors.textMuted} onPress={share} />
 
