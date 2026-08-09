@@ -8,6 +8,7 @@ import { Card, Button, SectionTitle } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore } from '@/store/useStore';
 import { parseScope, scopeSizeLabel } from '@/data/scope';
+import { HelpButton, EmberTip } from '@/components/EmberGuide';
 
 export default function StudyIndexScreen() {
   const { colors } = useTheme();
@@ -33,7 +34,9 @@ export default function StudyIndexScreen() {
 
   return (
     <Screen>
-      <Header title="Study" subtitle="Set the scene for today's passage" back />
+      <Header title="Study" subtitle="Set the scene for today's passage" back right={<HelpButton topic="study" />} />
+
+      <EmberTip topic="study" />
 
       <Card>
         <SectionTitle>What are you reading today?</SectionTitle>

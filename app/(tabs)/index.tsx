@@ -7,6 +7,7 @@ import { Screen, Header } from '@/components/layout';
 import { Card, Button, Chip, SectionTitle, StatusBadge, EmptyState, SpeechBubble } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Ember, type EmberMood } from '@/components/Ember';
+import { HelpButton, EmberTip } from '@/components/EmberGuide';
 import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStats, useVerseList, useStore, todaysDaily, useActiveReadingPlanId, useReadingPlanProgress } from '@/store/useStore';
@@ -213,7 +214,9 @@ export default function TodayScreen() {
 
   return (
     <Screen>
-      <Header title="Today" subtitle={today} />
+      <Header title="Today" subtitle={today} right={<HelpButton topic="today" />} />
+
+      <EmberTip topic="today" />
 
       {/* Ember hero */}
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>

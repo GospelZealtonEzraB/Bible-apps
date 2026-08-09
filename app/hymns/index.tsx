@@ -8,6 +8,7 @@ import { Header } from '@/components/layout';
 import { Card } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { HYMNS, searchHymns, type Hymn } from '@/data/hymns';
+import { EmberTip } from '@/components/EmberGuide';
 
 export default function HymnsScreen() {
   const { colors } = useTheme();
@@ -45,6 +46,7 @@ export default function HymnsScreen() {
             </Pressable>
           }
         />
+        <EmberTip topic="hymns" />
         <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm }}>
           <Ionicons name="search" size={18} color={colors.textFaint} />
           <TextInput

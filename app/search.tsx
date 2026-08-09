@@ -8,6 +8,7 @@ import { VerseActionSheet } from '@/components/VerseActionSheet';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { searchScripture, type SearchResult } from '@/data/search';
 import { useStore } from '@/store/useStore';
+import { HelpButton, EmberTip } from '@/components/EmberGuide';
 
 export default function SearchScreen() {
   const { colors } = useTheme();
@@ -34,7 +35,8 @@ export default function SearchScreen() {
 
   return (
     <Screen>
-      <Header title="Search" subtitle="Find verses in the KJV" back />
+      <Header title="Search" subtitle="Find verses in the KJV" back right={<HelpButton topic="search" />} />
+      <EmberTip topic="search" />
 
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm }}>
         <Ionicons name="search" size={18} color={colors.textFaint} />

@@ -7,6 +7,7 @@ import { Screen, Header } from '@/components/layout';
 import { Card, Button, EmptyState } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useTopicList, useStore } from '@/store/useStore';
+import { EmberTip } from '@/components/EmberGuide';
 
 /**
  * Custom study topics — tag-as-you-read collections ("The Rapture", "Grace").
@@ -43,6 +44,8 @@ export default function TopicsScreen() {
           </Pressable>
         }
       />
+
+      <EmberTip topic="topics" />
 
       {creating ? (
         <Card style={{ gap: spacing.sm }}>

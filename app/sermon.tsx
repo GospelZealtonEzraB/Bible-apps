@@ -11,6 +11,7 @@ import { useStore } from '@/store/useStore';
 import { fetchSermon } from '@/data/aiClient';
 import { parseReference, formatReference } from '@/data/books';
 import { hydrateReference } from '@/data/localSearch';
+import { HelpButton, EmberTip } from '@/components/EmberGuide';
 
 export default function SermonScreen() {
   const { colors } = useTheme();
@@ -51,10 +52,11 @@ export default function SermonScreen() {
 
   return (
     <Screen>
-      <Header title="Sermon notes" subtitle="Summary + every verse it cites" back />
+      <Header title="Sermon notes" subtitle="Summary + every verse it cites" back right={<HelpButton topic="sermon" />} />
 
       {summary === null ? (
         <>
+          <EmberTip topic="sermon" />
           <Card style={{ gap: spacing.sm }}>
             <SectionTitle>Paste a link or the transcript</SectionTitle>
             <TextInput

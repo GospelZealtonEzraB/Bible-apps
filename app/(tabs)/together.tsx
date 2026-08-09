@@ -8,6 +8,7 @@ import { Card, Button, SectionTitle, EmptyState, SpeechBubble } from '@/componen
 import { Ember } from '@/components/Ember';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useProfile, useCircleList, useStore } from '@/store/useStore';
+import { HelpButton, EmberTip } from '@/components/EmberGuide';
 import type { Circle } from '@/types';
 
 export default function TogetherScreen() {
@@ -51,7 +52,9 @@ export default function TogetherScreen() {
 
   return (
     <Screen>
-      <Header title="Growing Together" subtitle="Grow with a faith partner" />
+      <Header title="Growing Together" subtitle="Grow with a faith partner" right={<HelpButton topic="together" />} />
+
+      <EmberTip topic="together" />
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.md }}>
         <Ember mood={circles.length > 0 ? 'love' : 'waving'} size={78} />

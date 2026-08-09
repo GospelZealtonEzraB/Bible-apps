@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Header } from '@/components/layout';
 import { EmptyState } from '@/components/ui';
 import { RefText } from '@/components/RefText';
+import { EmberTip } from '@/components/EmberGuide';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useCircle, useStore } from '@/store/useStore';
 import type { Message } from '@/types';
@@ -58,8 +59,9 @@ export default function DiscussionScreen() {
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{ padding: spacing.lg, paddingBottom: spacing.sm }}>
+      <View style={{ padding: spacing.lg, paddingBottom: spacing.sm, gap: spacing.md }}>
         <Header title="Discussion" subtitle={circle?.meta.name ? `${circle.meta.name} · talk it through` : 'Talk it through'} back />
+        <EmberTip topic="discussion" />
       </View>
 
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={8}>

@@ -10,6 +10,7 @@ import { ChoiceDrill, SpeedDrill } from '@/components/drills';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerseList, useStore } from '@/store/useStore';
 import { eligibleQuizVerses, sampleVerses, QUIZ_MIN } from '@/utils/quiz';
+import { HelpButton, EmberTip } from '@/components/EmberGuide';
 import { hydrateReference } from '@/data/localSearch';
 import { POPULAR_VERSES } from '@/data/popularVerses';
 import { initialSRS } from '@/srs/sm2';
@@ -65,7 +66,8 @@ export default function QuizScreen() {
   if (phase === 'start') {
     return (
       <Screen>
-        <Header title="Quiz" subtitle="Identify verses by their text" back />
+        <Header title="Quiz" subtitle="Identify verses by their text" back right={<HelpButton topic="quiz" />} />
+        <EmberTip topic="quiz" />
 
         <View style={{ flexDirection: 'row', backgroundColor: colors.surfaceAlt, borderRadius: radius.pill, padding: 4 }}>
           {(['mine', 'explore'] as Source[]).map((s) => (

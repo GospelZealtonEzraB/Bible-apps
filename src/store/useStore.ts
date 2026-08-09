@@ -86,6 +86,8 @@ interface StoreState {
   readingPlanProgress: Record<string, { startedAt: number; completed: number[] }>;
   /** The plan the user is currently following (null if none started). */
   activeReadingPlanId: string | null;
+  /** Ids of Ember first-run tips the user has already dismissed. */
+  seenTips: string[];
   /** Rolling log of recent activity, shared to circles for the feed. */
   activityLog: Activity[];
   /** Expo push token for partner-activity notifications (null until registered). */
@@ -119,6 +121,9 @@ interface StoreState {
   startReadingPlan: (planId: string) => void;
   /** Mark a plan day done/undone. */
   toggleReadingDay: (planId: string, dayIndex: number) => void;
+
+  /** Mark an Ember first-run tip as seen so it won't show again. */
+  markTipSeen: (id: string) => void;
 
   /** Ensure a stable memberId exists (minted once). Idempotent. */
   ensureProfile: () => void;
@@ -526,6 +531,7 @@ export const useStore = create<StoreState>()(
       reading: null,
       readingPlanProgress: {},
       activeReadingPlanId: null,
+      seenTips: [],
       activityLog: [],
       pushToken: null,
       hydrated: false,
@@ -692,6 +698,9 @@ export const useStore = create<StoreState>()(
         set((state) => ({
           stats: { ...state.stats, dailyGoal: Math.max(1, Math.min(50, Math.round(goal))) },
         })),
+
+      markTipSeen: (id) =>
+        set((state) => (state.seenTips.includes(id) ? {} : { seenTips: [...state.seenTips, id] })),
 
       ensureProfile: () =>
         set((state) => {
@@ -1230,6 +1239,7 @@ export const useStore = create<StoreState>()(
             reading: s.reading,
             readingPlanProgress: s.readingPlanProgress,
             activeReadingPlanId: s.activeReadingPlanId,
+            seenTips: s.seenTips,
             activityLog: s.activityLog,
           },
         });
@@ -1261,6 +1271,7 @@ export const useStore = create<StoreState>()(
           reading: d.reading ?? state.reading,
           readingPlanProgress: d.readingPlanProgress ?? state.readingPlanProgress,
           activeReadingPlanId: d.activeReadingPlanId ?? state.activeReadingPlanId,
+          seenTips: Array.isArray(d.seenTips) ? d.seenTips : state.seenTips,
           activityLog: Array.isArray(d.activityLog) ? d.activityLog : state.activityLog,
         }));
         return { ok: true };
@@ -1311,6 +1322,7 @@ export const useStore = create<StoreState>()(
         reading: state.reading,
         readingPlanProgress: state.readingPlanProgress,
         activeReadingPlanId: state.activeReadingPlanId,
+        seenTips: state.seenTips,
         activityLog: state.activityLog,
         pushToken: state.pushToken,
         lastCloudBackupAt: state.lastCloudBackupAt,
@@ -1349,6 +1361,7 @@ export const useStore = create<StoreState>()(
             reading: p.reading ?? null,
             readingPlanProgress: p.readingPlanProgress ?? {},
             activeReadingPlanId: p.activeReadingPlanId ?? null,
+            seenTips: Array.isArray(p.seenTips) ? p.seenTips : [],
             activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
             pushToken: p.pushToken ?? null,
             lastCloudBackupAt: p.lastCloudBackupAt ?? null,

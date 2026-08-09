@@ -15,6 +15,7 @@ import { PLAN_TEMPLATES } from '@/data/plans';
 import { levelInfo } from '@/gamification';
 import { togetherTotals, coverage, mergeActivity, rankMembers, presenceToday, weeklyRecap } from '@/utils/circleProgress';
 import { EXPECTED_API_VERSION } from '@/data/circleClient';
+import { EmberTip } from '@/components/EmberGuide';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Note, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
 const ACCENTS = ['#8AA6FF', '#57D9A3', '#FFC24B', '#FF8A8A', '#C79BFF', '#5AD1E0'];
@@ -247,6 +248,8 @@ export default function CircleHubScreen() {
           </Text>
         </Card>
       ) : null}
+
+      <EmberTip topic="circleHome" />
 
       {/* Presence — who's had their time today */}
       <PresenceStrip members={members} accent={accent} onOpenMember={(id) => router.push(`/circle/${code}/member/${id}`)} />

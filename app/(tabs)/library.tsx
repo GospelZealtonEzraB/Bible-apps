@@ -9,6 +9,7 @@ import { ProgressRing } from '@/components/ProgressRing';
 import { JourneyMap } from '@/components/JourneyMap';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerseList, useStore } from '@/store/useStore';
+import { EmberTip } from '@/components/EmberGuide';
 import { isDue } from '@/srs/sm2';
 import { relativeDueLabel } from '@/utils/date';
 import type { Verse } from '@/types';
@@ -80,6 +81,8 @@ export default function LibraryScreen() {
           </View>
         }
       />
+
+      <EmberTip topic="memorize" />
 
       {/* List / Journey toggle */}
       <View

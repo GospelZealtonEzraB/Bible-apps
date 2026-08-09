@@ -7,6 +7,7 @@ import { Screen, Header } from '@/components/layout';
 import { Button, Chip, EmptyState } from '@/components/ui';
 import { VerseActionSheet } from '@/components/VerseActionSheet';
 import { AddToTopicSheet } from '@/components/AddToTopicSheet';
+import { EmberTip } from '@/components/EmberGuide';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { bookByNumber, chapterCount } from '@/data/structure';
 import { getChapterVerses, isLatinTranslation, type ChapterVerse } from '@/data/bibleApi';
@@ -122,6 +123,8 @@ export default function ChapterReaderScreen() {
           </View>
         ) : null}
       </View>
+
+      <EmberTip topic="reader" />
 
       {loading ? (
         <View style={{ paddingVertical: spacing.xxl, alignItems: 'center' }}>
