@@ -218,3 +218,16 @@ describe('circleMilestones', () => {
     expect(ms.any).toBe(false);
   });
 });
+
+import { learnFromThem } from '@/utils/circleProgress';
+
+describe('learnFromThem', () => {
+  test('returns their verses I do not already have (normalized)', () => {
+    const theirs = ['John 3:16', 'Romans 8:28', 'Psalm 23:1'];
+    const myKeys = new Set(['john 3:16']);
+    expect(learnFromThem(theirs, myKeys)).toEqual(['Romans 8:28', 'Psalm 23:1']);
+  });
+  test('empty when I have everything they know', () => {
+    expect(learnFromThem(['John 3:16'], new Set(['john 3:16']))).toEqual([]);
+  });
+});

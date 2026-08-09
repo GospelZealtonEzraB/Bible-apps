@@ -221,6 +221,15 @@ export function weeklyRecap(members: CircleMember[], now: number): WeeklyRecap {
   };
 }
 
+/**
+ * "Learn from them": references a partner has memorized that you don't have in
+ * your library yet — turns visible progress into a growth path. `myKeys` is the
+ * set of normalized references already in your library (any status).
+ */
+export function learnFromThem(memberMemorizedRefs: string[], myKeys: Set<string>): string[] {
+  return dedupeRefs(memberMemorizedRefs ?? []).filter((r) => !myKeys.has(normalizeKey(r)));
+}
+
 // ---- Milestones & goal progress (the celebrate-together layer) -------------
 
 export interface CircleMilestones {

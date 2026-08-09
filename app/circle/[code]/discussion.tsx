@@ -14,8 +14,9 @@ import type { Message } from '@/types';
 
 export default function DiscussionScreen() {
   const { colors } = useTheme();
-  const params = useLocalSearchParams<{ code: string }>();
+  const params = useLocalSearchParams<{ code: string; context?: string }>();
   const code = typeof params.code === 'string' ? params.code : '';
+  const context = typeof params.context === 'string' && params.context ? decodeURIComponent(params.context) : null;
   const circle = useCircle(code);
   const myId = useStore((s) => s.profile.memberId);
   const refreshCircle = useStore((s) => s.refreshCircle);
@@ -23,15 +24,21 @@ export default function DiscussionScreen() {
   const deleteCircleMessage = useStore((s) => s.deleteCircleMessage);
 
   const [draft, setDraft] = useState('');
+  // When opened on a verse, default to that thread; a toggle shows the whole board.
+  const [scope, setScope] = useState<'context' | 'all'>(context ? 'context' : 'all');
   const listRef = useRef<FlatList<Message>>(null);
-  const messages = circle?.messages ?? [];
+  const allMessages = circle?.messages ?? [];
+  const key = context ? context.trim().replace(/\s+/g, ' ').toLowerCase() : null;
+  const messages = context && scope === 'context'
+    ? allMessages.filter((m) => (m.context ?? '').trim().replace(/\s+/g, ' ').toLowerCase() === key)
+    : allMessages;
 
   useEffect(() => { refreshCircle(code).catch(() => {}); }, [code]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const send = () => {
     const t = draft.trim();
     if (!t) return;
-    postCircleMessage(code, t).catch(() => {});
+    postCircleMessage(code, t, scope === 'context' && context ? context : undefined).catch(() => {});
     setDraft('');
     setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 50);
   };
@@ -61,6 +68,17 @@ export default function DiscussionScreen() {
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ padding: spacing.lg, paddingBottom: spacing.sm, gap: spacing.md }}>
         <Header title="Discussion" subtitle={circle?.meta.name ? `${circle.meta.name} · talk it through` : 'Talk it through'} back />
+        {context ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
+            <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, flex: 1 }}>
+              {scope === 'context' ? `On ${context}` : 'Whole board'}
+            </Text>
+            <Pressable onPress={() => setScope((s) => (s === 'context' ? 'all' : 'context'))} hitSlop={8} style={{ paddingVertical: 4, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt }}>
+              <Text style={{ color: colors.primary, fontSize: font.sizes.xs, fontWeight: '800' }}>{scope === 'context' ? 'See whole board' : `Back to ${context}`}</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <EmberTip topic="discussion" />
       </View>
 

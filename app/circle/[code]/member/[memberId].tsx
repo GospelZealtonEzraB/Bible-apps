@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,9 +8,10 @@ import { Card, Button, SectionTitle, EmptyState } from '@/components/ui';
 import { usePaged, PageMore } from '@/components/Paginated';
 import { useTheme, spacing, font } from '@/theme';
 import { useCircle, useProfile, useStore } from '@/store/useStore';
-import { getVerse, verseId } from '@/data/bibleApi';
+import { getVerse, verseId, normalizeKey } from '@/data/bibleApi';
 import { relativeTimeAgo } from '@/utils/date';
 import { levelInfo } from '@/gamification';
+import { learnFromThem } from '@/utils/circleProgress';
 
 const ACT: Record<string, { emoji: string; verb: string }> = {
   memorized: { emoji: '🎉', verb: 'memorized' },
@@ -50,6 +51,11 @@ export default function MemberDetailScreen() {
   const learning = member.learningRefs ?? [];
   const shares = memorized.length > 0 || learning.length > 0;
 
+  // "Learn from them": their memorized verses I don't have in my library yet.
+  const myVerses = useStore((s) => s.verses);
+  const myKeys = useMemo(() => new Set(Object.values(myVerses).map((v) => normalizeKey(v.reference))), [myVerses]);
+  const learnNext = useMemo(() => (isMe ? [] : learnFromThem(memorized, myKeys)), [isMe, memorized, myKeys]);
+
   return (
     <Screen>
       <Header title={member.displayName || 'Member'} subtitle={isMe ? 'You' : `In your circle`} back />
@@ -81,6 +87,18 @@ export default function MemberDetailScreen() {
               : `${member.displayName || 'This partner'} is keeping their verse list private.`}
           </Text>
         </Card>
+      ) : null}
+
+      {learnNext.length > 0 ? (
+        <View>
+          <Card style={{ marginBottom: spacing.sm, flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+            <Text style={{ fontSize: 22 }}>🌱</Text>
+            <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, lineHeight: 21 }}>
+              {member.displayName || 'Your partner'} knows {learnNext.length} verse{learnNext.length === 1 ? '' : 's'} you don’t have yet. Learn from them.
+            </Text>
+          </Card>
+          <RefList code={code} title={`Learn from ${member.displayName || 'them'}`} refs={learnNext} />
+        </View>
       ) : null}
 
       {memorized.length > 0 ? (

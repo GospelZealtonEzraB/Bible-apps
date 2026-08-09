@@ -1335,6 +1335,7 @@ function SharedVersesCard({ code, members, myId }: { code: string; members: Circ
               onImport={() => onImport(sv.reference)}
               onOpen={() => router.push(`/verse/${encodeURIComponent(verseId(sv.reference, translation))}`)}
               onRemove={() => removeSharedVerse(code, sv.reference).catch(() => {})}
+              onDiscuss={() => router.push(`/circle/${code}/discussion?context=${encodeURIComponent(sv.reference)}`)}
             />
           ))}
           <PageMore remaining={sharedPage.remaining} step={15} onPress={sharedPage.showMore} noun="more verses" />
@@ -1352,6 +1353,7 @@ function SharedVerseRow({
   onImport,
   onOpen,
   onRemove,
+  onDiscuss,
 }: {
   sv: SharedVerseRef;
   forLabel: string | null;
@@ -1360,6 +1362,7 @@ function SharedVerseRow({
   onImport: () => void;
   onOpen: () => void;
   onRemove: () => void;
+  onDiscuss: () => void;
 }) {
   const { colors } = useTheme();
   const confirmRemove = () =>
@@ -1381,6 +1384,9 @@ function SharedVerseRow({
         ) : (
           <Button title={importing ? '…' : 'Add to mine'} small loading={importing} onPress={onImport} />
         )}
+        <Pressable onPress={onDiscuss} hitSlop={8} style={{ paddingHorizontal: 2 }}>
+          <Ionicons name="chatbubble-ellipses-outline" size={17} color={colors.textFaint} />
+        </Pressable>
         <Pressable onPress={confirmRemove} hitSlop={8} style={{ paddingHorizontal: 2 }}>
           <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
         </Pressable>
