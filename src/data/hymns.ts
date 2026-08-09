@@ -237,3 +237,71 @@ export function searchHymns(query: string): Hymn[] {
     return tokens.every((t) => hay.includes(t));
   });
 }
+
+// ---- Bidirectional verse ↔ hymn index ------------------------------------
+
+/** Normalize a reference to `book chapter:verse` (lowercased, single-spaced). */
+function normRef(ref: string): string {
+  return ref.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** The `book chapter` prefix of a reference (for same-chapter matching). */
+function chapterOf(ref: string): string {
+  const n = normRef(ref);
+  const colon = n.indexOf(':');
+  return colon === -1 ? n : n.slice(0, colon);
+}
+
+export interface HymnRefMatch {
+  hymn: Hymn;
+  /** 'exact' when the verse itself is listed; 'chapter' when only the chapter matches. */
+  precision: 'exact' | 'chapter';
+}
+
+/**
+ * The GROUNDED tier of "songs from this verse": bundled public-domain hymns whose
+ * declared `scriptureRefs` include this reference (exact) or its chapter. These
+ * are real, in-app, and tappable — no AI, no guessing. Exact matches first.
+ */
+export function hymnsForRef(reference: string): HymnRefMatch[] {
+  const target = normRef(reference);
+  const targetChapter = chapterOf(reference);
+  const out: HymnRefMatch[] = [];
+  for (const h of HYMNS) {
+    let precision: 'exact' | 'chapter' | null = null;
+    for (const r of h.scriptureRefs ?? []) {
+      const nr = normRef(r);
+      if (nr === target) { precision = 'exact'; break; }
+      if (chapterOf(r) === targetChapter) precision = 'chapter';
+    }
+    if (precision) out.push({ hymn: h, precision });
+  }
+  return out.sort((a, b) => (a.precision === b.precision ? 0 : a.precision === 'exact' ? -1 : 1));
+}
+
+/** Loose comparison key for a hymn/song title (drops punctuation + filler words). */
+function titleKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\b(the|a|an|o|of|and|my|thy|thou|is|with|to|in)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Link an AI-suggested song title back to a bundled hymn, so a suggestion the
+ * library actually contains opens in-app instead of a web search. Exact-ish
+ * title match only (no fuzzy false-positives).
+ */
+export function matchHymnByTitle(title: string): Hymn | undefined {
+  const key = titleKey(title);
+  if (!key) return undefined;
+  return (
+    HYMNS.find((h) => titleKey(h.title) === key) ??
+    HYMNS.find((h) => {
+      const hk = titleKey(h.title);
+      return hk.length > 6 && (hk.includes(key) || key.includes(hk));
+    })
+  );
+}

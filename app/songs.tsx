@@ -4,13 +4,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Header } from '@/components/layout';
-import { Card, EmptyState } from '@/components/ui';
+import { Card, Chip, EmptyState } from '@/components/ui';
+import { VersePeek } from '@/components/VersePeek';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore } from '@/store/useStore';
 import { searchSongs, songLinks, type SongHit } from '@/data/geniusClient';
-import { fetchChords } from '@/data/aiClient';
+import { fetchChords, fetchVersesForSong } from '@/data/aiClient';
+import { parseReference, formatReference } from '@/data/books';
 
 interface ChordState { loading?: boolean; text?: string; error?: string }
+interface VerseState { loading?: boolean; refs?: string[]; error?: string }
 
 export default function SongsScreen() {
   const { colors } = useTheme();
@@ -20,6 +23,8 @@ export default function SongsScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chords, setChords] = useState<Record<number, ChordState>>({});
+  const [verses, setVerses] = useState<Record<number, VerseState>>({});
+  const [peek, setPeek] = useState<string | null>(null);
 
   const getChords = async (s: SongHit) => {
     setChords((c) => ({ ...c, [s.id]: { loading: true } }));
@@ -28,6 +33,18 @@ export default function SongsScreen() {
       setChords((c) => ({ ...c, [s.id]: { text } }));
     } catch (e) {
       setChords((c) => ({ ...c, [s.id]: { error: e instanceof Error ? e.message : 'Failed' } }));
+    }
+  };
+
+  const getVerses = async (s: SongHit) => {
+    setVerses((v) => ({ ...v, [s.id]: { loading: true } }));
+    try {
+      const raw = await fetchVersesForSong(serverUrl, s.title, s.artist);
+      // Validate against the canonical book table — drop hallucinated references.
+      const refs = Array.from(new Set(raw.map((x) => { const p = parseReference(x); return p ? formatReference(p) : null; }).filter((x): x is string => !!x)));
+      setVerses((v) => ({ ...v, [s.id]: { refs } }));
+    } catch (e) {
+      setVerses((v) => ({ ...v, [s.id]: { error: e instanceof Error ? e.message : 'Failed' } }));
     }
   };
 
@@ -62,10 +79,11 @@ export default function SongsScreen() {
         <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }} numberOfLines={1}>{s.artist}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 2 }}>
           <LinkChip icon="document-text-outline" label="Lyrics" onPress={() => open(s.url)} />
-          <LinkChip icon="search-outline" label="Chords (web)" onPress={() => open(songLinks.chords(s.title, s.artist))} />
+          <LinkChip icon="book-outline" label="Related verses" onPress={() => getVerses(s)} />
           <LinkChip icon="sparkles-outline" label="AI chords" onPress={() => getChords(s)} />
           <LinkChip icon="logo-youtube" label="Listen" onPress={() => open(songLinks.listen(s.title, s.artist))} />
         </View>
+        {verses[s.id] ? <VerseResult state={verses[s.id]} onPeek={setPeek} /> : null}
         {chords[s.id] ? <ChordResult state={chords[s.id]} /> : null}
       </View>
     </Card>
@@ -115,7 +133,28 @@ export default function SongsScreen() {
         contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl }}
         keyboardShouldPersistTaps="handled"
       />
+
+      <VersePeek reference={peek} onClose={() => setPeek(null)} />
     </SafeAreaView>
+  );
+}
+
+function VerseResult({ state, onPeek }: { state: VerseState; onPeek: (ref: string) => void }) {
+  const { colors } = useTheme();
+  if (state.loading) return <ActivityIndicator color={colors.primary} style={{ alignSelf: 'flex-start', marginTop: spacing.sm }} />;
+  if (state.error) return <Text style={{ color: colors.warning, fontSize: font.sizes.xs, marginTop: spacing.sm }}>{state.error.includes('Server URL') || state.error.includes('not configured') ? 'AI needs your Server URL in Settings.' : state.error}</Text>;
+  if (!state.refs) return null;
+  if (state.refs.length === 0) return <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>No clear Scripture references found for this song.</Text>;
+  return (
+    <View style={{ marginTop: spacing.sm, gap: 6 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+        <Ionicons name="book-outline" size={13} color={colors.textFaint} />
+        <Text style={{ color: colors.textFaint, fontSize: 11, fontWeight: '700' }}>Verses behind it — tap to read. AI-suggested; verify.</Text>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+        {state.refs.map((r) => <Chip key={r} label={r} onPress={() => onPeek(r)} />)}
+      </View>
+    </View>
   );
 }
 

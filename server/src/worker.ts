@@ -180,6 +180,57 @@ const SERMON_SYSTEM =
   'message cites, as strings like "John 3:16" or "Romans 12:1-2". No verse text, ' +
   'no preamble — JSON only.';
 
+const SONGS_FOR_VERSE_SYSTEM =
+  'You connect a Bible verse to the hymns and worship songs it inspired or that quote/paraphrase it. ' +
+  'You are given ONLY a reference (e.g. "John 3:16"). Return JSON ONLY: an array of 3–8 objects ' +
+  '{"title": string, "author": string, "year": string, "why": string, "pd": boolean}. ' +
+  'Rules: (1) Only REAL, historically attested hymns/songs — never invent a title, author, or year. ' +
+  'If you are not confident a song is real, omit it. (2) PREFER classic public-domain hymns (authors ' +
+  'who died 70+ years ago, e.g. Watts, Wesley, Newton, Crosby, Havergal) and set "pd": true for those; ' +
+  'set "pd": false for modern/copyrighted songs. Lead with the public-domain ones. (3) "author" and ' +
+  '"year" identify the song so a human can verify it — include your best known values (year may be ' +
+  'approximate). (4) "why" is one short ORIGINAL sentence on how the song relates to the verse ' +
+  '(a paraphrased line, a shared theme). NEVER include song lyrics or the verse text — no quotations. ' +
+  'Output JSON array only, no preamble.';
+
+const VERSES_FOR_SONG_SYSTEM =
+  'You identify the Bible passages a hymn or worship song is based on, quotes, or paraphrases. ' +
+  'You are given a song title and artist/author. Return JSON ONLY: {"references": string[]} — ' +
+  '3–8 Scripture reference strings like "John 3:16" or "Romans 8:1-2". References ONLY: never ' +
+  'include any lyrics or verse text. If unsure, return the closest thematic passages. JSON only.';
+
+function parseSongs(text: string): any[] {
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) return [];
+  try {
+    const arr = JSON.parse(match[0]);
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((x) => x && typeof x === 'object' && typeof x.title === 'string')
+      .slice(0, 8)
+      .map((x) => ({
+        title: String(x.title).slice(0, 120),
+        author: typeof x.author === 'string' ? x.author.slice(0, 80) : '',
+        year: x.year != null ? String(x.year).slice(0, 20) : '',
+        why: typeof x.why === 'string' ? x.why.slice(0, 200) : '',
+        pd: x.pd === true,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function parseReferencesObject(text: string): string[] {
+  const match = text.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const o = JSON.parse(match[0]);
+      if (Array.isArray(o.references)) return o.references.filter((x: unknown) => typeof x === 'string').slice(0, 12);
+    } catch { /* fall through */ }
+  }
+  return parseReferences(text);
+}
+
 function parseReferences(text: string): string[] {
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) return [];
@@ -310,6 +361,18 @@ async function handleAi(req: Request, env: Env): Promise<Response> {
     const out = await callLLM(env, CHORDS_SYSTEM, `Song: ${title}\nArtist: ${artist}`, 260);
     return json({ text: out });
   }
+  if (task === 'songsForVerse') {
+    if (!reference) return json({ songs: [], error: 'No reference.' }, 400);
+    const out = await callLLM(env, SONGS_FOR_VERSE_SYSTEM, `Reference: ${reference}`, 500);
+    return json({ songs: parseSongs(out) });
+  }
+  if (task === 'versesForSong') {
+    const title = String(body.title ?? '').slice(0, 120);
+    const artist = String(body.artist ?? '').slice(0, 120);
+    if (!title) return json({ references: [], error: 'No song title.' }, 400);
+    const out = await callLLM(env, VERSES_FOR_SONG_SYSTEM, `Song: ${title}\nArtist/Author: ${artist}`, 260);
+    return json({ references: parseReferencesObject(out) });
+  }
   if (task === 'sermon') {
     let transcript = String(body.transcript ?? '');
     const url = String(body.url ?? '').trim();
@@ -323,7 +386,7 @@ async function handleAi(req: Request, env: Env): Promise<Response> {
     const out = await callLLM(env, SERMON_SYSTEM, transcript, 800);
     return json(parseSermon(out));
   }
-  return json({ error: 'Unknown task. Use hook | explain | pack | chords | sermon.' }, 400);
+  return json({ error: 'Unknown task. Use hook | explain | pack | chords | sermon | songsForVerse | versesForSong.' }, 400);
 }
 
 // ===========================================================================

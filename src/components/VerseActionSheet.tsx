@@ -73,6 +73,7 @@ export function VerseActionSheet({
   };
 
   const study = () => { onClose(); router.push(`/study/${encodeURIComponent(reference)}`); };
+  const songs = () => { onClose(); router.push(`/hymns/verse/${encodeURIComponent(reference)}`); };
   const share = async () => { onClose(); try { await Share.share({ message: `"${text}"\n— ${reference}` }); } catch {} };
 
   const peek = (r: string) => {
@@ -154,6 +155,7 @@ export function VerseActionSheet({
               onPress={() => setTopicOpen(true)}
             />
             <ActionRow icon="book-outline" label="Study this passage" hint="Setting, people, cross-refs" color={colors.accent} onPress={study} />
+            <ActionRow icon="musical-notes-outline" label="Songs from this verse" hint="Hymns it inspired — sing the Word" color={colors.accent} onPress={songs} />
             <ActionRow icon="share-outline" label="Share" hint="Send to a friend" color={colors.textMuted} onPress={share} />
 
             <Pressable onPress={onClose} style={{ paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.xs }}>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, Linking } from 'react-native';
+import { View, Text, Pressable, Linking, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -9,13 +9,35 @@ import { VersePeek } from '@/components/VersePeek';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { getHymn, hymnHasChords, type HymnStanza } from '@/data/hymns';
 import { parseChordLine, transposeKey } from '@/utils/chords';
+import { useStore } from '@/store/useStore';
+import { fetchVersesForSong } from '@/data/aiClient';
+import { parseReference, formatReference } from '@/data/books';
 
 export default function HymnScreen() {
   const { colors } = useTheme();
   const params = useLocalSearchParams<{ id: string }>();
   const hymn = getHymn(typeof params.id === 'string' ? params.id : undefined);
+  const serverUrl = useStore((s) => s.settings.serverUrl);
   const [steps, setSteps] = useState(0);
   const [peek, setPeek] = useState<string | null>(null);
+  const [aiRefs, setAiRefs] = useState<string[] | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  const findScripture = async () => {
+    if (!hymn) return;
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const raw = await fetchVersesForSong(serverUrl, hymn.title, hymn.author);
+      const refs = Array.from(new Set(raw.map((x) => { const p = parseReference(x); return p ? formatReference(p) : null; }).filter((x): x is string => !!x)));
+      setAiRefs(refs);
+    } catch (e) {
+      setAiError(e instanceof Error ? e.message : 'Could not load.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   if (!hymn) {
     return (
@@ -67,7 +89,30 @@ export default function HymnScreen() {
             {hymn.scriptureRefs.map((r) => <Chip key={r} label={r} onPress={() => setPeek(r)} />)}
           </View>
         </View>
-      ) : null}
+      ) : (
+        <View>
+          <SectionTitle>The Scripture behind it</SectionTitle>
+          {aiRefs === null ? (
+            <Button
+              title={aiLoading ? 'Finding…' : 'Find the Scripture (AI)'}
+              variant="secondary"
+              loading={aiLoading}
+              icon={<Ionicons name="sparkles-outline" size={16} color={colors.text} />}
+              onPress={findScripture}
+            />
+          ) : aiRefs.length > 0 ? (
+            <View style={{ gap: 6 }}>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                {aiRefs.map((r) => <Chip key={r} label={r} onPress={() => setPeek(r)} />)}
+              </View>
+              <Text style={{ color: colors.warning, fontSize: 11, fontWeight: '700' }}>AI-suggested — tap to read and weigh against the hymn.</Text>
+            </View>
+          ) : (
+            <Text style={{ color: colors.textFaint, fontSize: font.sizes.sm }}>No clear references found.</Text>
+          )}
+          {aiError ? <Text style={{ color: colors.warning, fontSize: font.sizes.xs, marginTop: 4 }}>{aiError.includes('Server URL') || aiError.includes('not configured') ? 'AI needs your Server URL in Settings.' : aiError}</Text> : null}
+        </View>
+      )}
 
       {hymn.listenUrl ? (
         <Button title="Listen on YouTube" variant="secondary" icon={<Ionicons name="play-circle-outline" size={18} color={colors.text} />} onPress={() => Linking.openURL(hymn.listenUrl!)} />

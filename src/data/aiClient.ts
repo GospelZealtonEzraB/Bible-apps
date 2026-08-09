@@ -56,6 +56,40 @@ export async function fetchSermon(
   return { summary: data.summary ?? '', references: Array.isArray(data.references) ? data.references : [], error: data.error };
 }
 
+/** An AI-suggested song related to a verse (metadata + why — never lyrics). */
+export interface SuggestedSong {
+  title: string;
+  author?: string;
+  year?: string;
+  /** One short line on how it relates to the verse. */
+  why?: string;
+  /** True when it's a classic public-domain hymn (verifiable, safe to bundle). */
+  pd: boolean;
+}
+
+/**
+ * Hymns/songs a verse inspired or that quote it — grounded AI (real songs,
+ * public-domain preferred, author+year for verification). Always shown with a
+ * "verify" flag; never returns lyrics or verse text.
+ */
+export async function fetchSongsForVerse(serverUrl: string | null, reference: string): Promise<SuggestedSong[]> {
+  const data = await postServer<{ songs?: SuggestedSong[]; error?: string }>(serverUrl, '/ai', {
+    task: 'songsForVerse',
+    reference,
+  });
+  return Array.isArray(data.songs) ? data.songs.map((s) => ({ ...s, pd: !!s.pd })) : [];
+}
+
+/** The Scripture references a hymn/song is based on (references only; validate locally). */
+export async function fetchVersesForSong(serverUrl: string | null, title: string, artist?: string): Promise<string[]> {
+  const data = await postServer<{ references?: string[] }>(serverUrl, '/ai', {
+    task: 'versesForSong',
+    title,
+    artist: artist ?? '',
+  });
+  return Array.isArray(data.references) ? data.references : [];
+}
+
 /** Suggest verse references for a theme (references only — the app fetches text). */
 export async function suggestPack(serverUrl: string | null, theme: string): Promise<string[]> {
   const { references } = await postServer<{ references: string[] }>(serverUrl, '/ai', {
