@@ -1,5 +1,6 @@
 import { WEB_FIXTURES } from './fixtures';
 import { parseReference, formatReference, parsePassage, formatPassage } from './books';
+import { getLocalChapter, getLocalRange } from './localBible';
 import { resolveServerUrl, serverHeaders } from '@/config';
 
 const BIBLE_API_BASE = 'https://bible-api.com';
@@ -244,6 +245,23 @@ export async function getVerse(
   const ref = displayReference(reference);
   const info = translationInfo(translation) ?? TRANSLATIONS[0];
 
+  // Local-first: KJV is bundled offline, so it resolves instantly with no network.
+  if (info.id === 'kjv') {
+    const parsed = parseReference(ref);
+    if (parsed) {
+      const text = getLocalRange(parsed.bookNumber, parsed.chapter, parsed.verseStart, parsed.verseEnd);
+      if (text) {
+        return {
+          reference: formatReference(parsed),
+          text: cleanText(text),
+          translation: 'kjv',
+          translationName: info.name,
+          offline: true,
+        };
+      }
+    }
+  }
+
   try {
     switch (info.provider) {
       case 'bolls':
@@ -337,6 +355,17 @@ export async function getChapterVerses(
     throw new Error('Enter a chapter or passage, e.g. "John 3" or "John 3:1-21".');
   }
   const info = translationInfo(translation) ?? TRANSLATIONS[0];
+
+  // Local-first: KJV is bundled offline — serve the chapter with no network.
+  if (info.id === 'kjv') {
+    const local = getLocalChapter(passage.bookNumber, passage.chapter);
+    if (local) {
+      const verses = passage.whole
+        ? local
+        : local.filter((v) => v.verse >= (passage.verseStart ?? 1) && v.verse <= (passage.verseEnd ?? 99999));
+      if (verses.length) return { reference: formatPassage(passage), verses, translationName: info.name };
+    }
+  }
 
   let all: ChapterVerse[];
   switch (info.provider) {

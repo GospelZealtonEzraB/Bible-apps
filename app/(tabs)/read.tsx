@@ -16,7 +16,7 @@ export default function ReadScreen() {
   const router = useRouter();
   const { ot, nt } = booksByTestament();
   const reading = useReadingPosition();
-  const translation = useSettings((s) => s.translation);
+  const translation = useSettings((s) => s.readerTranslation);
 
   const resumeBook = reading ? bookByNumber(reading.book) : undefined;
 

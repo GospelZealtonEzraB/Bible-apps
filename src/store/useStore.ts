@@ -233,6 +233,7 @@ function advanceDaily(
 
 const defaultSettings: Settings = {
   translation: 'web',
+  readerTranslation: 'kjv',
   reminderTime: null,
   theme: 'system',
   serverUrl: null,

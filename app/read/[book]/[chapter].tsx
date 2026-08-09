@@ -4,12 +4,19 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
-import { Button, EmptyState } from '@/components/ui';
+import { Button, Chip, EmptyState } from '@/components/ui';
 import { VerseActionSheet } from '@/components/VerseActionSheet';
 import { useTheme, spacing, font } from '@/theme';
 import { bookByNumber, chapterCount } from '@/data/structure';
 import { getChapterVerses, isLatinTranslation, type ChapterVerse } from '@/data/bibleApi';
+import { hasLocal } from '@/data/localBible';
 import { useSettings, useStore } from '@/store/useStore';
+
+const READER_TRANSLATIONS = [
+  { id: 'kjv', label: 'KJV' },
+  { id: 'web', label: 'WEB' },
+  { id: 'tamil', label: 'தமிழ்' },
+];
 
 export default function ChapterReaderScreen() {
   const { colors } = useTheme();
@@ -20,7 +27,8 @@ export default function ChapterReaderScreen() {
   const book = bookByNumber(bookNumber);
   const count = chapterCount(bookNumber);
 
-  const translation = useSettings((s) => s.translation);
+  const translation = useSettings((s) => s.readerTranslation);
+  const setSettings = useStore((s) => s.setSettings);
   const setReadingPosition = useStore((s) => s.setReadingPosition);
 
   const [verses, setVerses] = useState<ChapterVerse[] | null>(null);
@@ -60,6 +68,18 @@ export default function ChapterReaderScreen() {
   return (
     <Screen>
       <Header title={`${book.name} ${chapter}`} subtitle="Tap a verse to memorize, study, or share" back />
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }}>
+        {READER_TRANSLATIONS.map((t) => (
+          <Chip key={t.id} label={t.label} active={t.id === translation} onPress={() => setSettings({ readerTranslation: t.id })} />
+        ))}
+        {hasLocal(translation) ? (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginLeft: 'auto' }}>
+            <Ionicons name="cloud-offline-outline" size={14} color={colors.success} />
+            <Text style={{ color: colors.success, fontSize: font.sizes.xs, fontWeight: '700' }}>Offline</Text>
+          </View>
+        ) : null}
+      </View>
 
       {loading ? (
         <View style={{ paddingVertical: spacing.xxl, alignItems: 'center' }}>

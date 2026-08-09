@@ -319,6 +319,8 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 
 export interface Settings {
   translation: string;
+  /** Translation used in the Bible reader (defaults to the offline KJV core). */
+  readerTranslation: string;
   /** 'HH:MM' 24h local time for the daily reminder, or null if disabled. */
   reminderTime: string | null;
   theme: ThemePreference;
