@@ -172,6 +172,14 @@ const CHORDS_SYSTEM =
   'NEVER include any lyrics. If you are unsure of the song, say "Not sure of this ' +
   'song — please verify." Keep it short (a few lines).';
 
+const SERMON_SYSTEM =
+  'You summarize a sermon or message transcript for a Bible-study app. Given the ' +
+  'transcript, return JSON ONLY: {"summary": string, "references": string[]}. ' +
+  'The summary is 4–8 sentences of ORIGINAL prose in your own words (do NOT quote ' +
+  'or reproduce any Scripture text). references is every Scripture reference the ' +
+  'message cites, as strings like "John 3:16" or "Romans 12:1-2". No verse text, ' +
+  'no preamble — JSON only.';
+
 function parseReferences(text: string): string[] {
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) return [];
@@ -181,6 +189,22 @@ function parseReferences(text: string): string[] {
   } catch {
     return [];
   }
+}
+
+function parseSermon(raw: string): { summary: string; references: string[] } {
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const o = JSON.parse(match[0]);
+      return {
+        summary: typeof o.summary === 'string' ? o.summary : '',
+        references: Array.isArray(o.references) ? o.references.filter((x: unknown) => typeof x === 'string').slice(0, 60) : [],
+      };
+    } catch {
+      // fall through
+    }
+  }
+  return { summary: raw.slice(0, 1200), references: [] };
 }
 
 async function handleAi(req: Request, env: Env): Promise<Response> {
@@ -208,7 +232,13 @@ async function handleAi(req: Request, env: Env): Promise<Response> {
     const out = await callLLM(env, CHORDS_SYSTEM, `Song: ${title}\nArtist: ${artist}`, 260);
     return json({ text: out });
   }
-  return json({ error: 'Unknown task. Use hook | explain | pack | chords.' }, 400);
+  if (task === 'sermon') {
+    const transcript = String(body.transcript ?? '').slice(0, 14000);
+    if (transcript.trim().length < 40) return json({ summary: '', references: [] });
+    const out = await callLLM(env, SERMON_SYSTEM, transcript, 800);
+    return json(parseSermon(out));
+  }
+  return json({ error: 'Unknown task. Use hook | explain | pack | chords | sermon.' }, 400);
 }
 
 // ===========================================================================

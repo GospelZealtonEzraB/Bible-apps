@@ -41,6 +41,15 @@ export async function fetchChords(serverUrl: string | null, title: string, artis
   return text;
 }
 
+/** Summarize a sermon transcript → original-prose summary + extracted references. */
+export async function fetchSermon(serverUrl: string | null, transcript: string): Promise<{ summary: string; references: string[] }> {
+  const data = await postServer<{ summary?: string; references?: string[] }>(serverUrl, '/ai', {
+    task: 'sermon',
+    transcript,
+  });
+  return { summary: data.summary ?? '', references: Array.isArray(data.references) ? data.references : [] };
+}
+
 /** Suggest verse references for a theme (references only — the app fetches text). */
 export async function suggestPack(serverUrl: string | null, theme: string): Promise<string[]> {
   const { references } = await postServer<{ references: string[] }>(serverUrl, '/ai', {
