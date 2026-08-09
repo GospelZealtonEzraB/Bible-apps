@@ -542,7 +542,7 @@ async function kvDeletePrefix(kv: KVNamespaceLike, prefix: string): Promise<void
 
 // Bumped whenever /circle gains actions the client depends on. Returned in every
 // snapshot so the app can warn when a deployed Worker is out of date.
-const API_VERSION = 7;
+const API_VERSION = 8;
 
 // Invite codes: 6 chars, unambiguous base32 (no O/0/I/1).
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -756,7 +756,21 @@ async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | n
   }
   messages.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
 
-  return { apiVersion: API_VERSION, meta, members, sharedVerses, plans, notes, prayers, challenges, cheersFor, messages: messages.slice(-200) };
+  // Reactions on prayers/notes/messages, grouped by "{targetType}:{targetId}".
+  // Key: `circle:{code}:react:{targetType}:{targetId}:{memberId}` (ids are colon-free tokens).
+  const reactKeys = await kvListKeys(kv, `circle:${code}:react:`);
+  const reactions: Record<string, { emoji: string; by: string; byName: string }[]> = {};
+  for (const key of reactKeys) {
+    const parts = key.split(':'); // circle,{code},react,{type},{id},{member}
+    const type = parts[3], id = parts[4], mem = parts[5];
+    if (!type || !id || !mem) continue;
+    const r = await kvGetJson<any>(kv, key);
+    if (!r?.emoji) continue;
+    const k = `${type}:${id}`;
+    (reactions[k] ??= []).push({ emoji: String(r.emoji), by: mem, byName: String(r.byName ?? '') });
+  }
+
+  return { apiVersion: API_VERSION, meta, members, sharedVerses, plans, notes, prayers, challenges, cheersFor, messages: messages.slice(-200), reactions };
 }
 
 async function handleCircle(req: Request, env: Env): Promise<Response> {
@@ -1121,6 +1135,22 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
         lastAt: Date.now(),
         kind: str(body.kind, 20) || 'cheer',
       });
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'react': {
+      const code = normCode(body.code);
+      const type = str(body.targetType, 12).replace(/[^a-z]/g, '');
+      const id = str(body.targetId, 60).replace(/[^A-Za-z0-9_]/g, '');
+      const emoji = str(body.emoji, 8);
+      if (!memberId || !['prayer', 'note', 'message'].includes(type) || !id) return json({ error: 'Bad reaction target.' }, 400);
+      const key = `circle:${code}:react:${type}:${id}:${memberId}`;
+      const prev = await kvGetJson<any>(kv, key);
+      if (prev?.emoji === emoji || !emoji) {
+        await kv.delete(key); // toggle off (same emoji) or clear
+      } else {
+        await kvPutJson(kv, key, { emoji, byName: str(body.displayName, 40), at: Date.now() });
+      }
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

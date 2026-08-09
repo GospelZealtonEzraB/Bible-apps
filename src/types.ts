@@ -332,6 +332,15 @@ export interface CircleSnapshot {
   challenges: Challenge[];
   cheersFor: Record<string, number>;
   messages?: Message[];
+  /** Reactions grouped by "{targetType}:{targetId}" (prayer/note/message). */
+  reactions?: Record<string, Reaction[]>;
+}
+
+/** A lightweight reaction (amen/💡/❤️) on a prayer, note, or message. */
+export interface Reaction {
+  emoji: string;
+  by: string;
+  byName: string;
 }
 
 /** A circle cached on the device (snapshot + local bookkeeping). */

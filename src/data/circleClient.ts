@@ -40,7 +40,7 @@ async function circleCall(
 }
 
 /** The API version this app build expects from the Worker. */
-export const EXPECTED_API_VERSION = 7;
+export const EXPECTED_API_VERSION = 8;
 
 /** Upload an opaque backup blob keyed by the device/transfer id. Best-effort. */
 export async function pushBackup(serverUrl: string | null, memberId: string, blob: string): Promise<void> {
@@ -244,6 +244,18 @@ export function postMessage(
 
 export function deleteMessage(serverUrl: string | null, code: string, memberId: string, msgId: string): Promise<CircleSnapshot> {
   return circleCall(serverUrl, { action: 'deleteMessage', code, memberId, msgId });
+}
+
+/** Toggle a reaction (amen/💡/❤️) on a prayer/note/message. Same emoji = remove. */
+export function react(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  targetType: 'prayer' | 'note' | 'message',
+  targetId: string,
+  emoji: string,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'react', code, memberId: member.memberId, displayName: member.displayName, targetType, targetId, emoji });
 }
 
 export function addPrayer(

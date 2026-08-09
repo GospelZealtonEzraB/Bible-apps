@@ -207,6 +207,8 @@ interface StoreState {
   postCircleMessage: (code: string, text: string, context?: string) => Promise<void>;
   /** Delete one of my own circle messages. */
   deleteCircleMessage: (code: string, msgId: string) => Promise<void>;
+  /** Toggle a reaction on a prayer/note/message (same emoji clears it). */
+  reactTo: (code: string, targetType: 'prayer' | 'note' | 'message', targetId: string, emoji: string) => Promise<void>;
   addPrayer: (code: string, text: string) => Promise<void>;
   prayForRequest: (code: string, prayerId: string) => Promise<void>;
   answerPrayer: (code: string, prayerId: string, answerNote?: string) => Promise<void>;
@@ -978,6 +980,24 @@ export const useStore = create<StoreState>()(
         await optimisticCircle(set, get, code,
           (c) => ({ ...c, messages: (c.messages ?? []).filter((m) => m.msgId !== msgId) }),
           () => circleApi.deleteMessage(s.settings.serverUrl, code, s.profile.memberId, msgId),
+        );
+      },
+
+      reactTo: async (code, targetType, targetId, emoji) => {
+        const s = get();
+        const me = s.profile.memberId;
+        const k = `${targetType}:${targetId}`;
+        await optimisticCircle(set, get, code,
+          (c) => {
+            const reactions = { ...(c.reactions ?? {}) };
+            const list = (reactions[k] ?? []).filter((r) => r.by !== me);
+            const had = (c.reactions?.[k] ?? []).find((r) => r.by === me);
+            // Toggle off if same emoji; otherwise set my reaction to the new emoji.
+            if (!(had && had.emoji === emoji)) list.push({ emoji, by: me, byName: s.profile.displayName });
+            reactions[k] = list;
+            return { ...c, reactions };
+          },
+          () => circleApi.react(s.settings.serverUrl, code, { memberId: me, displayName: s.profile.displayName }, targetType, targetId, emoji),
         );
       },
 

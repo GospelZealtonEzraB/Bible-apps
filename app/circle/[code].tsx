@@ -18,6 +18,7 @@ import { ProgressRing } from '@/components/ProgressRing';
 import { EXPECTED_API_VERSION } from '@/data/circleClient';
 import { EmberTip } from '@/components/EmberGuide';
 import { usePaged, PageMore } from '@/components/Paginated';
+import { ReactionBar } from '@/components/ReactionBar';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Note, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
 const ACCENTS = ['#8AA6FF', '#57D9A3', '#FFC24B', '#FF8A8A', '#C79BFF', '#5AD1E0'];
@@ -1046,6 +1047,8 @@ function PrayerRow({ code, prayer, myId, onDelete }: { code: string; prayer: Pra
           </View>
         </View>
       ) : null}
+
+      {!editing ? <ReactionBar code={code} targetType="prayer" targetId={prayer.prayerId} /> : null}
     </Card>
   );
 }
@@ -1139,6 +1142,7 @@ function NoteRow({ code, note }: { code: string; note: Note }) {
       ) : (
         <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>{note.text}</Text>
       )}
+      {!editing ? <ReactionBar code={code} targetType="note" targetId={note.noteId} /> : null}
     </Card>
   );
 }

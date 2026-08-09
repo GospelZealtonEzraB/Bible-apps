@@ -8,6 +8,7 @@ import { Header } from '@/components/layout';
 import { EmptyState } from '@/components/ui';
 import { RefText } from '@/components/RefText';
 import { EmberTip } from '@/components/EmberGuide';
+import { ReactionBar } from '@/components/ReactionBar';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useCircle, useStore } from '@/store/useStore';
 import type { Message } from '@/types';
@@ -60,6 +61,7 @@ export default function DiscussionScreen() {
         >
           <RefText text={m.text} style={{ color: mine ? colors.onPrimary : colors.text }} refColor={mine ? colors.onPrimary : colors.primary} />
         </Pressable>
+        <ReactionBar code={code} targetType="message" targetId={m.msgId} />
       </View>
     );
   };
