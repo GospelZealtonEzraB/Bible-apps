@@ -176,6 +176,20 @@ export default function CircleHubScreen() {
       {/* Leaderboard */}
       <LeaderboardCard members={members} />
 
+      {/* Discussion */}
+      <Card onPress={() => router.push(`/circle/${code}/discussion`)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="chatbubbles-outline" size={22} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <SectionTitle style={{ marginBottom: 2 }}>Discussion</SectionTitle>
+          <Text style={{ color: colors.text, fontSize: font.sizes.md, fontWeight: '700' }}>
+            {(circle?.messages?.length ?? 0) > 0 ? `${circle?.messages?.length} message${circle?.messages?.length === 1 ? '' : 's'} — talk it through` : 'Start the conversation'}
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+      </Card>
+
       {/* Progress board */}
       <View>
         <SectionTitle>How we're growing</SectionTitle>

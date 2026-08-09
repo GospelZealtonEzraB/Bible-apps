@@ -40,7 +40,7 @@ async function circleCall(
 }
 
 /** The API version this app build expects from the Worker. */
-export const EXPECTED_API_VERSION = 6;
+export const EXPECTED_API_VERSION = 7;
 
 /** Upload an opaque backup blob keyed by the device/transfer id. Best-effort. */
 export async function pushBackup(serverUrl: string | null, memberId: string, blob: string): Promise<void> {
@@ -221,6 +221,19 @@ export function saveNote(
 
 export function deleteNote(serverUrl: string | null, code: string, memberId: string, noteId: string): Promise<CircleSnapshot> {
   return circleCall(serverUrl, { action: 'deleteNote', code, memberId, noteId });
+}
+
+export function postMessage(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  msg: { msgId?: string; text: string; context?: string },
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'postMessage', code, memberId: member.memberId, displayName: member.displayName, ...msg });
+}
+
+export function deleteMessage(serverUrl: string | null, code: string, memberId: string, msgId: string): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'deleteMessage', code, memberId, msgId });
 }
 
 export function addPrayer(

@@ -392,7 +392,7 @@ async function kvDeletePrefix(kv: KVNamespaceLike, prefix: string): Promise<void
 
 // Bumped whenever /circle gains actions the client depends on. Returned in every
 // snapshot so the app can warn when a deployed Worker is out of date.
-const API_VERSION = 6;
+const API_VERSION = 7;
 
 // Invite codes: 6 chars, unambiguous base32 (no O/0/I/1).
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -591,7 +591,16 @@ async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | n
     if (to) cheersFor[to] = (cheersFor[to] ?? 0) + (Number(c?.count ?? 1) || 1);
   }
 
-  return { apiVersion: API_VERSION, meta, members, sharedVerses, plans, notes, prayers, challenges, cheersFor };
+  // Discussion messages (each member writes only their own; kept chronological).
+  const msgKeys = await kvListKeys(kv, `circle:${code}:msg:`);
+  const messages: any[] = [];
+  for (const key of msgKeys) {
+    const m = await kvGetJson<any>(kv, key);
+    if (m) messages.push(m);
+  }
+  messages.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+
+  return { apiVersion: API_VERSION, meta, members, sharedVerses, plans, notes, prayers, challenges, cheersFor, messages: messages.slice(-200) };
 }
 
 async function handleCircle(req: Request, env: Env): Promise<Response> {
@@ -814,6 +823,27 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       const code = normCode(body.code);
       const noteId = String(body.noteId ?? '');
       if (memberId && noteId) await kv.delete(`circle:${code}:note:${memberId}:${noteId}`);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'postMessage': {
+      const code = normCode(body.code);
+      const meta = await kvGetJson(kv, `circle:${code}:meta`);
+      if (!meta) return json({ error: 'No circle with that code.' }, 404);
+      const text = str(body.text, 2000).trim();
+      if (!text) return json({ error: 'Empty message.' }, 400);
+      const msgId = str(body.msgId, 40).trim() || genId();
+      const byName = str(body.displayName, 40);
+      const context = body.context ? str(body.context, 60) : undefined;
+      await kvPutJson(kv, `circle:${code}:msg:${memberId}:${msgId}`, { msgId, by: memberId, byName, text, context, at: Date.now() });
+      await sendPush(await otherMemberTokens(kv, code, memberId), 'New message 💬', `${byName || 'Someone'}: ${text.slice(0, 60)}`);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'deleteMessage': {
+      const code = normCode(body.code);
+      const msgId = String(body.msgId ?? '');
+      if (memberId && msgId) await kv.delete(`circle:${code}:msg:${memberId}:${msgId}`);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

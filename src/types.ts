@@ -297,6 +297,17 @@ export interface StudyApplication {
   outcome?: string;
 }
 
+/** A discussion message in a circle. */
+export interface Message {
+  msgId: string;
+  by: string;
+  byName: string;
+  text: string;
+  /** Optional anchor (a verse/passage reference), or undefined for the general board. */
+  context?: string;
+  at: number;
+}
+
 /** The full shared state of a circle, as returned by the server. */
 export interface CircleSnapshot {
   /** Server API version (for stale-server detection). */
@@ -309,6 +320,7 @@ export interface CircleSnapshot {
   prayers: Prayer[];
   challenges: Challenge[];
   cheersFor: Record<string, number>;
+  messages?: Message[];
 }
 
 /** A circle cached on the device (snapshot + local bookkeeping). */

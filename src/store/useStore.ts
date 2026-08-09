@@ -157,6 +157,10 @@ interface StoreState {
   addPrivateNote: (scope: NoteScope, text: string, ref?: string) => void;
   editPrivateNote: (noteId: string, text: string) => void;
   deletePrivateNote: (noteId: string) => void;
+  /** Post a message to a circle's discussion (optionally anchored to a reference). */
+  postCircleMessage: (code: string, text: string, context?: string) => Promise<void>;
+  /** Delete one of my own circle messages. */
+  deleteCircleMessage: (code: string, msgId: string) => Promise<void>;
   addPrayer: (code: string, text: string) => Promise<void>;
   prayForRequest: (code: string, prayerId: string) => Promise<void>;
   answerPrayer: (code: string, prayerId: string, answerNote?: string) => Promise<void>;
@@ -884,6 +888,24 @@ export const useStore = create<StoreState>()(
         await optimisticCircle(set, get, code,
           (c) => ({ ...c, notes: c.notes.filter((n) => n.noteId !== noteId) }),
           () => circleApi.deleteNote(s.settings.serverUrl, code, s.profile.memberId, noteId),
+        );
+      },
+
+      postCircleMessage: async (code, text, context) => {
+        const s = get();
+        const msgId = genLocalId();
+        const optimistic = { msgId, by: s.profile.memberId, byName: s.profile.displayName, text: text.trim(), context, at: Date.now() };
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, messages: [...(c.messages ?? []), optimistic] }),
+          () => circleApi.postMessage(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, { msgId, text: text.trim(), context }),
+        );
+      },
+
+      deleteCircleMessage: async (code, msgId) => {
+        const s = get();
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, messages: (c.messages ?? []).filter((m) => m.msgId !== msgId) }),
+          () => circleApi.deleteMessage(s.settings.serverUrl, code, s.profile.memberId, msgId),
         );
       },
 
