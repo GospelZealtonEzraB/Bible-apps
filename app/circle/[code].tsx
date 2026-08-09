@@ -281,6 +281,8 @@ const ACTIVITY_META: Record<string, { emoji: string; verb: string }> = {
   studied: { emoji: '📖', verb: 'studied' },
   prayed: { emoji: '🙏', verb: 'prayed' },
   challenge: { emoji: '💪', verb: 'took a challenge on' },
+  read: { emoji: '📖', verb: 'read' },
+  noted: { emoji: '📝', verb: 'shared a note on' },
 };
 
 function TogetherStatsCard({ members, togetherStreak }: { members: CircleMember[]; togetherStreak: number }) {

@@ -36,6 +36,7 @@ import {
   type FetchedVerse,
 } from '@/data/bibleApi';
 import { versesDoneFrom, memorizedReferences, learningReferences } from '@/utils/circleProgress';
+import { bookByNumber } from '@/data/structure';
 import { dayKey, daysBetweenKeys } from '@/utils/date';
 import {
   xpForPractice,
@@ -770,7 +771,15 @@ export const useStore = create<StoreState>()(
         })),
 
       setReadingPosition: (book, chapter, verse) =>
-        set({ reading: { book, chapter, verse, updatedAt: Date.now() } }),
+        set((state) => {
+          const ref = `${bookByNumber(book)?.name ?? `Book ${book}`} ${chapter}`;
+          const last = state.activityLog[state.activityLog.length - 1];
+          // Dedupe: don't log the same chapter twice in a row (re-mounts, translation switches).
+          const log = last && last.type === 'read' && last.ref === ref
+            ? state.activityLog
+            : pushActivity(state.activityLog, { type: 'read', ref, at: Date.now() });
+          return { reading: { book, chapter, verse, updatedAt: Date.now() }, activityLog: log };
+        }),
 
       startReadingPlan: (planId) =>
         set((state) => ({
@@ -858,6 +867,8 @@ export const useStore = create<StoreState>()(
           (c) => ({ ...c, notes: [optimistic, ...c.notes.filter((n) => n.noteId !== id)] }),
           () => circleApi.saveNote(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, { noteId: id, scope, ref, text: text.trim() }),
         );
+        // Surface the shared note in the activity feed (shared notes only — private stay private).
+        if (ref) set((state) => ({ activityLog: pushActivity(state.activityLog, { type: 'noted', ref, at: Date.now() }) }));
       },
 
       editSharedNote: async (code, noteId, text, scope = 'free', ref) => {

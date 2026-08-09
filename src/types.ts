@@ -126,7 +126,9 @@ export type ActivityType =
   | 'added'
   | 'studied'
   | 'prayed'
-  | 'challenge';
+  | 'challenge'
+  | 'read'
+  | 'noted';
 
 export interface Activity {
   type: ActivityType;
