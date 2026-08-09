@@ -34,7 +34,8 @@ export interface Hymn {
 
 const yt = (q: string) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q + ' hymn')}`;
 
-export const HYMNS: Hymn[] = [
+/** Hand-authored classics with chords + the Scripture behind them. */
+const CURATED: Hymn[] = [
   {
     id: 'amazing-grace',
     title: 'Amazing Grace',
@@ -202,6 +203,17 @@ export const HYMNS: Hymn[] = [
     ],
   },
 ];
+
+// Bulk public-domain library (Believers Hymn Book, lyrics-only) merged under the
+// hand-authored, chorded classics. Deduped by title so the chorded version wins.
+const BULK = require('../../assets/hymns/hymns.json') as Hymn[];
+const curatedTitles = new Set(CURATED.map((h) => h.title.toLowerCase()));
+export const HYMNS: Hymn[] = [...CURATED, ...BULK.filter((h) => !curatedTitles.has(h.title.toLowerCase()))];
+
+/** True when a hymn has any chords (so the view can show transpose controls). */
+export function hymnHasChords(h: Hymn): boolean {
+  return h.stanzas.some((s) => s.lines.some((l) => l.includes('[')));
+}
 
 export function getHymn(id: string | undefined): Hymn | undefined {
   return id ? HYMNS.find((h) => h.id === id) : undefined;

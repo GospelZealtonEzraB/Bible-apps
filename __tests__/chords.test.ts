@@ -58,11 +58,12 @@ describe('hymns', () => {
     expect(searchHymns('').length).toBeGreaterThan(0);
     expect(searchHymns('zzzzzz')).toEqual([]);
   });
-  test('every hymn is public-domain and scripture-linked', () => {
-    for (const h of searchHymns('')) {
-      expect(h.source).toBe('pd');
-      expect(h.scriptureRefs.length).toBeGreaterThan(0);
-    }
-    expect(getHymn('amazing-grace')?.key).toBe('G');
+  test('all hymns are public domain; curated ones are chorded + scripture-linked', () => {
+    const all = searchHymns('');
+    expect(all.length).toBeGreaterThan(100); // bulk library merged in
+    for (const h of all) expect(h.source).toBe('pd');
+    const ag = getHymn('amazing-grace')!;
+    expect(ag.key).toBe('G');
+    expect(ag.scriptureRefs.length).toBeGreaterThan(0);
   });
 });

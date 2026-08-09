@@ -7,7 +7,7 @@ import { Screen, Header } from '@/components/layout';
 import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
 import { VersePeek } from '@/components/VersePeek';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { getHymn, type HymnStanza } from '@/data/hymns';
+import { getHymn, hymnHasChords, type HymnStanza } from '@/data/hymns';
 import { parseChordLine, transposeKey } from '@/utils/chords';
 
 export default function HymnScreen() {
@@ -27,12 +27,14 @@ export default function HymnScreen() {
   }
 
   const currentKey = transposeKey(hymn.key, steps);
+  const hasChords = hymnHasChords(hymn);
 
   return (
     <Screen>
       <Header title={hymn.title} subtitle={`${hymn.author ?? ''}${hymn.year ? ` · ${hymn.year}` : ''}`} back />
 
-      {/* Key + transpose */}
+      {/* Key + transpose (only when the hymn has chords) */}
+      {hasChords ? (
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
         <View style={{ flex: 1 }}>
           <SectionTitle style={{ marginBottom: 2 }}>Key</SectionTitle>
@@ -50,6 +52,7 @@ export default function HymnScreen() {
           <Ionicons name="add" size={22} color={colors.text} />
         </Pressable>
       </Card>
+      ) : null}
 
       {/* Lyrics + chords */}
       {hymn.stanzas.map((st, i) => (
