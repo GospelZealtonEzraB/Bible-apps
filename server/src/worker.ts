@@ -628,6 +628,7 @@ async function writeMember(kv: KVNamespaceLike, code: string, member: any): Prom
     lastActiveDay: member?.lastActiveDay ?? null,
     lastActivity: member?.lastActivity ?? null,
     pushToken: member?.pushToken ?? null,
+    muted: member?.muted === true,
     updatedAt: Date.now(),
   };
   await kvPutJson(kv, `circle:${code}:member:${memberId}`, rec);
@@ -654,7 +655,7 @@ async function otherMemberTokens(kv: KVNamespaceLike, code: string, exceptId: st
   const tokens: string[] = [];
   for (const key of keys) {
     const m = await kvGetJson<any>(kv, key);
-    if (m && m.id !== exceptId && m.pushToken) tokens.push(m.pushToken);
+    if (m && m.id !== exceptId && m.pushToken && !m.muted) tokens.push(m.pushToken);
   }
   return tokens;
 }

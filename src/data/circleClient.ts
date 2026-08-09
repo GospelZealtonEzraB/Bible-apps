@@ -21,6 +21,8 @@ export interface MemberSnapshotInput {
   lastActiveDay: string | null;
   lastActivity?: { type: string; ref?: string; at: number } | null;
   pushToken?: string | null;
+  /** True to silence this circle's push notifications for me. */
+  muted?: boolean;
 }
 
 async function circleCall(

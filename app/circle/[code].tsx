@@ -367,6 +367,13 @@ function CircleControlsCard({ code }: { code: string }) {
           ))}
         </View>
       </View>
+
+      {/* Mute */}
+      <Pressable onPress={() => setCirclePref(code, { muted: !pref.muted })} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+        <Ionicons name={pref.muted ? 'notifications-off-outline' : 'notifications-outline'} size={18} color={pref.muted ? colors.textFaint : colors.primary} />
+        <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm }}>{pref.muted ? 'Notifications muted for this circle' : 'Notifications on'}</Text>
+        <Text style={{ color: colors.primary, fontSize: font.sizes.xs, fontWeight: '800' }}>{pref.muted ? 'Unmute' : 'Mute'}</Text>
+      </Pressable>
     </Card>
   );
 }

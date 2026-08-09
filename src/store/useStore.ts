@@ -318,6 +318,7 @@ function myMemberSnapshot(
   sharedRefs: string[] = [],
   planRefs: string[] = [],
   shareRefsOverride?: boolean,
+  muted?: boolean,
 ): MemberSnapshotInput {
   // Per-circle sharing overrides the global toggle when set.
   const share = shareRefsOverride ?? state.settings.shareLibrary;
@@ -336,6 +337,7 @@ function myMemberSnapshot(
     lastActiveDay: state.stats.lastActiveDay,
     lastActivity: (state.activityLog ?? []).slice(-1)[0] ?? null,
     pushToken: state.pushToken,
+    muted,
   };
 }
 
@@ -757,7 +759,7 @@ export const useStore = create<StoreState>()(
         const planRefs = (circle?.plans ?? []).flatMap((p) => p.items);
         const pref = s.circlePrefs[code]?.sharing;
         const shareOverride = pref ? pref === 'full' : undefined; // undefined → fall back to global
-        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs, planRefs, shareOverride));
+        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs, planRefs, shareOverride, s.circlePrefs[code]?.muted));
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
