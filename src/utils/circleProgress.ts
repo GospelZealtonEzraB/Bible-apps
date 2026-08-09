@@ -116,6 +116,17 @@ export function togetherTotals(members: CircleMember[]): TogetherTotals {
   };
 }
 
+/** Rank circle members for the leaderboard: memorized, then streak, then xp. */
+export function rankMembers(members: CircleMember[]): CircleMember[] {
+  return [...members].sort(
+    (a, b) =>
+      (b.memorizedCount ?? 0) - (a.memorizedCount ?? 0) ||
+      (b.streak ?? 0) - (a.streak ?? 0) ||
+      (b.xp ?? 0) - (a.xp ?? 0) ||
+      (a.displayName ?? '').localeCompare(b.displayName ?? ''),
+  );
+}
+
 export interface FeedItem {
   memberId: string;
   name: string;

@@ -119,3 +119,19 @@ describe('circle-wide shared progress', () => {
     expect(feed[0]).toMatchObject({ name: 'B', type: 'reviewed' });
   });
 });
+
+import { rankMembers } from '@/utils/circleProgress';
+
+describe('rankMembers', () => {
+  const mk = (id: string, displayName: string, memorizedCount: number, streak: number) =>
+    ({ id, displayName, memorizedCount, streak } as any);
+  test('sorts by memorized, then streak', () => {
+    const r = rankMembers([mk('a', 'Ana', 5, 2), mk('b', 'Ben', 9, 1), mk('c', 'Cy', 5, 7)]);
+    expect(r.map((m) => m.id)).toEqual(['b', 'c', 'a']);
+  });
+  test('does not mutate the input', () => {
+    const input = [mk('a', 'Ana', 1, 1), mk('b', 'Ben', 2, 1)];
+    rankMembers(input);
+    expect(input.map((m) => m.id)).toEqual(['a', 'b']);
+  });
+});

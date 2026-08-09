@@ -13,7 +13,7 @@ import { getVerse, normalizeKey, verseId } from '@/data/bibleApi';
 import { dayKey, daysBetweenKeys, relativeTimeAgo } from '@/utils/date';
 import { PLAN_TEMPLATES } from '@/data/plans';
 import { levelInfo } from '@/gamification';
-import { togetherTotals, coverage, mergeActivity } from '@/utils/circleProgress';
+import { togetherTotals, coverage, mergeActivity, rankMembers } from '@/utils/circleProgress';
 import { EXPECTED_API_VERSION } from '@/data/circleClient';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Note, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
@@ -173,6 +173,9 @@ export default function CircleHubScreen() {
       {/* Together stats */}
       <TogetherStatsCard members={members} togetherStreak={meta.togetherStreak} />
 
+      {/* Leaderboard */}
+      <LeaderboardCard members={members} />
+
       {/* Progress board */}
       <View>
         <SectionTitle>How we're growing</SectionTitle>
@@ -284,6 +287,29 @@ const ACTIVITY_META: Record<string, { emoji: string; verb: string }> = {
   read: { emoji: '📖', verb: 'read' },
   noted: { emoji: '📝', verb: 'shared a note on' },
 };
+
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+function LeaderboardCard({ members }: { members: CircleMember[] }) {
+  const { colors } = useTheme();
+  const ranked = useMemo(() => rankMembers(members), [members]);
+  if (ranked.length < 2) return null;
+  return (
+    <View>
+      <SectionTitle>Leaderboard</SectionTitle>
+      <Card style={{ gap: spacing.sm }}>
+        {ranked.map((m, i) => (
+          <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+            <Text style={{ width: 26, textAlign: 'center', fontSize: font.sizes.md }}>{MEDALS[i] ?? `${i + 1}`}</Text>
+            <Text style={{ flex: 1, color: colors.text, fontWeight: '700', fontSize: font.sizes.md }} numberOfLines={1}>{m.displayName}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>📖 {m.memorizedCount}</Text>
+            <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>🔥 {m.streak}</Text>
+          </View>
+        ))}
+      </Card>
+    </View>
+  );
+}
 
 function TogetherStatsCard({ members, togetherStreak }: { members: CircleMember[]; togetherStreak: number }) {
   const { colors } = useTheme();
