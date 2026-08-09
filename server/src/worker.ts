@@ -191,6 +191,49 @@ function parseReferences(text: string): string[] {
   }
 }
 
+/** Strip HTML/scripts to readable text. */
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function youtubeId(url: string): string | null {
+  const m = url.match(/(?:v=|youtu\.be\/|\/embed\/|\/shorts\/)([A-Za-z0-9_-]{11})/);
+  return m ? m[1] : null;
+}
+
+/** Best-effort YouTube caption fetch (unofficial; often unavailable). */
+async function youtubeTranscript(videoId: string): Promise<string> {
+  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, { headers: { 'user-agent': 'Mozilla/5.0', 'accept-language': 'en' } });
+  const html = await res.text();
+  const m = html.match(/"captionTracks":(\[.*?\])/);
+  if (!m) return '';
+  let tracks: any[] = [];
+  try { tracks = JSON.parse(m[1]); } catch { return ''; }
+  const track = tracks.find((t) => (t.languageCode || '').startsWith('en')) || tracks[0];
+  if (!track?.baseUrl) return '';
+  const cap = await fetch(track.baseUrl);
+  const xml = await cap.text();
+  const texts = [...xml.matchAll(/<text[^>]*>([\s\S]*?)<\/text>/g)].map((x) => x[1]);
+  return stripHtml(texts.join(' '));
+}
+
+/** Extract readable text from a URL — YouTube captions (best-effort) or article HTML. */
+async function extractFromUrl(url: string): Promise<string> {
+  const id = youtubeId(url);
+  if (id) return (await youtubeTranscript(id).catch(() => '')).slice(0, 16000);
+  const res = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0', 'accept-language': 'en' } });
+  if (!res.ok) return '';
+  const html = await res.text();
+  return stripHtml(html).slice(0, 16000);
+}
+
 function parseSermon(raw: string): { summary: string; references: string[] } {
   const match = raw.match(/\{[\s\S]*\}/);
   if (match) {
@@ -233,8 +276,15 @@ async function handleAi(req: Request, env: Env): Promise<Response> {
     return json({ text: out });
   }
   if (task === 'sermon') {
-    const transcript = String(body.transcript ?? '').slice(0, 14000);
-    if (transcript.trim().length < 40) return json({ summary: '', references: [] });
+    let transcript = String(body.transcript ?? '');
+    const url = String(body.url ?? '').trim();
+    if (transcript.trim().length < 40 && /^https?:\/\//i.test(url)) {
+      transcript = await extractFromUrl(url).catch(() => '');
+    }
+    transcript = transcript.slice(0, 14000);
+    if (transcript.trim().length < 40) {
+      return json({ summary: '', references: [], error: url ? 'Could not read that link (no captions/text found). Paste the transcript or text instead.' : 'Not enough text to summarize.' });
+    }
     const out = await callLLM(env, SERMON_SYSTEM, transcript, 800);
     return json(parseSermon(out));
   }

@@ -41,13 +41,19 @@ export async function fetchChords(serverUrl: string | null, title: string, artis
   return text;
 }
 
-/** Summarize a sermon transcript → original-prose summary + extracted references. */
-export async function fetchSermon(serverUrl: string | null, transcript: string): Promise<{ summary: string; references: string[] }> {
-  const data = await postServer<{ summary?: string; references?: string[] }>(serverUrl, '/ai', {
+/**
+ * Summarize a sermon from a pasted transcript OR a URL (YouTube captions best-
+ * effort, or an article page) → original-prose summary + extracted references.
+ */
+export async function fetchSermon(
+  serverUrl: string | null,
+  input: { transcript?: string; url?: string },
+): Promise<{ summary: string; references: string[]; error?: string }> {
+  const data = await postServer<{ summary?: string; references?: string[]; error?: string }>(serverUrl, '/ai', {
     task: 'sermon',
-    transcript,
+    ...input,
   });
-  return { summary: data.summary ?? '', references: Array.isArray(data.references) ? data.references : [] };
+  return { summary: data.summary ?? '', references: Array.isArray(data.references) ? data.references : [], error: data.error };
 }
 
 /** Suggest verse references for a theme (references only — the app fetches text). */

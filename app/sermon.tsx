@@ -22,13 +22,17 @@ export default function SermonScreen() {
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ reference: string; text: string } | null>(null);
 
+  const trimmed = transcript.trim();
+  const isUrl = /^https?:\/\//i.test(trimmed);
+
   const run = async () => {
-    if (transcript.trim().length < 40) return;
+    if (!isUrl && trimmed.length < 40) return;
     setLoading(true);
     setError(null);
     setSummary(null);
     try {
-      const r = await fetchSermon(serverUrl, transcript);
+      const r = await fetchSermon(serverUrl, isUrl ? { url: trimmed } : { transcript });
+      if (r.error && !r.summary) { setError(r.error); return; }
       setSummary(r.summary);
       // Validate references against the canonical book table (drop hallucinated/bad ones).
       const valid = Array.from(new Set(r.references.map((x) => { const p = parseReference(x); return p ? formatReference(p) : null; }).filter((x): x is string => !!x)));
@@ -52,21 +56,27 @@ export default function SermonScreen() {
       {summary === null ? (
         <>
           <Card style={{ gap: spacing.sm }}>
-            <SectionTitle>Paste the transcript or your notes</SectionTitle>
+            <SectionTitle>Paste a link or the transcript</SectionTitle>
             <TextInput
               value={transcript}
               onChangeText={setTranscript}
-              placeholder="Paste a sermon transcript or your notes here…"
+              placeholder="A YouTube or article link, or paste the sermon transcript / your notes…"
               placeholderTextColor={colors.textFaint}
               multiline
               textAlignVertical="top"
-              style={{ color: colors.text, fontSize: font.sizes.md, minHeight: 180, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
+              autoCapitalize={isUrl ? 'none' : 'sentences'}
+              style={{ color: colors.text, fontSize: font.sizes.md, minHeight: isUrl ? 60 : 180, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
             />
+            {isUrl ? (
+              <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+                🔗 Link detected. Articles work best; YouTube is best-effort (needs captions). If it can’t read the video, paste the transcript instead.
+              </Text>
+            ) : null}
           </Card>
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
             The AI writes an original summary and pulls out the Scripture references — it never copies the message text.
           </Text>
-          <Button title="Summarize & find verses" icon={<Ionicons name="sparkles" size={18} color={colors.onPrimary} />} loading={loading} disabled={transcript.trim().length < 40 || loading} onPress={run} />
+          <Button title={isUrl ? 'Read link & summarize' : 'Summarize & find verses'} icon={<Ionicons name="sparkles" size={18} color={colors.onPrimary} />} loading={loading} disabled={(!isUrl && trimmed.length < 40) || loading} onPress={run} />
           {error ? <Text style={{ color: colors.warning, fontSize: font.sizes.sm }}>{error}</Text> : null}
         </>
       ) : (
