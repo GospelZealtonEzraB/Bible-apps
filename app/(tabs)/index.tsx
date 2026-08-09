@@ -4,12 +4,14 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
-import { Card, Button, SectionTitle, StatusBadge, EmptyState, SpeechBubble } from '@/components/ui';
+import { Card, Button, Chip, SectionTitle, StatusBadge, EmptyState, SpeechBubble } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
 import { Ember, type EmberMood } from '@/components/Ember';
 import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useStats, useVerseList, useStore, todaysDaily } from '@/store/useStore';
+import { useStats, useVerseList, useStore, todaysDaily, useActiveReadingPlanId, useReadingPlanProgress } from '@/store/useStore';
+import { getReadingPlan } from '@/data/readingPlans';
+import { parsePassage } from '@/data/books';
 import { isDue } from '@/srs/sm2';
 import { levelInfo, BADGES } from '@/gamification';
 import { DAILY_QUESTS, questCount, questDone, questsCompletedCount } from '@/quests';
@@ -36,6 +38,60 @@ const MOOD_SPEECH: Record<EmberMood, string> = {
 function dayOfYear(d = new Date()): number {
   const start = new Date(d.getFullYear(), 0, 0);
   return Math.floor((d.getTime() - start.getTime()) / 86_400_000);
+}
+
+/** The active reading plan's current day, or a prompt to start one. */
+function TodaysReadingCard() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const activeId = useActiveReadingPlanId();
+  const progress = useReadingPlanProgress(activeId ?? undefined);
+  const plan = getReadingPlan(activeId);
+  const toggleReadingDay = useStore((s) => s.toggleReadingDay);
+
+  if (!plan) {
+    return (
+      <Card onPress={() => router.push('/plans')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <Text style={{ fontSize: 26 }}>📖</Text>
+        <View style={{ flex: 1 }}>
+          <SectionTitle style={{ marginBottom: 2 }}>Today's reading</SectionTitle>
+          <Text style={{ color: colors.text, fontWeight: '700' }}>Start a reading plan</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+      </Card>
+    );
+  }
+
+  const completed = new Set(progress?.completed ?? []);
+  const current = plan.days.findIndex((_, i) => !completed.has(i));
+  if (current === -1) return null; // plan complete — nothing due today
+
+  const openPassage = (ref: string) => {
+    const p = parsePassage(ref);
+    if (p) router.push(`/read/${p.bookNumber}/${p.chapter}`);
+  };
+
+  return (
+    <Card style={{ gap: spacing.sm }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <SectionTitle style={{ marginBottom: 0, flex: 1 }}>Today's reading · Day {current + 1}</SectionTitle>
+        <Pressable onPress={() => router.push('/plans')} hitSlop={8}>
+          <Text style={{ color: colors.primary, fontWeight: '700', fontSize: font.sizes.xs }}>Plan</Text>
+        </Pressable>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+        {plan.days[current].map((ref) => (
+          <Chip key={ref} label={ref} onPress={() => openPassage(ref)} />
+        ))}
+      </View>
+      <Button
+        title="Mark today complete"
+        small
+        icon={<Ionicons name="checkmark" size={16} color={colors.onPrimary} />}
+        onPress={() => toggleReadingDay(plan.id, current)}
+      />
+    </Card>
+  );
 }
 
 function StatTile({
@@ -187,6 +243,9 @@ export default function TodayScreen() {
 
       {/* Welcome-back recap */}
       <WelcomeBackCard />
+
+      {/* Today's reading (active plan) */}
+      <TodaysReadingCard />
 
       {/* Stats */}
       <View style={{ flexDirection: 'row', gap: spacing.md }}>
