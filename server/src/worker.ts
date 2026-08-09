@@ -57,6 +57,8 @@ export interface Env {
   AI?: WorkersAiLike;
   /** Vectorize index of KJV verse embeddings (optional; /search 501 without it). */
   VECTORIZE?: VectorizeLike;
+  /** Genius API token for song search/metadata (optional; /genius 501 without it). */
+  GENIUS_ACCESS_TOKEN?: string;
 }
 
 /** Embedding model for semantic search — must match the Vectorize index dims (768). */
@@ -162,6 +164,14 @@ const PACK_SYSTEM =
   'reference strings, e.g. ["John 3:16","Romans 8:28"]. Do NOT include any verse ' +
   'text, commentary, or prose — only the JSON array of references.';
 
+const CHORDS_SYSTEM =
+  'You are a worship guitarist/pianist. Given a song title and artist, suggest the ' +
+  'LIKELY key, a capo suggestion, and common chord PROGRESSIONS for the main ' +
+  'sections (Intro/Verse/Chorus/Bridge). Output ONLY chord names and section ' +
+  'labels — e.g. "Key: G  Capo: 0\\nVerse: G  D  Em  C\\nChorus: C  G  D  Em". ' +
+  'NEVER include any lyrics. If you are unsure of the song, say "Not sure of this ' +
+  'song — please verify." Keep it short (a few lines).';
+
 function parseReferences(text: string): string[] {
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) return [];
@@ -192,7 +202,13 @@ async function handleAi(req: Request, env: Env): Promise<Response> {
     const out = await callLLM(env, PACK_SYSTEM, `Theme: ${theme}`, 200);
     return json({ references: parseReferences(out) });
   }
-  return json({ error: 'Unknown task. Use hook | explain | pack.' }, 400);
+  if (task === 'chords') {
+    const title = String(body.title ?? '').slice(0, 120);
+    const artist = String(body.artist ?? '').slice(0, 120);
+    const out = await callLLM(env, CHORDS_SYSTEM, `Song: ${title}\nArtist: ${artist}`, 260);
+    return json({ text: out });
+  }
+  return json({ error: 'Unknown task. Use hook | explain | pack | chords.' }, 400);
 }
 
 // ===========================================================================
@@ -1034,6 +1050,37 @@ async function handleSearch(request: Request, env: Env): Promise<Response> {
   return json(out);
 }
 
+// ===========================================================================
+// Song search — Genius API proxy (keeps the token server-side). Returns
+// metadata + the Genius page URL only; lyrics/chords are viewed on Genius /
+// via deep-links (copyright: we never reproduce lyrics in-app).
+// ===========================================================================
+
+async function handleGenius(request: Request, env: Env): Promise<Response> {
+  if (!env.GENIUS_ACCESS_TOKEN) {
+    return json({ error: 'Song search is not configured on this server yet.', results: [] }, 501);
+  }
+  const body = (await request.json().catch(() => ({}))) as { q?: unknown };
+  const q = typeof body.q === 'string' ? body.q.trim().slice(0, 120) : '';
+  if (q.length < 2) return json({ results: [] });
+
+  const res = await fetch(`https://api.genius.com/search?q=${encodeURIComponent(q)}`, {
+    headers: { Authorization: `Bearer ${env.GENIUS_ACCESS_TOKEN}` },
+  });
+  if (!res.ok) return json({ error: `Genius HTTP ${res.status}`, results: [] }, 502);
+  const data = (await res.json()) as any;
+  const results = (data?.response?.hits || [])
+    .filter((h: any) => h?.type === 'song' && h?.result)
+    .map((h: any) => ({
+      id: h.result.id,
+      title: h.result.title,
+      artist: h.result.primary_artist?.name,
+      thumbnail: h.result.song_art_image_thumbnail_url || h.result.header_image_thumbnail_url,
+      url: h.result.url,
+    }));
+  return json({ results });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
@@ -1065,8 +1112,9 @@ export default {
       if (path === '/study') return await handleStudy(request, env);
       if (path === '/circle') return await handleCircle(request, env);
       if (path === '/search') return await handleSearch(request, env);
+      if (path === '/genius') return await handleGenius(request, env);
       // if (path === '/esv') return await handleEsv(request, env); // ESV disabled for now
-      return json({ error: 'Not found. Use /ai, /study, /circle, or /search.' }, 404);
+      return json({ error: 'Not found. Use /ai, /study, /circle, /search, or /genius.' }, 404);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Server error';
       return json({ error: message }, 500);

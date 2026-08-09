@@ -28,6 +28,19 @@ export async function fetchExplanation(serverUrl: string | null, verse: Verse): 
   return text;
 }
 
+/**
+ * AI-suggested chord progressions for a song (key/capo/section chords, NO lyrics).
+ * Best-effort and may be wrong — always shown with a "verify" disclaimer.
+ */
+export async function fetchChords(serverUrl: string | null, title: string, artist?: string): Promise<string> {
+  const { text } = await postServer<{ text: string }>(serverUrl, '/ai', {
+    task: 'chords',
+    title,
+    artist: artist ?? '',
+  });
+  return text;
+}
+
 /** Suggest verse references for a theme (references only — the app fetches text). */
 export async function suggestPack(serverUrl: string | null, theme: string): Promise<string[]> {
   const { references } = await postServer<{ references: string[] }>(serverUrl, '/ai', {

@@ -34,7 +34,17 @@ export default function HymnsScreen() {
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}>
       <View style={{ padding: spacing.lg, gap: spacing.md }}>
-        <Header title="Hymns" subtitle={`${HYMNS.length} public-domain hymns`} back />
+        <Header
+          title="Hymns"
+          subtitle={`${HYMNS.length} public-domain hymns`}
+          back
+          right={
+            <Pressable onPress={() => router.push('/songs')} hitSlop={12} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.primarySoft }}>
+              <Ionicons name="search" size={14} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>Songs</Text>
+            </Pressable>
+          }
+        />
         <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm }}>
           <Ionicons name="search" size={18} color={colors.textFaint} />
           <TextInput
