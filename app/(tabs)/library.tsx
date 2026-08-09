@@ -10,6 +10,7 @@ import { JourneyMap } from '@/components/JourneyMap';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerseList, useStore } from '@/store/useStore';
 import { EmberTip } from '@/components/EmberGuide';
+import { usePaged, PageMore } from '@/components/Paginated';
 import { isDue } from '@/srs/sm2';
 import { relativeDueLabel } from '@/utils/date';
 import type { Verse } from '@/types';
@@ -47,6 +48,8 @@ export default function LibraryScreen() {
         return verses;
     }
   }, [verses, filter]);
+
+  const versePage = usePaged(filtered, 25, filter);
 
   const confirmDelete = (v: Verse) => {
     Alert.alert('Remove verse', `Remove ${v.reference} from your library?`, [
@@ -161,7 +164,7 @@ export default function LibraryScreen() {
         </Card>
       ) : (
         <View style={{ gap: spacing.sm }}>
-          {filtered.map((v) => (
+          {versePage.shown.map((v) => (
             <Card
               key={v.id}
               onPress={() => router.push(`/verse/${encodeURIComponent(v.id)}`)}
@@ -189,6 +192,7 @@ export default function LibraryScreen() {
               </View>
             </Card>
           ))}
+          <PageMore remaining={versePage.remaining} step={25} onPress={versePage.showMore} noun="more verses" />
         </View>
           )}
         </>

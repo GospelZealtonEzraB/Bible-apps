@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen, Header } from '@/components/layout';
 import { Card, Button, EmptyState } from '@/components/ui';
 import { VerseActionSheet } from '@/components/VerseActionSheet';
+import { usePaged, PageMore } from '@/components/Paginated';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { searchScripture, type SearchResult } from '@/data/search';
 import { useStore } from '@/store/useStore';
@@ -18,6 +19,7 @@ export default function SearchScreen() {
   const [source, setSource] = useState<'local' | 'semantic'>('local');
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<SearchResult | null>(null);
+  const page = usePaged(results ?? [], 30, results);
 
   const run = () => {
     const q = query.trim();
@@ -78,7 +80,7 @@ export default function SearchScreen() {
           <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, fontWeight: '700' }}>
             {results.length} result{results.length === 1 ? '' : 's'} · {source === 'semantic' ? '✨ meaning-based' : 'keyword'}
           </Text>
-          {results.map((r) => (
+          {page.shown.map((r) => (
             <Pressable
               key={`${r.bookNumber}-${r.chapter}-${r.verse}`}
               onPress={() => setSelected(r)}
@@ -97,6 +99,7 @@ export default function SearchScreen() {
               </Text>
             </Pressable>
           ))}
+          <PageMore remaining={page.remaining} step={30} onPress={page.showMore} noun="more results" />
         </View>
       ) : null}
 

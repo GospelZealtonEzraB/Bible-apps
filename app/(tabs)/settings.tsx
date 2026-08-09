@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, Alert, Platform, TextInput, Switch, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 import { Screen, Header } from '@/components/layout';
 import { Card, Chip, SectionTitle, Button } from '@/components/ui';
@@ -25,6 +26,7 @@ const THEMES: { key: ThemePreference; label: string }[] = [
 
 export default function SettingsScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const settings = useSettings((s) => s);
   const stats = useStats();
   const setSettings = useStore((s) => s.setSettings);
@@ -67,6 +69,18 @@ export default function SettingsScreen() {
   return (
     <Screen>
       <Header title="Settings" />
+
+      {/* Help & guides */}
+      <Card onPress={() => router.push('/help')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name="help-buoy-outline" size={22} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>Help &amp; guides</Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>How every part of Versed works, explained by Ember</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      </Card>
 
       {/* Translation */}
       <View>

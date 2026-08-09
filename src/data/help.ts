@@ -122,3 +122,19 @@ export const HELP: Record<string, HelpEntry> = {
 export function getHelp(topic: string): HelpEntry | undefined {
   return HELP[topic];
 }
+
+/** Display order for the Help hub, grouped roughly by daily flow. */
+export const HELP_ORDER: string[] = [
+  'today',
+  'reader',
+  'search',
+  'study',
+  'memorize',
+  'quiz',
+  'topics',
+  'hymns',
+  'sermon',
+  'together',
+  'circleHome',
+  'discussion',
+];

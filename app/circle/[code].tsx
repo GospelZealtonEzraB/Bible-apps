@@ -16,6 +16,7 @@ import { levelInfo } from '@/gamification';
 import { togetherTotals, coverage, mergeActivity, rankMembers, presenceToday, weeklyRecap } from '@/utils/circleProgress';
 import { EXPECTED_API_VERSION } from '@/data/circleClient';
 import { EmberTip } from '@/components/EmberGuide';
+import { usePaged, PageMore } from '@/components/Paginated';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Note, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
 const ACCENTS = ['#8AA6FF', '#57D9A3', '#FFC24B', '#FF8A8A', '#C79BFF', '#5AD1E0'];
@@ -867,6 +868,7 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
   const prayers = circle?.prayers ?? [];
   const active = prayers.filter((p) => p.status === 'active');
   const answered = prayers.filter((p) => p.status === 'answered');
+  const activePage = usePaged(active, 15, active.length);
 
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -906,9 +908,10 @@ function PrayerCard({ code, myId }: { code: string; myId: string }) {
         </View>
       </Card>
 
-      {active.map((p) => (
+      {activePage.shown.map((p) => (
         <PrayerRow key={p.prayerId} code={code} prayer={p} myId={myId} onDelete={() => confirmDelete(p.prayerId)} />
       ))}
+      <PageMore remaining={activePage.remaining} step={15} onPress={activePage.showMore} noun="more requests" />
 
       {answered.length > 0 ? (
         <View style={{ marginTop: spacing.sm }}>
@@ -1022,6 +1025,7 @@ function NotesCard({ code }: { code: string }) {
   const circle = useCircle(code);
   const shareNote = useStore((s) => s.shareNote);
   const notes = circle?.notes ?? [];
+  const notesPage = usePaged(notes, 15, notes.length);
 
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1048,9 +1052,10 @@ function NotesCard({ code }: { code: string }) {
           <Button title={busy ? 'Sharing…' : 'Share note'} small loading={busy} disabled={!text.trim()} onPress={add} />
         </View>
       </Card>
-      {notes.map((n) => (
+      {notesPage.shown.map((n) => (
         <NoteRow key={n.noteId} code={code} note={n} />
       ))}
+      <PageMore remaining={notesPage.remaining} step={15} onPress={notesPage.showMore} noun="more notes" />
     </View>
   );
 }
@@ -1219,6 +1224,7 @@ function SharedVersesCard({ code, members, myId }: { code: string; members: Circ
   const [importing, setImporting] = useState<string | null>(null);
 
   const shared = circle?.sharedVerses ?? [];
+  const sharedPage = usePaged(shared, 15, shared.length);
   const others = members.filter((m) => m.id !== myId);
   const nameOf = (id: string) => members.find((m) => m.id === id)?.displayName ?? 'partner';
 
@@ -1282,7 +1288,7 @@ function SharedVersesCard({ code, members, myId }: { code: string; members: Circ
 
       {shared.length > 0 ? (
         <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-          {shared.map((sv) => (
+          {sharedPage.shown.map((sv) => (
             <SharedVerseRow
               key={normalizeKey(sv.reference)}
               sv={sv}
@@ -1294,6 +1300,7 @@ function SharedVersesCard({ code, members, myId }: { code: string; members: Circ
               onRemove={() => removeSharedVerse(code, sv.reference).catch(() => {})}
             />
           ))}
+          <PageMore remaining={sharedPage.remaining} step={15} onPress={sharedPage.showMore} noun="more verses" />
         </View>
       ) : null}
     </View>

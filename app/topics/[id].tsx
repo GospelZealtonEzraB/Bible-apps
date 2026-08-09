@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen, Header } from '@/components/layout';
 import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
 import { VerseActionSheet } from '@/components/VerseActionSheet';
+import { usePaged, PageMore } from '@/components/Paginated';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useTopic, useStore } from '@/store/useStore';
 import { sortedEntries, composeTopic, type TopicOrder } from '@/utils/topics';
@@ -37,6 +38,7 @@ export default function TopicDetailScreen() {
   const [selected, setSelected] = useState<{ reference: string; text: string } | null>(null);
 
   const entries = useMemo(() => (topic ? sortedEntries(topic, order) : []), [topic, order]);
+  const entryPage = usePaged(entries, 25, order);
 
   if (!topic) {
     return (
@@ -169,7 +171,7 @@ export default function TopicDetailScreen() {
         />
       ) : (
         <View style={{ gap: spacing.sm }}>
-          {entries.map((e) => (
+          {entryPage.shown.map((e) => (
             <TopicEntryRow
               key={e.ref}
               entry={e}
@@ -178,6 +180,7 @@ export default function TopicDetailScreen() {
               onSaveNote={(note) => setTopicEntryNote(topic.id, e.ref, note)}
             />
           ))}
+          <PageMore remaining={entryPage.remaining} step={25} onPress={entryPage.showMore} noun="more verses" />
         </View>
       )}
 

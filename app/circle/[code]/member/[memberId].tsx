@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
 import { Card, Button, SectionTitle, EmptyState } from '@/components/ui';
+import { usePaged, PageMore } from '@/components/Paginated';
 import { useTheme, spacing, font } from '@/theme';
 import { useCircle, useProfile, useStore } from '@/store/useStore';
 import { getVerse, verseId } from '@/data/bibleApi';
@@ -129,6 +130,7 @@ function RefList({ code, title, refs, muted }: { code: string; title: string; re
   const translation = useStore((s) => s.settings.translation);
   const serverUrl = useStore((s) => s.settings.serverUrl);
   const [importing, setImporting] = useState<string | null>(null);
+  const page = usePaged(refs, 20, refs.length);
 
   const onImport = async (reference: string) => {
     setImporting(reference);
@@ -146,7 +148,7 @@ function RefList({ code, title, refs, muted }: { code: string; title: string; re
     <View>
       <SectionTitle>{title}</SectionTitle>
       <Card>
-        {refs.map((r) => {
+        {page.shown.map((r) => {
           const mine = hasVerse(verseId(r, translation));
           return (
             <View key={r} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 5 }}>
@@ -160,6 +162,7 @@ function RefList({ code, title, refs, muted }: { code: string; title: string; re
             </View>
           );
         })}
+        <PageMore remaining={page.remaining} step={20} onPress={page.showMore} noun="more" />
       </Card>
     </View>
   );
