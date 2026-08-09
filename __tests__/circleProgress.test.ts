@@ -7,8 +7,10 @@ import {
   coverage,
   togetherTotals,
   mergeActivity,
+  presenceToday,
+  weeklyRecap,
 } from '@/utils/circleProgress';
-import type { Verse, CircleMember } from '@/types';
+import type { Verse, CircleMember, Activity } from '@/types';
 
 function member(id: string, memorizedRefs: string[], extra: Partial<CircleMember> = {}): CircleMember {
   return {
@@ -133,5 +135,47 @@ describe('rankMembers', () => {
     const input = [mk('a', 'Ana', 1, 1), mk('b', 'Ben', 2, 1)];
     rankMembers(input);
     expect(input.map((m) => m.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('presenceToday', () => {
+  const today = '2026-08-09';
+  const mk = (id: string, day: string | null): CircleMember => member(id, [], { lastActiveDay: day });
+  test('flags members whose last active day is today', () => {
+    const members = [mk('a', today), mk('b', '2026-08-08'), mk('c', today)];
+    const p = presenceToday(members, today);
+    expect(p.total).toBe(3);
+    expect(p.activeIds.sort()).toEqual(['a', 'c']);
+  });
+  test('nobody active → empty active list', () => {
+    expect(presenceToday([mk('a', null)], today).activeIds).toEqual([]);
+  });
+});
+
+describe('weeklyRecap', () => {
+  const now = 1_000_000_000_000;
+  const day = 24 * 60 * 60 * 1000;
+  const act = (type: Activity['type'], at: number): Activity => ({ type, at });
+  const mk = (id: string, name: string, acts: Activity[]): CircleMember =>
+    member(id, [], { displayName: name, recentActivity: acts });
+
+  test('counts memorized/reviewed/studied within the last 7 days', () => {
+    const members = [
+      mk('a', 'Ana', [act('memorized', now - day), act('memorized', now - 2 * day), act('reviewed', now - day)]),
+      mk('b', 'Ben', [act('memorized', now - day), act('studied', now - 3 * day)]),
+    ];
+    const r = weeklyRecap(members, now);
+    expect(r.memorized).toBe(3);
+    expect(r.reviewed).toBe(1);
+    expect(r.studied).toBe(1);
+    expect(r.activeMembers).toBe(2);
+    expect(r.topMemberName).toBe('Ana');
+    expect(r.empty).toBe(false);
+  });
+
+  test('ignores activity older than 7 days', () => {
+    const r = weeklyRecap([mk('a', 'Ana', [act('memorized', now - 10 * day)])], now);
+    expect(r.memorized).toBe(0);
+    expect(r.empty).toBe(true);
   });
 });

@@ -9,6 +9,7 @@ import type {
   ChallengeKind,
   Circle,
   CircleGoal,
+  CirclePref,
   CircleSnapshot,
   LocalNote,
   NoteScope,
@@ -67,6 +68,8 @@ interface StoreState {
   profile: Profile;
   /** Growing Together circles, cached by invite code. */
   circles: Record<string, Circle>;
+  /** Per-circle personalization + control, keyed by invite code. */
+  circlePrefs: Record<string, CirclePref>;
   /** Cached AI study briefs, keyed by normalized passage. */
   studySessions: Record<string, StudySession>;
   /** "One thing I'll live out" applications, keyed by passage. */
@@ -121,6 +124,8 @@ interface StoreState {
   ensureProfile: () => void;
   /** Set the display name shown to circle partners. */
   setDisplayName: (name: string) => void;
+  /** Update this circle's personalization/control prefs (merged). */
+  setCirclePref: (code: string, patch: Partial<CirclePref>) => void;
   /** Adopt a transfer code from another device; returns false if malformed. */
   restoreFromBackup: (code: string) => boolean;
 
@@ -304,8 +309,10 @@ function myMemberSnapshot(
   state: StoreState,
   sharedRefs: string[] = [],
   planRefs: string[] = [],
+  shareRefsOverride?: boolean,
 ): MemberSnapshotInput {
-  const share = state.settings.shareLibrary;
+  // Per-circle sharing overrides the global toggle when set.
+  const share = shareRefsOverride ?? state.settings.shareLibrary;
   return {
     memberId: state.profile.memberId,
     displayName: state.profile.displayName,
@@ -510,6 +517,7 @@ export const useStore = create<StoreState>()(
       settings: defaultSettings,
       profile: defaultProfile,
       circles: {},
+      circlePrefs: {},
       studySessions: {},
       applications: {},
       notes: {},
@@ -697,6 +705,11 @@ export const useStore = create<StoreState>()(
           profile: { ...state.profile, displayName: name.trim().slice(0, 40) },
         })),
 
+      setCirclePref: (code, patch) =>
+        set((state) => ({
+          circlePrefs: { ...state.circlePrefs, [code]: { ...(state.circlePrefs[code] ?? {}), ...patch } },
+        })),
+
       restoreFromBackup: (code) => {
         const c = code.trim();
         if (!isValidMemberId(c)) return false;
@@ -730,7 +743,9 @@ export const useStore = create<StoreState>()(
         const circle = s.circles[code];
         const sharedRefs = (circle?.sharedVerses ?? []).map((v) => v.reference);
         const planRefs = (circle?.plans ?? []).flatMap((p) => p.items);
-        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs, planRefs));
+        const pref = s.circlePrefs[code]?.sharing;
+        const shareOverride = pref ? pref === 'full' : undefined; // undefined → fall back to global
+        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs, planRefs, shareOverride));
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
       },
 
@@ -795,6 +810,8 @@ export const useStore = create<StoreState>()(
           (c) => ({ ...c, challenges: c.challenges.map((ch) => ch.chalId === chalId ? { ...ch, status: 'submitted', submission: { by: s.profile.memberId, text, accuracy, submittedAt: Date.now() } } : ch) }),
           () => circleApi.submitChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId, text, accuracy),
         );
+        const chal = get().circles[code]?.challenges.find((ch) => ch.chalId === chalId);
+        if (chal?.reference) set((state) => ({ activityLog: pushActivity(state.activityLog, { type: 'challenge', ref: chal.reference, at: Date.now() }) }));
       },
 
       submitDuel: async (code, chalId, accuracy) => {
@@ -1072,6 +1089,7 @@ export const useStore = create<StoreState>()(
           (c) => ({ ...c, prayers: [optimistic, ...c.prayers] }),
           () => circleApi.addPrayer(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, text.trim(), prayerId),
         );
+        set((state) => ({ activityLog: pushActivity(state.activityLog, { type: 'prayed', at: Date.now() }) }));
       },
 
       prayForRequest: async (code, prayerId) => {
@@ -1203,6 +1221,7 @@ export const useStore = create<StoreState>()(
             settings: s.settings,
             profile: s.profile,
             circles: s.circles,
+            circlePrefs: s.circlePrefs,
             studySessions: s.studySessions,
             applications: s.applications,
             notes: s.notes,
@@ -1233,6 +1252,7 @@ export const useStore = create<StoreState>()(
           settings: { ...defaultSettings, ...(d.settings ?? {}) },
           profile: { ...defaultProfile, ...(d.profile ?? {}) },
           circles: d.circles ?? state.circles,
+          circlePrefs: d.circlePrefs ?? state.circlePrefs,
           studySessions: d.studySessions ?? state.studySessions,
           applications: d.applications ?? state.applications,
           notes: d.notes ?? state.notes,
@@ -1282,6 +1302,7 @@ export const useStore = create<StoreState>()(
         settings: state.settings,
         profile: state.profile,
         circles: state.circles,
+        circlePrefs: state.circlePrefs,
         studySessions: state.studySessions,
         applications: state.applications,
         notes: state.notes,
@@ -1319,6 +1340,7 @@ export const useStore = create<StoreState>()(
             settings: { ...defaultSettings, onboarded: isReturningUser, ...(p.settings ?? {}) },
             profile: { ...defaultProfile, ...(p.profile ?? {}) },
             circles: p.circles ?? {},
+            circlePrefs: p.circlePrefs ?? {},
             studySessions: p.studySessions ?? {},
             applications: p.applications ?? {},
             notes: p.notes ?? {},
@@ -1374,6 +1396,11 @@ export function useCircleList(): Circle[] {
 export function useCircle(code: string | undefined): Circle | undefined {
   return useStore((state) => (code ? state.circles[code] : undefined));
 }
+
+export function useCirclePref(code: string | undefined): CirclePref {
+  return useStore((state) => (code ? state.circlePrefs[code] ?? EMPTY_PREF : EMPTY_PREF));
+}
+const EMPTY_PREF: CirclePref = {};
 
 export function useStudySession(passageKey: string | undefined): StudySession | undefined {
   return useStore((state) => (passageKey ? state.studySessions[passageKey] : undefined));

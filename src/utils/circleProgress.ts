@@ -146,3 +146,77 @@ export function mergeActivity(members: CircleMember[], limit = 20): FeedItem[] {
   items.sort((a, b) => b.at - a.at);
   return items.slice(0, limit);
 }
+
+// ---- Presence & weekly recap (the "alive" layer) --------------------------
+
+export interface Presence {
+  /** memberIds active on `todayKey`. */
+  activeIds: string[];
+  total: number;
+}
+
+/** Who has "had their time" today — members whose last active day is today. */
+export function presenceToday(members: CircleMember[], todayKey: string): Presence {
+  return {
+    activeIds: members.filter((m) => m.lastActiveDay === todayKey).map((m) => m.id),
+    total: members.length,
+  };
+}
+
+export interface WeeklyRecap {
+  memorized: number;
+  reviewed: number;
+  studied: number;
+  /** Distinct members with any activity in the window. */
+  activeMembers: number;
+  /** Member (name) with the most `memorized` events this week, if any. */
+  topMemberName?: string;
+  /** True when no activity fell in the window (hide the card). */
+  empty: boolean;
+}
+
+/**
+ * A "how we grew together this week" summary from members' recent-activity
+ * buffers within the last 7 days. Approximate — buffers are capped per member —
+ * so it's framed as recent highlights, not an audit.
+ */
+export function weeklyRecap(members: CircleMember[], now: number): WeeklyRecap {
+  const since = now - 7 * 24 * 60 * 60 * 1000;
+  let memorized = 0;
+  let reviewed = 0;
+  let studied = 0;
+  const activeIds = new Set<string>();
+  const memorizedByMember = new Map<string, { name: string; count: number }>();
+
+  for (const m of members) {
+    for (const a of m.recentActivity ?? []) {
+      if (a.at < since) continue;
+      activeIds.add(m.id);
+      if (a.type === 'memorized') {
+        memorized++;
+        const cur = memorizedByMember.get(m.id) ?? { name: m.displayName, count: 0 };
+        cur.count++;
+        memorizedByMember.set(m.id, cur);
+      } else if (a.type === 'reviewed') {
+        reviewed++;
+      } else if (a.type === 'studied') {
+        studied++;
+      }
+    }
+  }
+
+  let topMemberName: string | undefined;
+  let topCount = 0;
+  for (const { name, count } of memorizedByMember.values()) {
+    if (count > topCount) { topCount = count; topMemberName = name; }
+  }
+
+  return {
+    memorized,
+    reviewed,
+    studied,
+    activeMembers: activeIds.size,
+    topMemberName,
+    empty: memorized + reviewed + studied === 0,
+  };
+}

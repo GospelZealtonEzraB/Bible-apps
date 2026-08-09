@@ -378,6 +378,21 @@ export interface Topic {
   updatedAt: number;
 }
 
+/** Per-circle personalization + control (client-side, keyed by circle code). */
+export interface CirclePref {
+  /** Accent color (hex) that personalizes this circle's screens. */
+  accent?: string;
+  /** A one/two-emoji identity shown in the home header + tiles. */
+  emoji?: string;
+  /** Drill-in tiles hidden from this circle's home grid. */
+  hiddenTiles?: string[];
+  /** Sharing level for THIS circle, overriding the global setting.
+   * 'full' shares memorized/learning ref lists; 'counts' shares counts only. */
+  sharing?: 'full' | 'counts';
+  /** Silence this circle's push notifications (enforced server-side later). */
+  muted?: boolean;
+}
+
 export type ThemePreference = 'system' | 'light' | 'dark';
 
 export interface Settings {

@@ -8,14 +8,17 @@ import { Card, Button, Chip, SectionTitle, EmptyState, SpeechBubble } from '@/co
 import { Ember } from '@/components/Ember';
 import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useCircle, useProfile, useStore } from '@/store/useStore';
+import { useCircle, useCirclePref, useProfile, useStore } from '@/store/useStore';
 import { getVerse, normalizeKey, verseId } from '@/data/bibleApi';
 import { dayKey, daysBetweenKeys, relativeTimeAgo } from '@/utils/date';
 import { PLAN_TEMPLATES } from '@/data/plans';
 import { levelInfo } from '@/gamification';
-import { togetherTotals, coverage, mergeActivity, rankMembers } from '@/utils/circleProgress';
+import { togetherTotals, coverage, mergeActivity, rankMembers, presenceToday, weeklyRecap } from '@/utils/circleProgress';
 import { EXPECTED_API_VERSION } from '@/data/circleClient';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Note, Prayer, SharedVerseRef, StudyPlan } from '@/types';
+
+const ACCENTS = ['#8AA6FF', '#57D9A3', '#FFC24B', '#FF8A8A', '#C79BFF', '#5AD1E0'];
+const EMOJI_CHOICES = ['🔥', '🌱', '🕊️', '📖', '💛', '⭐', '🙏', '🌿', '✝️', '🎵'];
 
 export default function CircleHubScreen() {
   const { colors } = useTheme();
@@ -25,6 +28,8 @@ export default function CircleHubScreen() {
 
   const circle = useCircle(code);
   const profile = useProfile();
+  const pref = useCirclePref(code);
+  const setCirclePref = useStore((s) => s.setCirclePref);
   const syncCircle = useStore((s) => s.syncCircle);
   const refreshCircle = useStore((s) => s.refreshCircle);
   const leaveCircle = useStore((s) => s.leaveCircle);
@@ -87,6 +92,8 @@ export default function CircleHubScreen() {
 
   const meta = circle.meta;
   const members = circle.members ?? [];
+  const accent = pref.accent ?? colors.primary;
+  const hiddenTiles = pref.hiddenTiles ?? [];
 
   // ---- A drilled-in section fills the screen (with a back-to-home header) ----
   if (view !== 'home') {
@@ -132,6 +139,7 @@ export default function CircleHubScreen() {
 
         {view === 'settings' ? (
           <>
+            <CircleControlsCard code={code} />
             <CovenantCard code={code} />
             <GoalCard code={code} />
             {renaming ? (
@@ -174,10 +182,12 @@ export default function CircleHubScreen() {
     { key: 'settings', icon: 'settings-outline', label: 'Settings', hint: 'Goal · covenant · more', badge: 0 },
   ];
 
+  const visibleTiles = tiles.filter((t) => !hiddenTiles.includes(t.key));
+
   return (
     <Screen>
       <Header
-        title={meta.name}
+        title={pref.emoji ? `${pref.emoji}  ${meta.name}` : meta.name}
         subtitle={`Invite code · ${meta.code}`}
         back
         right={
@@ -238,6 +248,12 @@ export default function CircleHubScreen() {
         </Card>
       ) : null}
 
+      {/* Presence — who's had their time today */}
+      <PresenceStrip members={members} accent={accent} onOpenMember={(id) => router.push(`/circle/${code}/member/${id}`)} />
+
+      {/* This week, together */}
+      <WeeklyRecapCard members={members} accent={accent} />
+
       {/* Quiet-partner nudge */}
       <QuietPartnerNudge members={members} myId={profile.memberId} />
 
@@ -246,13 +262,14 @@ export default function CircleHubScreen() {
 
       {/* Drill-in tiles */}
       <View style={{ gap: spacing.sm }}>
-        {tiles.map((t) => (
+        {visibleTiles.map((t) => (
           <DrillTile
             key={t.key}
             icon={t.icon}
             label={t.label}
             hint={t.hint}
             badge={t.badge}
+            accent={accent}
             onPress={() => (t.key === 'discussion' ? router.push(`/circle/${code}/discussion`) : setView(t.key))}
           />
         ))}
@@ -271,6 +288,80 @@ const SECTION_TITLES: Record<Exclude<Section, 'home'>, string> = {
   settings: 'Settings',
 };
 
+const CONTROL_TILES: { key: string; label: string }[] = [
+  { key: 'people', label: 'People' },
+  { key: 'study', label: 'Study together' },
+  { key: 'prayer', label: 'Prayer' },
+  { key: 'challenges', label: 'Challenges' },
+  { key: 'discussion', label: 'Discussion' },
+];
+
+/** Per-circle personalization + control: accent, emoji, sharing, hidden tiles. */
+function CircleControlsCard({ code }: { code: string }) {
+  const { colors } = useTheme();
+  const pref = useCirclePref(code);
+  const setCirclePref = useStore((s) => s.setCirclePref);
+  const globalShare = useStore((s) => s.settings.shareLibrary);
+  const sharing = pref.sharing ?? (globalShare ? 'full' : 'counts');
+  const hidden = pref.hiddenTiles ?? [];
+
+  const toggleTile = (key: string) =>
+    setCirclePref(code, { hiddenTiles: hidden.includes(key) ? hidden.filter((k) => k !== key) : [...hidden, key] });
+
+  return (
+    <Card style={{ gap: spacing.md }}>
+      <SectionTitle style={{ marginBottom: 0 }}>Personalize this circle</SectionTitle>
+
+      {/* Accent */}
+      <View style={{ gap: spacing.sm }}>
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, fontWeight: '700' }}>ACCENT</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+          {ACCENTS.map((c) => (
+            <Pressable key={c} onPress={() => setCirclePref(code, { accent: c })} style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: c, borderWidth: (pref.accent ?? '') === c ? 3 : 0, borderColor: colors.text }} />
+          ))}
+          <Pressable onPress={() => setCirclePref(code, { accent: undefined })} style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt }}>
+            <Ionicons name="refresh" size={14} color={colors.textFaint} />
+          </Pressable>
+        </View>
+      </View>
+
+      {/* Emoji */}
+      <View style={{ gap: spacing.sm }}>
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, fontWeight: '700' }}>EMOJI</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+          {EMOJI_CHOICES.map((e) => (
+            <Pressable key={e} onPress={() => setCirclePref(code, { emoji: pref.emoji === e ? undefined : e })} style={{ width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: pref.emoji === e ? colors.primarySoft : colors.surfaceAlt }}>
+              <Text style={{ fontSize: 18 }}>{e}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
+      {/* Sharing */}
+      <View style={{ gap: spacing.sm }}>
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, fontWeight: '700' }}>WHAT I SHARE HERE</Text>
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <Chip label="Full verse lists" active={sharing === 'full'} onPress={() => setCirclePref(code, { sharing: 'full' })} />
+          <Chip label="Counts only" active={sharing === 'counts'} onPress={() => setCirclePref(code, { sharing: 'counts' })} />
+        </View>
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+          {sharing === 'full' ? 'This circle sees which verses you know and are learning.' : 'This circle sees only your counts, not which verses.'}
+        </Text>
+      </View>
+
+      {/* Hidden tiles */}
+      <View style={{ gap: spacing.sm }}>
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, fontWeight: '700' }}>SHOW ON HOME</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+          {CONTROL_TILES.map((t) => (
+            <Chip key={t.key} label={t.label} active={!hidden.includes(t.key)} onPress={() => toggleTile(t.key)} />
+          ))}
+        </View>
+      </View>
+    </Card>
+  );
+}
+
 /** Header for a drilled-in section: a back chip returns to the circle home. */
 function SectionHeader({ title, circleName, onHome }: { title: string; circleName: string; onHome: () => void }) {
   const { colors } = useTheme();
@@ -288,23 +379,76 @@ function SectionHeader({ title, circleName, onHome }: { title: string; circleNam
 }
 
 /** A home tile that drills into a section, with a live count badge. */
-function DrillTile({ icon, label, hint, badge, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; hint: string; badge: number; onPress: () => void }) {
+function DrillTile({ icon, label, hint, badge, accent, onPress }: { icon: keyof typeof Ionicons.glyphMap; label: string; hint: string; badge: number; accent: string; onPress: () => void }) {
   const { colors } = useTheme();
   return (
     <Card onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
       <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name={icon} size={22} color={colors.primary} />
+        <Ionicons name={icon} size={22} color={accent} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>{label}</Text>
         <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{hint}</Text>
       </View>
       {badge > 0 ? (
-        <View style={{ minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ color: colors.primary, fontSize: font.sizes.xs, fontWeight: '800' }}>{badge}</Text>
+        <View style={{ minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: accent, alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: colors.onPrimary, fontSize: font.sizes.xs, fontWeight: '800' }}>{badge}</Text>
         </View>
       ) : null}
       <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+    </Card>
+  );
+}
+
+/** "Who's had their time today" — presence avatars from lastActiveDay. */
+function PresenceStrip({ members, accent, onOpenMember }: { members: CircleMember[]; accent: string; onOpenMember: (id: string) => void }) {
+  const { colors } = useTheme();
+  const today = dayKey();
+  const p = presenceToday(members, today);
+  const activeSet = new Set(p.activeIds);
+  if (members.length < 2) return null;
+  return (
+    <Card style={{ gap: spacing.sm }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <SectionTitle style={{ marginBottom: 0 }}>Today</SectionTitle>
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs }}>
+          {p.activeIds.length} of {p.total} had their time
+        </Text>
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+        {members.map((m) => {
+          const active = activeSet.has(m.id);
+          return (
+            <Pressable key={m.id} onPress={() => onOpenMember(m.id)} style={{ alignItems: 'center', width: 52 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? accent : colors.surfaceAlt, borderWidth: active ? 0 : 1, borderColor: colors.border, opacity: active ? 1 : 0.7 }}>
+                <Text style={{ color: active ? colors.onPrimary : colors.textFaint, fontWeight: '800' }}>{(m.displayName || '?').trim().charAt(0).toUpperCase()}</Text>
+              </View>
+              <Text numberOfLines={1} style={{ color: colors.textFaint, fontSize: 10, marginTop: 2, maxWidth: 52 }}>{m.displayName || '—'}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </Card>
+  );
+}
+
+/** A warm "this week, together" summary from recent activity. */
+function WeeklyRecapCard({ members, accent }: { members: CircleMember[]; accent: string }) {
+  const { colors } = useTheme();
+  const recap = useMemo(() => weeklyRecap(members, Date.now()), [members]);
+  if (recap.empty || members.length < 2) return null;
+  const bits: string[] = [];
+  if (recap.memorized) bits.push(`${recap.memorized} verse${recap.memorized === 1 ? '' : 's'} hidden away`);
+  if (recap.reviewed) bits.push(`${recap.reviewed} review${recap.reviewed === 1 ? '' : 's'}`);
+  if (recap.studied) bits.push(`${recap.studied} passage${recap.studied === 1 ? '' : 's'} studied`);
+  return (
+    <Card style={{ gap: 4, borderLeftWidth: 3, borderLeftColor: accent }}>
+      <SectionTitle style={{ marginBottom: 0 }}>This week, together</SectionTitle>
+      <Text style={{ color: colors.text, fontSize: font.sizes.md }}>{bits.join('  ·  ')}</Text>
+      {recap.topMemberName ? (
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>💛 {recap.topMemberName} led the way in memorizing.</Text>
+      ) : null}
+      <Text style={{ color: colors.textFaint, fontSize: 10 }}>Recent highlights across your circle.</Text>
     </Card>
   );
 }
