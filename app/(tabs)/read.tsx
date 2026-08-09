@@ -22,7 +22,19 @@ export default function ReadScreen() {
 
   return (
     <Screen>
-      <Header title="Read" subtitle={`The Word · ${translationName(translation)}`} />
+      <Header
+        title="Read"
+        subtitle={`The Word · ${translationName(translation)}`}
+        right={
+          <Pressable
+            onPress={() => router.push('/search')}
+            hitSlop={12}
+            style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt }}
+          >
+            <Ionicons name="search" size={20} color={colors.text} />
+          </Pressable>
+        }
+      />
 
       {reading && resumeBook ? (
         <Card onPress={() => router.push(`/read/${reading.book}/${reading.chapter}`)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
