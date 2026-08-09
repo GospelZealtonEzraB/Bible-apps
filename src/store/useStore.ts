@@ -14,6 +14,7 @@ import type {
   NoteScope,
   Prayer,
   Profile,
+  ReadingPosition,
   Settings,
   Stats,
   StudyApplication,
@@ -63,6 +64,8 @@ interface StoreState {
   notes: Record<string, LocalNote>;
   /** Session memory for the welcome-back recap. */
   session: { lastOpenedDay: string | null };
+  /** Where the Bible reader left off (null until they've read something). */
+  reading: ReadingPosition | null;
   /** Rolling log of recent activity, shared to circles for the feed. */
   activityLog: Activity[];
   /** Expo push token for partner-activity notifications (null until registered). */
@@ -88,6 +91,9 @@ interface StoreState {
 
   setSettings: (patch: Partial<Settings>) => void;
   setDailyGoal: (goal: number) => void;
+
+  /** Remember where the reader is, for "Continue reading". */
+  setReadingPosition: (book: number, chapter: number, verse?: number) => void;
 
   /** Ensure a stable memberId exists (minted once). Idempotent. */
   ensureProfile: () => void;
@@ -456,6 +462,7 @@ export const useStore = create<StoreState>()(
       applications: {},
       notes: {},
       session: { lastOpenedDay: null },
+      reading: null,
       activityLog: [],
       pushToken: null,
       hydrated: false,
@@ -749,6 +756,9 @@ export const useStore = create<StoreState>()(
           activityLog: pushActivity(state.activityLog, { type: 'studied', ref: session.passage, at: Date.now() }),
         })),
 
+      setReadingPosition: (book, chapter, verse) =>
+        set({ reading: { book, chapter, verse, updatedAt: Date.now() } }),
+
       addApplication: (passageKey, passage, text) =>
         set((state) => ({
           applications: {
@@ -993,6 +1003,7 @@ export const useStore = create<StoreState>()(
             applications: s.applications,
             notes: s.notes,
             session: s.session,
+            reading: s.reading,
             activityLog: s.activityLog,
           },
         });
@@ -1019,6 +1030,7 @@ export const useStore = create<StoreState>()(
           applications: d.applications ?? state.applications,
           notes: d.notes ?? state.notes,
           session: d.session ?? state.session,
+          reading: d.reading ?? state.reading,
           activityLog: Array.isArray(d.activityLog) ? d.activityLog : state.activityLog,
         }));
         return { ok: true };
@@ -1064,6 +1076,7 @@ export const useStore = create<StoreState>()(
         applications: state.applications,
         notes: state.notes,
         session: state.session,
+        reading: state.reading,
         activityLog: state.activityLog,
         pushToken: state.pushToken,
         lastCloudBackupAt: state.lastCloudBackupAt,
@@ -1097,6 +1110,7 @@ export const useStore = create<StoreState>()(
             applications: p.applications ?? {},
             notes: p.notes ?? {},
             session: { lastOpenedDay: null, ...(p.session ?? {}) },
+            reading: p.reading ?? null,
             activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
             pushToken: p.pushToken ?? null,
             lastCloudBackupAt: p.lastCloudBackupAt ?? null,
@@ -1147,6 +1161,10 @@ export function useCircle(code: string | undefined): Circle | undefined {
 
 export function useStudySession(passageKey: string | undefined): StudySession | undefined {
   return useStore((state) => (passageKey ? state.studySessions[passageKey] : undefined));
+}
+
+export function useReadingPosition() {
+  return useStore((state) => state.reading);
 }
 
 export function useApplication(passageKey: string | undefined): StudyApplication | undefined {

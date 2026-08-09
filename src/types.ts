@@ -275,6 +275,16 @@ export interface StudySession {
   brief: StudyBrief;
   fetchedAt: number;
 }
+/** Where the reader left off, so "Continue reading" can resume. */
+export interface ReadingPosition {
+  /** Canonical book number (1..66). */
+  book: number;
+  chapter: number;
+  /** Optional verse the reader last focused. */
+  verse?: number;
+  updatedAt: number;
+}
+
 /** "One thing I'll live out this week" captured after a study. */
 export interface StudyApplication {
   passageKey: string;
