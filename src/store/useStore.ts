@@ -66,6 +66,10 @@ interface StoreState {
   session: { lastOpenedDay: string | null };
   /** Where the Bible reader left off (null until they've read something). */
   reading: ReadingPosition | null;
+  /** Reading-plan progress by plan id: which day-indices are done. */
+  readingPlanProgress: Record<string, { startedAt: number; completed: number[] }>;
+  /** The plan the user is currently following (null if none started). */
+  activeReadingPlanId: string | null;
   /** Rolling log of recent activity, shared to circles for the feed. */
   activityLog: Activity[];
   /** Expo push token for partner-activity notifications (null until registered). */
@@ -94,6 +98,11 @@ interface StoreState {
 
   /** Remember where the reader is, for "Continue reading". */
   setReadingPosition: (book: number, chapter: number, verse?: number) => void;
+
+  /** Start (or resume) following a reading plan. */
+  startReadingPlan: (planId: string) => void;
+  /** Mark a plan day done/undone. */
+  toggleReadingDay: (planId: string, dayIndex: number) => void;
 
   /** Ensure a stable memberId exists (minted once). Idempotent. */
   ensureProfile: () => void;
@@ -465,6 +474,8 @@ export const useStore = create<StoreState>()(
       notes: {},
       session: { lastOpenedDay: null },
       reading: null,
+      readingPlanProgress: {},
+      activeReadingPlanId: null,
       activityLog: [],
       pushToken: null,
       hydrated: false,
@@ -761,6 +772,27 @@ export const useStore = create<StoreState>()(
       setReadingPosition: (book, chapter, verse) =>
         set({ reading: { book, chapter, verse, updatedAt: Date.now() } }),
 
+      startReadingPlan: (planId) =>
+        set((state) => ({
+          activeReadingPlanId: planId,
+          readingPlanProgress: state.readingPlanProgress[planId]
+            ? state.readingPlanProgress
+            : { ...state.readingPlanProgress, [planId]: { startedAt: Date.now(), completed: [] } },
+        })),
+
+      toggleReadingDay: (planId, dayIndex) =>
+        set((state) => {
+          const prev = state.readingPlanProgress[planId] ?? { startedAt: Date.now(), completed: [] };
+          const has = prev.completed.includes(dayIndex);
+          const completed = has
+            ? prev.completed.filter((d) => d !== dayIndex)
+            : [...prev.completed, dayIndex].sort((a, b) => a - b);
+          return {
+            activeReadingPlanId: planId,
+            readingPlanProgress: { ...state.readingPlanProgress, [planId]: { ...prev, completed } },
+          };
+        }),
+
       addApplication: (passageKey, passage, text) =>
         set((state) => ({
           applications: {
@@ -1013,6 +1045,8 @@ export const useStore = create<StoreState>()(
             notes: s.notes,
             session: s.session,
             reading: s.reading,
+            readingPlanProgress: s.readingPlanProgress,
+            activeReadingPlanId: s.activeReadingPlanId,
             activityLog: s.activityLog,
           },
         });
@@ -1040,6 +1074,8 @@ export const useStore = create<StoreState>()(
           notes: d.notes ?? state.notes,
           session: d.session ?? state.session,
           reading: d.reading ?? state.reading,
+          readingPlanProgress: d.readingPlanProgress ?? state.readingPlanProgress,
+          activeReadingPlanId: d.activeReadingPlanId ?? state.activeReadingPlanId,
           activityLog: Array.isArray(d.activityLog) ? d.activityLog : state.activityLog,
         }));
         return { ok: true };
@@ -1086,6 +1122,8 @@ export const useStore = create<StoreState>()(
         notes: state.notes,
         session: state.session,
         reading: state.reading,
+        readingPlanProgress: state.readingPlanProgress,
+        activeReadingPlanId: state.activeReadingPlanId,
         activityLog: state.activityLog,
         pushToken: state.pushToken,
         lastCloudBackupAt: state.lastCloudBackupAt,
@@ -1120,6 +1158,8 @@ export const useStore = create<StoreState>()(
             notes: p.notes ?? {},
             session: { lastOpenedDay: null, ...(p.session ?? {}) },
             reading: p.reading ?? null,
+            readingPlanProgress: p.readingPlanProgress ?? {},
+            activeReadingPlanId: p.activeReadingPlanId ?? null,
             activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
             pushToken: p.pushToken ?? null,
             lastCloudBackupAt: p.lastCloudBackupAt ?? null,
@@ -1174,6 +1214,14 @@ export function useStudySession(passageKey: string | undefined): StudySession | 
 
 export function useReadingPosition() {
   return useStore((state) => state.reading);
+}
+
+export function useReadingPlanProgress(planId: string | undefined) {
+  return useStore((state) => (planId ? state.readingPlanProgress[planId] : undefined));
+}
+
+export function useActiveReadingPlanId() {
+  return useStore((state) => state.activeReadingPlanId);
 }
 
 /** Private notes attached to a given verse reference, newest first. */
