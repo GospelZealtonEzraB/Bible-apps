@@ -9,6 +9,19 @@ const BOLLS_BASE = 'https://bolls.life';
 
 type Provider = 'bible-api' | 'getbible' | 'bolls' | 'esv';
 
+/**
+ * Tamil has no single reliable free endpoint we can verify from this environment
+ * (the network policy blocks the Bible hosts), so we try a prioritized list of
+ * real providers/codes on the device and use whichever returns verses. This
+ * self-heals whichever slug is actually live, instead of hard-coding one guess.
+ */
+const TAMIL_CANDIDATES: { provider: Extract<Provider, 'getbible' | 'bolls'>; code: string }[] = [
+  { provider: 'getbible', code: 'tamil' },
+  { provider: 'bolls', code: 'TAOVBSI' },
+  { provider: 'getbible', code: 'TAOVBSI' },
+  { provider: 'bolls', code: 'IRVTAM' },
+];
+
 export interface TranslationInfo {
   id: string;
   name: string;
@@ -31,10 +44,10 @@ export const TRANSLATIONS: TranslationInfo[] = [
   { id: 'oeb-us', name: 'Open English Bible (US)', language: 'en', provider: 'bible-api' },
   { id: 'webbe', name: 'WEB British Edition', language: 'en', provider: 'bible-api' },
   { id: 'clementine', name: 'Clementine Latin Vulgate', language: 'la', provider: 'bible-api' },
-  // Tamil Old Version (TAOVBSI) is served by getbible.net, not bolls — bolls uses
-  // its own numeric ids. The provider/code pairing here was the reason Tamil
-  // silently failed to load.
-  { id: 'tamil', name: 'தமிழ் (Tamil)', language: 'ta', provider: 'getbible', providerCode: 'TAOVBSI' },
+  // Tamil is resolved by `TAMIL_CANDIDATES` (tries getbible + bolls slugs on the
+  // device, first success wins) — the `provider`/`providerCode` here are only a
+  // nominal default; `getVerse`/`getChapterVerses` special-case `id === 'tamil'`.
+  { id: 'tamil', name: 'தமிழ் (Tamil)', language: 'ta', provider: 'getbible', providerCode: 'tamil' },
   // ESV is copyrighted: its text is fetched through the user's Worker (which holds
   // the Crossway key as ESV_API_KEY). Available only when a Server URL is set.
   { id: 'esv', name: 'English Standard Version', language: 'en', provider: 'esv' },
@@ -224,6 +237,10 @@ async function fetchFromEsv(
   const data: { reference?: string; text?: string; error?: string; attribution?: string } = await res
     .json()
     .catch(() => ({}));
+  if (res.status === 404 || (res.status >= 400 && /not found|unknown|use \/ai/i.test(data.error ?? ''))) {
+    throw new Error('ESV isn’t live yet — the server needs redeploying (cd server && npx wrangler deploy) and an ESV_API_KEY.');
+  }
+  if (res.status === 501) throw new Error('ESV not configured — set ESV_API_KEY on the server.');
   if (!res.ok || !data.text) throw new Error(data.error || `ESV request failed (${res.status}).`);
   return {
     reference: data.reference ? displayReference(data.reference) : ref,
@@ -259,6 +276,10 @@ async function chapterFromEsv(
     body: JSON.stringify({ reference: `${bookName} ${chapter}` }),
   });
   const data: EsvChapterResponse = await res.json().catch(() => ({}));
+  if (res.status === 404 || (res.status >= 400 && /not found|unknown|use \/ai/i.test(data.error ?? ''))) {
+    throw new Error('ESV isn’t live yet — the server needs redeploying (cd server && npx wrangler deploy) and an ESV_API_KEY.');
+  }
+  if (res.status === 501) throw new Error('ESV not configured — set ESV_API_KEY on the server.');
   if (!res.ok || !Array.isArray(data.verses) || data.verses.length === 0) {
     throw new Error(data.error || `ESV request failed (${res.status}).`);
   }
@@ -304,6 +325,7 @@ export async function getVerse(
   }
 
   try {
+    if (info.id === 'tamil') return await verseFromTamil(ref, info);
     switch (info.provider) {
       case 'bolls':
         return await fetchFromBolls(ref, info);
@@ -374,6 +396,38 @@ async function chapterFromGetBible(info: TranslationInfo, bookNumber: number, ch
   return list.map((v) => ({ verse: v.verse, text: cleanText(v.text) })).sort((a, b) => a.verse - b.verse);
 }
 
+/** Try each Tamil candidate in order; return the first that yields a chapter. */
+async function chapterFromTamil(info: TranslationInfo, bookNumber: number, chapter: number): Promise<ChapterVerse[]> {
+  let lastErr: unknown;
+  for (const c of TAMIL_CANDIDATES) {
+    try {
+      const cinfo: TranslationInfo = { ...info, provider: c.provider, providerCode: c.code };
+      const vs = c.provider === 'bolls'
+        ? await chapterFromBolls(cinfo, bookNumber, chapter)
+        : await chapterFromGetBible(cinfo, bookNumber, chapter);
+      if (vs.length) return vs;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Tamil is unavailable right now.');
+}
+
+/** Try each Tamil candidate in order; return the first that yields a verse. */
+async function verseFromTamil(ref: string, info: TranslationInfo): Promise<FetchedVerse> {
+  let lastErr: unknown;
+  for (const c of TAMIL_CANDIDATES) {
+    try {
+      const cinfo: TranslationInfo = { ...info, provider: c.provider, providerCode: c.code };
+      const r = c.provider === 'bolls' ? await fetchFromBolls(ref, cinfo) : await fetchFromGetBible(ref, cinfo);
+      if (r.text) return r;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Tamil is unavailable right now.');
+}
+
 async function chapterFromBolls(info: TranslationInfo, bookNumber: number, chapter: number): Promise<ChapterVerse[]> {
   const code = info.providerCode ?? info.id;
   const res = await fetch(`${BOLLS_BASE}/get-text/${code}/${bookNumber}/${chapter}/`);
@@ -412,6 +466,9 @@ export async function getChapterVerses(
 
   let all: ChapterVerse[];
   let attribution: string | undefined;
+  if (info.id === 'tamil') {
+    all = await chapterFromTamil(info, passage.bookNumber, passage.chapter);
+  } else
   switch (info.provider) {
     case 'bolls':
       all = await chapterFromBolls(info, passage.bookNumber, passage.chapter);
