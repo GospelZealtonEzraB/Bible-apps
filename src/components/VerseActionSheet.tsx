@@ -30,7 +30,7 @@ export function VerseActionSheet({
   const { colors } = useTheme();
   const router = useRouter();
   const addFetchedVerse = useStore((s) => s.addFetchedVerse);
-  const addPrivateNote = useStore((s) => s.addPrivateNote);
+  const createDoc = useStore((s) => s.createDoc);
   const addJournalNote = useStore((s) => s.addJournalNote);
   const alreadySaved = useStore((s) => !!s.verses[verseId(reference, translation)]);
 
@@ -71,15 +71,17 @@ export function VerseActionSheet({
 
   const saveNote = () => {
     if (!noteDraft.trim()) return;
-    if (noteTarget === 'journal') {
-      addJournalNote({ ref: reference, text: noteDraft });
-      setJournaled(true);
-    } else {
-      addPrivateNote('verse', noteDraft, reference);
-      setSaved(true);
-    }
+    // The inline composer now only feeds today's journal; a full note is a Doc.
+    addJournalNote({ ref: reference, text: noteDraft });
+    setJournaled(true);
     setNoteDraft('');
     setNoteOpen(false);
+  };
+
+  const writeNote = () => {
+    const id = createDoc('verse', { anchorRef: reference, title: reference });
+    onClose();
+    router.push(`/notes/${id}`);
   };
 
   const study = () => { onClose(); router.push(`/study/${encodeURIComponent(reference)}`); };
@@ -150,11 +152,11 @@ export function VerseActionSheet({
             <ActionRow icon="sparkles-outline" label={alreadySaved ? 'Open in your library' : 'Memorize this verse'} hint={alreadySaved ? 'Already saved' : 'Hide it in your heart'} color={colors.primary} onPress={memorize} />
             {!noteOpen ? (
               <ActionRow
-                icon={saved ? 'checkmark-circle-outline' : 'create-outline'}
-                label={saved ? 'Note saved' : 'Add a note'}
-                hint={saved ? 'In your private notes' : 'Record what you’re seeing'}
+                icon="create-outline"
+                label="Write a note"
+                hint="A full note in your workspace, linked to this verse"
                 color={colors.success}
-                onPress={() => { setSaved(false); setNoteTarget('private'); setNoteOpen(true); }}
+                onPress={writeNote}
               />
             ) : null}
             {!noteOpen ? (

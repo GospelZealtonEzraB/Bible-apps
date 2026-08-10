@@ -1,91 +1,60 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert } from 'react-native';
+import React from 'react';
+import { View, Text, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Card, Button, SectionTitle } from '@/components/ui';
-import { RefText } from '@/components/RefText';
+import { Card, SectionTitle } from '@/components/ui';
+import { RichText } from '@/components/RichText';
 import { useShareToCircle } from '@/components/useShareToCircle';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useVerseNotes, useStore } from '@/store/useStore';
+import { useDocsForRef, useStore } from '@/store/useStore';
+import { docPreview, docPlainText } from '@/utils/blocks';
 
 /**
- * "My notes" on a verse — record what you understand, privately (Personal Space).
- * References typed inside a note become tappable (RefText → VersePeek). Full CRUD.
- * Shared-to-circle notes are a later increment; these stay on-device.
+ * "My notes" on a verse — now backed by the unified Doc model. Any document that
+ * links this reference (a verse note, a study note) shows here and opens in the
+ * full block editor. Writing a note creates a `verse` Doc anchored to the ref.
  */
 export function VerseNotes({ reference }: { reference: string }) {
   const { colors } = useTheme();
-  const notes = useVerseNotes(reference);
-  const addPrivateNote = useStore((s) => s.addPrivateNote);
-  const editPrivateNote = useStore((s) => s.editPrivateNote);
-  const deletePrivateNote = useStore((s) => s.deletePrivateNote);
+  const router = useRouter();
+  const docs = useDocsForRef(reference).filter((d) => d.type === 'verse' || d.type === 'note' || d.type === 'study');
+  const createDoc = useStore((s) => s.createDoc);
   const { canShare, share } = useShareToCircle();
 
-  const [draft, setDraft] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState('');
-
-  const inputStyle = {
-    color: colors.text,
-    fontSize: font.sizes.md,
-    minHeight: 64,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  } as const;
-
-  const add = () => {
-    if (!draft.trim()) return;
-    addPrivateNote('verse', draft, reference);
-    setDraft('');
+  const newNote = () => {
+    const id = createDoc('verse', { anchorRef: reference, title: reference });
+    router.push(`/notes/${id}`);
   };
-
-  const confirmDelete = (noteId: string) =>
-    Alert.alert('Delete this note?', 'This can’t be undone.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deletePrivateNote(noteId) },
-    ]);
 
   return (
     <View>
       <SectionTitle>My notes</SectionTitle>
       <View style={{ gap: spacing.sm }}>
-        {notes.map((n) =>
-          editingId === n.noteId ? (
-            <Card key={n.noteId} style={{ gap: spacing.sm }}>
-              <TextInput value={editDraft} onChangeText={setEditDraft} multiline textAlignVertical="top" style={inputStyle} placeholder="Your note…" placeholderTextColor={colors.textFaint} />
-              <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setEditingId(null)} />
-                <Button title="Save" small style={{ flex: 1 }} disabled={!editDraft.trim()} onPress={() => { editPrivateNote(n.noteId, editDraft); setEditingId(null); }} />
+        {docs.map((d) => (
+          <Card key={d.id} onPress={() => router.push(`/notes/${d.id}`)} style={{ gap: spacing.xs }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 }}>
+                <Ionicons name={d.shared ? 'people' : 'lock-closed'} size={11} color={d.shared ? colors.primary : colors.textFaint} />
+                <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>{d.shared ? 'Shared' : 'Private'}</Text>
               </View>
-            </Card>
-          ) : (
-            <Card key={n.noteId} style={{ gap: spacing.xs }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, flex: 1 }}>
-                  <Ionicons name="lock-closed" size={11} color={colors.textFaint} />
-                  <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>Private</Text>
-                </View>
-                {canShare ? (
-                  <Pressable onPress={() => share(n.text, reference)} hitSlop={8} style={{ paddingHorizontal: 4 }}>
-                    <Ionicons name="people-outline" size={16} color={colors.textFaint} />
-                  </Pressable>
-                ) : null}
-                <Pressable onPress={() => { setEditingId(n.noteId); setEditDraft(n.text); }} hitSlop={8} style={{ paddingHorizontal: 4 }}>
-                  <Ionicons name="pencil" size={15} color={colors.textFaint} />
+              {canShare ? (
+                <Pressable onPress={() => share(docPlainText(d), reference)} hitSlop={8} style={{ paddingHorizontal: 4 }}>
+                  <Ionicons name="people-outline" size={16} color={colors.textFaint} />
                 </Pressable>
-                <Pressable onPress={() => confirmDelete(n.noteId)} hitSlop={8} style={{ paddingHorizontal: 4 }}>
-                  <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
-                </Pressable>
-              </View>
-              <RefText text={n.text} />
-            </Card>
-          ),
-        )}
+              ) : null}
+              <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
+            </View>
+            {d.title && d.title !== reference ? (
+              <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.sm }}>{d.title}</Text>
+            ) : null}
+            <RichText text={docPreview(d) || 'Open note'} style={{ color: colors.text, fontSize: font.sizes.sm, lineHeight: 22 }} />
+          </Card>
+        ))}
 
-        <Card style={{ gap: spacing.sm }}>
-          <TextInput value={draft} onChangeText={setDraft} multiline textAlignVertical="top" style={inputStyle} placeholder="What is the Lord showing you? Type a reference like John 3:16 to link it." placeholderTextColor={colors.textFaint} />
-          <Button title="Add note" small icon={<Ionicons name="add" size={16} color={colors.onPrimary} />} disabled={!draft.trim()} onPress={add} />
-        </Card>
+        <Pressable onPress={newNote} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border }}>
+          <Ionicons name="add" size={18} color={colors.primary} />
+          <Text style={{ color: colors.primary, fontWeight: '700', fontSize: font.sizes.sm }}>Write a note on this verse</Text>
+        </Pressable>
       </View>
     </View>
   );

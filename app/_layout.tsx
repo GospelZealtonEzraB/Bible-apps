@@ -46,6 +46,13 @@ function AppShell() {
   const { colors, dark } = useTheme();
   useOnboardingGate();
 
+  const hydrated = useStore((s) => s.hydrated);
+
+  // Once hydrated, fold any legacy private notes into the unified Doc model.
+  useEffect(() => {
+    if (hydrated) useStore.getState().runNotesMigration();
+  }, [hydrated]);
+
   // Auto-save a cloud backup (keyed by the transfer id) whenever the app is
   // backgrounded, so a new phone with the same code restores everything.
   useEffect(() => {

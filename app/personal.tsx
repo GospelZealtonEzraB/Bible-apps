@@ -5,11 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
 import { Card, Button, SectionTitle, EmptyState } from '@/components/ui';
-import { RefText } from '@/components/RefText';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useStore, useTopicList } from '@/store/useStore';
-import { relativeTimeAgo } from '@/utils/date';
-import { usePaged, PageMore } from '@/components/Paginated';
+import { useStore, useTopicList, useDocList } from '@/store/useStore';
+import { markdownToBlocks } from '@/utils/blocks';
 
 /**
  * Personal Space — the private sanctuary. Everything here lives only on this
@@ -20,33 +18,26 @@ export default function PersonalSpaceScreen() {
   const { colors } = useTheme();
   const router = useRouter();
 
-  const notesMap = useStore((s) => s.notes);
   const applicationsMap = useStore((s) => s.applications);
-  const addPrivateNote = useStore((s) => s.addPrivateNote);
-  const deletePrivateNote = useStore((s) => s.deletePrivateNote);
+  const createDoc = useStore((s) => s.createDoc);
   const topics = useTopicList();
+  const noteCount = useDocList().length;
 
-  const notes = useMemo(() => Object.values(notesMap).sort((a, b) => b.updatedAt - a.updatedAt), [notesMap]);
   const applications = useMemo(() => Object.values(applicationsMap).sort((a, b) => b.createdAt - a.createdAt), [applicationsMap]);
-  const notePage = usePaged(notes, 15, notes.length);
 
   const [draft, setDraft] = useState('');
   const [writing, setWriting] = useState(false);
 
+  // Quick-capture a reflection → a real note Doc, then open the full editor.
   const saveReflection = () => {
     if (!draft.trim()) return;
-    addPrivateNote('free', draft);
+    const id = createDoc('note', { blocks: markdownToBlocks(draft) });
     setDraft('');
     setWriting(false);
+    router.push(`/notes/${id}`);
   };
 
-  const confirmDelete = (noteId: string) =>
-    Alert.alert('Delete reflection?', 'This is private to you.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deletePrivateNote(noteId) },
-    ]);
-
-  const empty = notes.length === 0 && applications.length === 0 && topics.length === 0;
+  const empty = noteCount === 0 && applications.length === 0 && topics.length === 0;
 
   return (
     <Screen>
@@ -126,27 +117,6 @@ export default function PersonalSpaceScreen() {
                 <Text style={{ color: colors.text, fontSize: font.sizes.md, marginTop: 2 }}>✅ {a.text}</Text>
               </Card>
             ))}
-          </View>
-        </View>
-      ) : null}
-
-      {/* Private notes & reflections */}
-      {notes.length > 0 ? (
-        <View>
-          <SectionTitle>Notes & reflections</SectionTitle>
-          <View style={{ gap: spacing.sm }}>
-            {notePage.shown.map((n) => (
-              <Card key={n.noteId} style={{ gap: 4 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ flex: 1, color: colors.textFaint, fontSize: font.sizes.xs }}>
-                    {n.ref ? n.ref : 'Reflection'} · {relativeTimeAgo(n.updatedAt)}
-                  </Text>
-                  <Pressable onPress={() => confirmDelete(n.noteId)} hitSlop={8}><Ionicons name="trash-outline" size={15} color={colors.textFaint} /></Pressable>
-                </View>
-                <RefText text={n.text} />
-              </Card>
-            ))}
-            <PageMore remaining={notePage.remaining} step={15} onPress={notePage.showMore} noun="more" />
           </View>
         </View>
       ) : null}

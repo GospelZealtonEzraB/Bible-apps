@@ -44,6 +44,7 @@ import {
   removeNote as removeJournalNoteReducer,
 } from '@/utils/journal';
 import { emptyDoc, extractRefs, genId as genBlockId } from '@/utils/blocks';
+import { migrateDocs } from '@/utils/notesMigration';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
 import * as circleApi from '@/data/circleClient';
@@ -248,6 +249,8 @@ interface StoreState {
   updateFolder: (id: string, patch: Partial<Folder>) => void;
   /** Delete a folder (its documents become unfiled). */
   deleteFolder: (id: string) => void;
+  /** One-time move of legacy private notes into documents (idempotent). */
+  runNotesMigration: () => void;
   /** Post a message to a circle's discussion (optionally anchored to a reference). */
   postCircleMessage: (code: string, text: string, context?: string) => Promise<void>;
   /** Delete one of my own circle messages. */
@@ -1310,6 +1313,16 @@ export const useStore = create<StoreState>()(
             if (d.folderId === id) documents[d.id] = { ...d, folderId: null };
           }
           return { folders, documents };
+        }),
+
+      runNotesMigration: () =>
+        set((state) => {
+          // Move private per-verse/free notes into documents (idempotent by
+          // deterministic id), then clear the legacy slice. Applications keep
+          // their study screen for now.
+          if (Object.keys(state.notes).length === 0) return {};
+          const { documents } = migrateDocs(state.documents, state.notes, {});
+          return { documents, notes: {} };
         }),
 
       addPrayer: async (code, text) => {
