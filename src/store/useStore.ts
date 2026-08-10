@@ -21,6 +21,7 @@ import type {
   StudyApplication,
   StudySession,
   Topic,
+  JournalEntry,
   Verse,
   VerseStatus,
 } from '@/types';
@@ -33,6 +34,11 @@ import {
   removeReflection as removeTopicReflection,
   moveReflection as moveTopicReflection,
 } from '@/utils/topics';
+import {
+  patchEntry as patchJournalEntry,
+  addNote as addJournalNoteReducer,
+  removeNote as removeJournalNoteReducer,
+} from '@/utils/journal';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
 import * as circleApi from '@/data/circleClient';
@@ -78,6 +84,8 @@ interface StoreState {
   notes: Record<string, LocalNote>;
   /** Custom study topics (tag-as-you-read collections), private to this device. */
   topics: Record<string, Topic>;
+  /** Daily journal entries, keyed by local day (YYYY-MM-DD). Private to this device. */
+  journal: Record<string, JournalEntry>;
   /** Session memory for the welcome-back recap. */
   session: { lastOpenedDay: string | null };
   /** Where the Bible reader left off (null until they've read something). */
@@ -203,6 +211,18 @@ interface StoreState {
   removeTopicThought: (id: string, reflectionId: string) => void;
   /** Reorder a thought block up (-1) or down (+1). */
   moveTopicThought: (id: string, reflectionId: string, dir: -1 | 1) => void;
+
+  // Daily journal (the journaling core — private to this device)
+  /** Set/replace a day's reflection ("what He showed me"). Empty clears it. */
+  setJournalReflection: (day: string, text: string) => void;
+  /** Set the verse/passage carried on a day (a reference). Empty clears it. */
+  setJournalVerse: (day: string, ref: string) => void;
+  /** Set a day's gratitude line. Empty clears it. */
+  setJournalGratitude: (day: string, text: string) => void;
+  /** Append a note to a day (optionally about a reference). Defaults to today. */
+  addJournalNote: (note: { ref?: string; text: string }, day?: string) => void;
+  /** Remove a note from a day. */
+  removeJournalNote: (day: string, noteId: string) => void;
   /** Post a message to a circle's discussion (optionally anchored to a reference). */
   postCircleMessage: (code: string, text: string, context?: string) => Promise<void>;
   /** Delete one of my own circle messages. */
@@ -532,6 +552,7 @@ export const useStore = create<StoreState>()(
       applications: {},
       notes: {},
       topics: {},
+      journal: {},
       session: { lastOpenedDay: null },
       reading: null,
       readingPlanProgress: {},
@@ -1113,6 +1134,25 @@ export const useStore = create<StoreState>()(
           return { topics: { ...state.topics, [id]: moveTopicReflection(t, reflectionId, dir, Date.now()) } };
         }),
 
+      // ---- Daily journal (private) ----
+      setJournalReflection: (day, text) =>
+        set((state) => ({ journal: patchJournalEntry(state.journal, day, { reflection: text.trim() }, Date.now()) })),
+
+      setJournalVerse: (day, ref) =>
+        set((state) => ({ journal: patchJournalEntry(state.journal, day, { verse: ref.trim() }, Date.now()) })),
+
+      setJournalGratitude: (day, text) =>
+        set((state) => ({ journal: patchJournalEntry(state.journal, day, { gratitude: text.trim() }, Date.now()) })),
+
+      addJournalNote: (note, day) =>
+        set((state) => {
+          if (!note.text.trim()) return {};
+          return { journal: addJournalNoteReducer(state.journal, day ?? dayKey(), note, Date.now()) };
+        }),
+
+      removeJournalNote: (day, noteId) =>
+        set((state) => ({ journal: removeJournalNoteReducer(state.journal, day, noteId, Date.now()) })),
+
       addPrayer: async (code, text) => {
         const s = get();
         const prayerId = genLocalId();
@@ -1258,6 +1298,7 @@ export const useStore = create<StoreState>()(
             applications: s.applications,
             notes: s.notes,
             topics: s.topics,
+            journal: s.journal,
             session: s.session,
             reading: s.reading,
             readingPlanProgress: s.readingPlanProgress,
@@ -1290,6 +1331,7 @@ export const useStore = create<StoreState>()(
           applications: d.applications ?? state.applications,
           notes: d.notes ?? state.notes,
           topics: d.topics ?? state.topics,
+          journal: d.journal ?? state.journal,
           session: d.session ?? state.session,
           reading: d.reading ?? state.reading,
           readingPlanProgress: d.readingPlanProgress ?? state.readingPlanProgress,
@@ -1341,6 +1383,7 @@ export const useStore = create<StoreState>()(
         applications: state.applications,
         notes: state.notes,
         topics: state.topics,
+        journal: state.journal,
         session: state.session,
         reading: state.reading,
         readingPlanProgress: state.readingPlanProgress,
@@ -1380,6 +1423,7 @@ export const useStore = create<StoreState>()(
             applications: p.applications ?? {},
             notes: p.notes ?? {},
             topics: p.topics ?? {},
+            journal: p.journal ?? {},
             session: { lastOpenedDay: null, ...(p.session ?? {}) },
             reading: p.reading ?? null,
             readingPlanProgress: p.readingPlanProgress ?? {},
@@ -1468,6 +1512,16 @@ export function useVerseNotes(reference: string | undefined): LocalNote[] {
 
 export function useApplication(passageKey: string | undefined): StudyApplication | undefined {
   return useStore((state) => (passageKey ? state.applications[passageKey] : undefined));
+}
+
+/** The whole journal map (day → entry). */
+export function useJournal(): Record<string, JournalEntry> {
+  return useStore((state) => state.journal);
+}
+
+/** A single day's journal entry (undefined until something is written). */
+export function useJournalEntry(day: string | undefined): JournalEntry | undefined {
+  return useStore((state) => (day ? state.journal[day] : undefined));
 }
 
 /** All custom study topics, most-recently-updated first. */

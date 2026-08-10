@@ -396,6 +396,38 @@ export interface Topic {
   updatedAt: number;
 }
 
+/** A note captured during the day (often while reading), attached to a journal day. */
+export interface JournalNote {
+  /** Stable local id (`jn_…`). */
+  id: string;
+  /** Optional Scripture reference this note is about (tappable in the timeline). */
+  ref?: string;
+  text: string;
+  createdAt: number;
+}
+
+/**
+ * One day's private journal entry — the heart of the journaling product. Keyed by
+ * local day (YYYY-MM-DD). Holds the day's reflection ("what He showed me"), the
+ * verse carried, a gratitude line, and the notes taken while reading. Local-only
+ * (Personal Space); a member may separately *share* the reflection to a circle's
+ * daily, but this record never leaves the device.
+ */
+export interface JournalEntry {
+  /** Local day key, YYYY-MM-DD. */
+  day: string;
+  /** Free reflection on the day — "what He showed me". */
+  reflection?: string;
+  /** The verse/passage carried through the day (a reference). */
+  verse?: string;
+  /** Optional thanksgiving line. */
+  gratitude?: string;
+  /** Notes captured during the day (e.g. while reading). */
+  notes: JournalNote[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Per-circle personalization + control (client-side, keyed by circle code). */
 export interface CirclePref {
   /** Accent color (hex) that personalizes this circle's screens. */

@@ -75,8 +75,20 @@ export default function PersonalSpaceScreen() {
         <Button title="New reflection" icon={<Ionicons name="create-outline" size={18} color={colors.onPrimary} />} onPress={() => setWriting(true)} />
       )}
 
+      {/* Daily journal — the heart of the private space */}
+      <Card onPress={() => router.push('/journal')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft }}>
+          <Ionicons name="book-outline" size={20} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>Daily journal</Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>Your days with Him — a dated record of what He's teaching you</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      </Card>
+
       {empty ? (
-        <EmptyState emoji="🔒" title="Your private sanctuary" subtitle="Reflections, private notes, study topics, and your ‘living it out’ commitments gather here — for your eyes only." />
+        <EmptyState emoji="🔒" title="Your private sanctuary" subtitle="Your daily journal, reflections, private notes, study topics, and your ‘living it out’ commitments gather here — for your eyes only." />
       ) : null}
 
       {/* Topics */}

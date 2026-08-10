@@ -10,8 +10,9 @@ import { Ember, type EmberMood } from '@/components/Ember';
 import { HelpButton, EmberTip } from '@/components/EmberGuide';
 import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useStats, useVerseList, useStore, todaysDaily, useActiveReadingPlanId, useReadingPlanProgress } from '@/store/useStore';
+import { useStats, useVerseList, useStore, useJournal, todaysDaily, useActiveReadingPlanId, useReadingPlanProgress } from '@/store/useStore';
 import { getReadingPlan } from '@/data/readingPlans';
+import { journalStreak } from '@/utils/journal';
 import { parsePassage } from '@/data/books';
 import { isDue } from '@/srs/sm2';
 import { levelInfo, BADGES } from '@/gamification';
@@ -112,6 +113,32 @@ function StatTile({
         {value}
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs }}>{label}</Text>
+    </Card>
+  );
+}
+
+function JournalTodayCard() {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const journal = useJournal();
+  const today = dayKey();
+  const hasToday = !!journal[today];
+  const streak = useMemo(() => journalStreak(journal, today), [journal, today]);
+
+  return (
+    <Card onPress={() => router.push('/journal')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+      <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name="book-outline" size={22} color={colors.primary} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>
+          {hasToday ? 'Today’s journal' : 'Journal today'}
+        </Text>
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>
+          {streak > 0 ? `${streak}-day streak · what is He showing you?` : 'Record what the Lord is teaching you'}
+        </Text>
+      </View>
+      <Ionicons name={hasToday ? 'checkmark-circle' : 'chevron-forward'} size={20} color={hasToday ? colors.success : colors.textFaint} />
     </Card>
   );
 }
@@ -255,6 +282,9 @@ export default function TodayScreen() {
         </View>
         <Ionicons name="chevron-forward" size={20} color={colors.primary} />
       </Card>
+
+      {/* Journal today — the journaling core */}
+      <JournalTodayCard />
 
       {/* Welcome-back recap */}
       <WelcomeBackCard />

@@ -31,11 +31,14 @@ export function VerseActionSheet({
   const router = useRouter();
   const addFetchedVerse = useStore((s) => s.addFetchedVerse);
   const addPrivateNote = useStore((s) => s.addPrivateNote);
+  const addJournalNote = useStore((s) => s.addJournalNote);
   const alreadySaved = useStore((s) => !!s.verses[verseId(reference, translation)]);
 
   const [noteDraft, setNoteDraft] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
+  const [noteTarget, setNoteTarget] = useState<'private' | 'journal'>('private');
   const [saved, setSaved] = useState(false);
+  const [journaled, setJournaled] = useState(false);
   const [peekRef, setPeekRef] = useState<string | null>(null);
   const [peekText, setPeekText] = useState<string | null>(null);
   const [topicOpen, setTopicOpen] = useState(false);
@@ -48,7 +51,9 @@ export function VerseActionSheet({
     if (visible) {
       setNoteDraft('');
       setNoteOpen(false);
+      setNoteTarget('private');
       setSaved(false);
+      setJournaled(false);
       setPeekRef(null);
       setPeekText(null);
       setTopicOpen(false);
@@ -66,10 +71,15 @@ export function VerseActionSheet({
 
   const saveNote = () => {
     if (!noteDraft.trim()) return;
-    addPrivateNote('verse', noteDraft, reference);
+    if (noteTarget === 'journal') {
+      addJournalNote({ ref: reference, text: noteDraft });
+      setJournaled(true);
+    } else {
+      addPrivateNote('verse', noteDraft, reference);
+      setSaved(true);
+    }
     setNoteDraft('');
     setNoteOpen(false);
-    setSaved(true);
   };
 
   const study = () => { onClose(); router.push(`/study/${encodeURIComponent(reference)}`); };
@@ -119,7 +129,7 @@ export function VerseActionSheet({
                 <TextInput
                   value={noteDraft}
                   onChangeText={setNoteDraft}
-                  placeholder="What are you seeing here?"
+                  placeholder={noteTarget === 'journal' ? "Add to today's journal — what is He showing you?" : 'What are you seeing here?'}
                   placeholderTextColor={colors.textFaint}
                   multiline
                   autoFocus
@@ -144,7 +154,16 @@ export function VerseActionSheet({
                 label={saved ? 'Note saved' : 'Add a note'}
                 hint={saved ? 'In your private notes' : 'Record what you’re seeing'}
                 color={colors.success}
-                onPress={() => { setSaved(false); setNoteOpen(true); }}
+                onPress={() => { setSaved(false); setNoteTarget('private'); setNoteOpen(true); }}
+              />
+            ) : null}
+            {!noteOpen ? (
+              <ActionRow
+                icon={journaled ? 'checkmark-circle-outline' : 'book-outline'}
+                label={journaled ? 'Added to today’s journal' : 'Journal this today'}
+                hint={journaled ? 'In your daily journal' : 'Capture it in today’s entry'}
+                color={colors.primary}
+                onPress={() => { setJournaled(false); setNoteTarget('journal'); setNoteOpen(true); }}
               />
             ) : null}
             <ActionRow
