@@ -91,7 +91,8 @@ partners / small groups hold each other accountable). Warm, playful, reverent to
   "nothing happened until I navigated back" before optimistic updates. Don't rely on read‑after‑write.
 - **API versioning.** `server/src/worker.ts` `API_VERSION` must equal client `EXPECTED_API_VERSION`
   (`circleClient.ts`). Bump both when `/circle` gains actions the client depends on; the hub shows a
-  "server out of date" banner until the owner redeploys. **Currently `6`.**
+  "server out of date" banner until the owner redeploys. **Currently `9`** (v9 adds the shared daily
+  devotional: `setDaily`/`completeDaily`/`shareReflection`/`setCircleReadingPlan`).
 - **Scripture copyright:** the LLM only ever gets references; verse text comes solely from Bible
   providers. `STUDY_BRIEF_SYSTEM` forbids quoting.
 
@@ -144,9 +145,18 @@ partners / small groups hold each other accountable). Warm, playful, reverent to
   (circles, challenges, shared verses/plans/notes/prayer, transparent progress); AI study; onboarding;
   Ember mascot + celebrations; Versed rebrand; full CRUD; optimistic UI; crash‑proofing; cloud backup;
   Play Store prep (privacy page, listing copy, graphics, submit config).
-- **Pending on the user:** redeploy the Worker (activates API v6 = CRUD/edit + cloud backup + `/privacy`)
-  and, for cloud backup UI, one `eas update`. The last native change was `allowBackup:false` (needs the
-  build they already installed / a rebuild). All tests green (74), tsc clean, exports bundle.
+- **Collaborative daily devotional + journaling (latest):** Tamil fixed (getbible/TAOVBSI); **ESV**
+  enabled (verse + chapter via the Worker `/esv`, Crossway attribution shown — needs `ESV_API_KEY`);
+  **every reference clickable** (`PeekableRef` + `VersePeekProvider` in `_layout.tsx`, plus a `RefText`
+  sweep); a private **daily journal** (`journal` slice, `src/utils/journal.ts`, `app/journal.tsx`,
+  reader "Journal this today"); and a **circle "Today, together"** shared devotional
+  (`DailyTogetherCard`, API v9, auto-advancing shared reading plan `planPortionForDate`) with a
+  **circle journal timeline** (the "Our journal" drill-in).
+- **Pending on the user:** **redeploy the Worker** (`cd server && npx wrangler deploy` — activates
+  **API v9** = the shared daily/journal, *and* the `/esv` route) and one **`eas update`** to ship the
+  app changes; **set `ESV_API_KEY`** (`npx wrangler secret put ESV_API_KEY`) for ESV; each circle picks
+  its shared reading plan in circle Settings. Tamil is online-only. All tests green (195), tsc clean,
+  exports bundle, worker bundles.
 
 ## Likely next work (roadmap)
 - Screenshots for the Play listing; wire the `eas submit` service account.
