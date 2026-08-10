@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, ActivityIndicator, Alert, Pressable } from 'react-native';
+import { View, Text, TextInput, ActivityIndicator, Alert, Pressable, Linking, StyleSheet } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -11,10 +11,12 @@ import { Ember } from '@/components/Ember';
 import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStudySession, useApplication, useStore } from '@/store/useStore';
-import { fetchStudyBrief } from '@/data/studyClient';
+import { fetchStudyBrief, fetchStudyContext, askStudy } from '@/data/studyClient';
 import { getChapterVerses, normalizeKey, isLatinTranslation, type ChapterVerse } from '@/data/bibleApi';
+import { validateReferences } from '@/data/books';
 import { parseScope, segmentReference } from '@/data/scope';
-import type { StudyBrief } from '@/types';
+import { markdownToBlocks } from '@/utils/blocks';
+import type { StudyBrief, StudyContextItem } from '@/types';
 
 /** Max chapters rendered inline under "Read the passage" (a whole book is huge). */
 const MAX_INLINE_CHAPTERS = 6;
@@ -80,6 +82,10 @@ export default function StudyBriefScreen() {
       ) : null}
 
       {brief ? <BriefBody brief={brief} passage={passage} translation={translation} serverUrl={serverUrl} /> : null}
+
+      {brief ? <HistoryContext passage={passage} serverUrl={serverUrl} /> : null}
+
+      {brief ? <AskPanel passage={passage} serverUrl={serverUrl} /> : null}
 
       {brief ? <ApplicationCard passageKey={passageKey} passage={passage} /> : null}
     </Screen>
@@ -260,6 +266,129 @@ function BriefBody({
         ) : null}
       </Card>
     </View>
+  );
+}
+
+/** Real history/geography/culture — the AI names topics, the server returns cited Wikipedia summaries. */
+function HistoryContext({ passage, serverUrl }: { passage: string; serverUrl: string | null }) {
+  const { colors } = useTheme();
+  const [items, setItems] = useState<StudyContextItem[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setError(null);
+    try { setItems(await fetchStudyContext(serverUrl, passage)); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not load the background.'); }
+    finally { setLoading(false); }
+  };
+
+  return (
+    <Card style={{ marginBottom: spacing.sm, gap: spacing.sm }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <SectionTitle style={{ marginBottom: 0 }}>History & context</SectionTitle>
+        {items === null ? <Button title={loading ? '…' : 'Show'} variant="secondary" small loading={loading} onPress={load} icon={<Ionicons name="earth" size={15} color={colors.text} />} /> : null}
+      </View>
+      {error ? <Text style={{ color: colors.warning, fontSize: font.sizes.xs }}>{error.includes('Server URL') ? 'Add your Server URL in Settings to load background.' : error}</Text> : null}
+      {items && items.length === 0 ? <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>No background found for this passage.</Text> : null}
+      {items?.map((it, i) => (
+        <View key={i} style={{ gap: 4, paddingTop: i > 0 ? spacing.sm : 0, borderTopWidth: i > 0 ? StyleSheet.hairlineWidth : 0, borderTopColor: colors.border }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>{it.title}</Text>
+            <View style={{ paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt }}>
+              <Text style={{ color: colors.textFaint, fontSize: 10, fontWeight: '700' }}>{it.kind}</Text>
+            </View>
+          </View>
+          <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, lineHeight: 21 }}>{it.extract}</Text>
+          <Pressable onPress={() => Linking.openURL(it.url)} hitSlop={6}>
+            <Text style={{ color: colors.primary, fontSize: font.sizes.xs, fontWeight: '700' }}>Read on Wikipedia →</Text>
+          </Pressable>
+        </View>
+      ))}
+      {items && items.length > 0 ? <Text style={{ color: colors.textFaint, fontSize: 10 }}>Sourced from Wikipedia — a starting point, not the last word.</Text> : null}
+    </Card>
+  );
+}
+
+/** Grounded conversational follow-up on the passage, savable into Notes. */
+function AskPanel({ passage, serverUrl }: { passage: string; serverUrl: string | null }) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const createDoc = useStore((s) => s.createDoc);
+  const [q, setQ] = useState('');
+  const [thread, setThread] = useState<{ q: string; a: string; refs: string[] }[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const ask = async () => {
+    const question = q.trim();
+    if (!question) return;
+    setLoading(true);
+    setError(null);
+    setQ('');
+    try {
+      const r = await askStudy(serverUrl, passage, question, thread.map((t) => ({ q: t.q, a: t.a })));
+      setThread((t) => [...t, { q: question, a: r.answer, refs: validateReferences(r.references) }]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not answer that.');
+      setQ(question);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveToNotes = () => {
+    const md = thread.map((t) => `## ${t.q}\n\n${t.a}${t.refs.length ? `\n\nReferences: ${t.refs.join(', ')}` : ''}`).join('\n\n');
+    const id = createDoc('study', { anchorRef: passage, title: `Study — ${passage}`, blocks: markdownToBlocks(md), tags: ['study'] });
+    router.push(`/notes/${id}`);
+  };
+
+  return (
+    <Card style={{ marginBottom: spacing.sm, gap: spacing.sm }}>
+      <SectionTitle style={{ marginBottom: 0 }}>Ask about this passage</SectionTitle>
+
+      {thread.map((t, i) => (
+        <View key={i} style={{ gap: 6, paddingTop: i > 0 ? spacing.sm : 0, borderTopWidth: i > 0 ? StyleSheet.hairlineWidth : 0, borderTopColor: colors.border }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.sm }}>{t.q}</Text>
+          <RefText text={t.a} style={{ color: colors.text, fontSize: font.sizes.sm, lineHeight: 22 }} />
+          {t.refs.length > 0 ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+              {t.refs.map((r) => <PeekableRef key={r} reference={r} />)}
+            </View>
+          ) : null}
+        </View>
+      ))}
+
+      {thread.length === 0 ? (
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+          Ask a question — “Why does this matter?”, “Who wrote this and when?”, “How does this connect to the cross?”
+        </Text>
+      ) : null}
+
+      {error ? <Text style={{ color: colors.warning, fontSize: font.sizes.xs }}>{error.includes('Server URL') ? 'Add your Server URL in Settings to ask.' : error}</Text> : null}
+
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: spacing.sm }}>
+        <TextInput
+          value={q}
+          onChangeText={setQ}
+          placeholder="Ask about this passage…"
+          placeholderTextColor={colors.textFaint}
+          multiline
+          onSubmitEditing={ask}
+          style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md, maxHeight: 100 }}
+        />
+        <Pressable onPress={ask} disabled={!q.trim() || loading} style={{ width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: q.trim() && !loading ? colors.primary : colors.surfaceAlt }}>
+          {loading ? <ActivityIndicator color={colors.onPrimary} /> : <Ionicons name="arrow-up" size={20} color={q.trim() ? colors.onPrimary : colors.textFaint} />}
+        </Pressable>
+      </View>
+
+      <Text style={{ color: colors.textFaint, fontSize: 10 }}>Ember’s answers are AI — weigh them against Scripture.</Text>
+
+      {thread.length > 0 ? (
+        <Button title="Save to Notes" variant="secondary" small icon={<Ionicons name="bookmark-outline" size={15} color={colors.text} />} onPress={saveToNotes} />
+      ) : null}
+    </Card>
   );
 }
 

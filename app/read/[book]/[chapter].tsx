@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,7 +10,7 @@ import { AddToTopicSheet } from '@/components/AddToTopicSheet';
 import { EmberTip } from '@/components/EmberGuide';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { bookByNumber, chapterCount } from '@/data/structure';
-import { getChapterVerses, isLatinTranslation, type ChapterVerse } from '@/data/bibleApi';
+import { getChapterVerses, isLatinTranslation, translationName, type ChapterVerse } from '@/data/bibleApi';
 import { hasLocal } from '@/data/localBible';
 import { useSettings, useStore } from '@/store/useStore';
 
@@ -40,6 +40,16 @@ export default function ChapterReaderScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<ChapterVerse | null>(null);
+
+  // Parallel translations: a second column read alongside the primary.
+  const [compareId, setCompareId] = useState<string | null>(null);
+  const [compareVerses, setCompareVerses] = useState<ChapterVerse[] | null>(null);
+  const comparing = !!compareId && !!compareVerses;
+  const compareMap = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const v of compareVerses ?? []) m.set(v.verse, v.text);
+    return m;
+  }, [compareVerses]);
 
   // Multi-select: tag several verses into a topic at once.
   const [selectMode, setSelectMode] = useState(false);
@@ -94,6 +104,17 @@ export default function ChapterReaderScreen() {
     };
   }, [bookNumber, chapter, translation, serverUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fetch the compare translation when one is chosen (or when the chapter changes).
+  useEffect(() => {
+    if (!book || !compareId) { setCompareVerses(null); return; }
+    let active = true;
+    setCompareVerses(null);
+    getChapterVerses(`${book.name} ${chapter}`, compareId, { serverUrl })
+      .then((r) => active && setCompareVerses(r.verses))
+      .catch(() => active && setCompareVerses([]));
+    return () => { active = false; };
+  }, [bookNumber, chapter, compareId, serverUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (!book || count === 0 || chapter < 1 || chapter > count) {
     return (
       <Screen>
@@ -132,6 +153,17 @@ export default function ChapterReaderScreen() {
         ) : null}
       </View>
 
+      {/* Parallel translation picker */}
+      {!selectMode ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm }}>
+          <Ionicons name="git-compare-outline" size={15} color={colors.textFaint} />
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>Compare</Text>
+          {READER_TRANSLATIONS.filter((t) => t.id !== translation).map((t) => (
+            <Chip key={t.id} label={t.label} active={compareId === t.id} onPress={() => setCompareId((c) => (c === t.id ? null : t.id))} />
+          ))}
+        </View>
+      ) : null}
+
       <EmberTip topic="reader" />
 
       {loading ? (
@@ -149,7 +181,7 @@ export default function ChapterReaderScreen() {
         />
       ) : null}
 
-      {verses ? (
+      {verses && !comparing ? (
         <View style={{ gap: spacing.xs }}>
           {verses.map((v) => {
             const isPicked = picked.has(v.verse);
@@ -184,6 +216,33 @@ export default function ChapterReaderScreen() {
               </Pressable>
             );
           })}
+        </View>
+      ) : null}
+
+      {/* Parallel two-column view */}
+      {verses && comparing ? (
+        <View style={{ gap: spacing.sm }}>
+          <View style={{ flexDirection: 'row', gap: spacing.md }}>
+            <Text style={{ flex: 1, color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '800' }}>{translationName(translation)}</Text>
+            <Text style={{ flex: 1, color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '800' }}>{compareId ? translationName(compareId) : ''}</Text>
+          </View>
+          {verses.map((v) => (
+            <Pressable
+              key={v.verse}
+              onPress={() => setSelected(v)}
+              style={({ pressed }) => ({ flexDirection: 'row', gap: spacing.md, paddingVertical: 4, paddingHorizontal: 4, borderRadius: 8, backgroundColor: pressed ? colors.surfaceAlt : 'transparent' })}
+            >
+              <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, lineHeight: 24, fontFamily: serif ? font.serif : undefined }}>
+                <Text style={{ color: colors.primary, fontSize: font.sizes.xs, fontWeight: '700' }}>{v.verse} </Text>{v.text}
+              </Text>
+              <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, lineHeight: 24, fontFamily: compareId && isLatinTranslation(compareId) ? font.serif : undefined }}>
+                {compareMap.get(v.verse) ?? '…'}
+              </Text>
+            </Pressable>
+          ))}
+          {compareVerses && compareVerses.length === 0 ? (
+            <Text style={{ color: colors.warning, fontSize: font.sizes.xs }}>Couldn’t load {compareId ? translationName(compareId) : 'that translation'} — it may need a Server URL, or be offline.</Text>
+          ) : null}
         </View>
       ) : null}
 

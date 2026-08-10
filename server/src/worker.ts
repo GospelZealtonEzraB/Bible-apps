@@ -460,9 +460,113 @@ function parseStudyBrief(text: string): any {
   }
 }
 
+// --- Grounded history/geography: LLM names topics, Wikipedia supplies the text --
+
+const CONTEXT_TOPICS_SYSTEM =
+  'You identify the real people, places, and events a Bible passage refers to, so they can be looked ' +
+  'up on Wikipedia. Given ONLY a reference, return JSON {"topics":[{"title","kind","wikiTitle"}]} with ' +
+  '3-7 items. "kind" is one of person|place|event|concept. "wikiTitle" is the exact English Wikipedia ' +
+  'article title (e.g. "Corinth", "Paul the Apostle", "Passover", "Herod the Great"). Prefer concrete, ' +
+  'real historical or geographic subjects the passage names or clearly involves. No Scripture text, no ' +
+  'commentary. JSON only.';
+
+const ASK_SYSTEM =
+  'You answer a reader\'s question about a specific Bible passage, grounded in that passage and its ' +
+  'context. Answer in your own words — concise, clear, reverent. CITE Scripture by reference only; NEVER ' +
+  'quote or reproduce verse text. If you offer interpretation beyond what the text plainly states, say ' +
+  'so. Return ONLY JSON {"answer": string, "references": [reference strings you cite]}. JSON only.';
+
+function parseTopics(text: string): { title: string; kind: string; wikiTitle: string }[] {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return [];
+  try {
+    const o: any = JSON.parse(m[0]);
+    const kinds = new Set(['person', 'place', 'event', 'concept']);
+    return (Array.isArray(o.topics) ? o.topics : [])
+      .filter((t: any) => t && typeof t === 'object' && (t.wikiTitle || t.title))
+      .map((t: any) => ({
+        title: String(t.title ?? t.wikiTitle ?? '').slice(0, 80),
+        kind: kinds.has(String(t.kind)) ? String(t.kind) : 'concept',
+        wikiTitle: String(t.wikiTitle ?? t.title ?? '').slice(0, 120),
+      }))
+      .slice(0, 7);
+  } catch {
+    return [];
+  }
+}
+
+/** Fetch a real Wikipedia summary (keyless REST API). null on miss. */
+async function fetchWikiSummary(title: string): Promise<{ title: string; extract: string; url: string; thumbnail?: string } | null> {
+  if (!title.trim()) return null;
+  try {
+    const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.trim())}?redirect=true`, {
+      headers: { 'user-agent': 'Versed/1.0 (bible-study app; contact via app)', accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const d: any = await res.json();
+    const extract = String(d.extract ?? '').trim();
+    if (!extract || d.type === 'disambiguation') return null;
+    return {
+      title: String(d.title ?? title),
+      extract,
+      url: d.content_urls?.desktop?.page ?? `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`,
+      thumbnail: d.thumbnail?.source,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parseAsk(text: string): { answer: string; references: string[] } {
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return { answer: String(text ?? '').slice(0, 2000), references: [] };
+  try {
+    const o: any = JSON.parse(m[0]);
+    return {
+      answer: String(o.answer ?? '').slice(0, 2000),
+      references: Array.isArray(o.references) ? o.references.filter((x: any) => typeof x === 'string').slice(0, 12) : [],
+    };
+  } catch {
+    return { answer: String(text ?? '').slice(0, 2000), references: [] };
+  }
+}
+
 async function handleStudy(req: Request, env: Env): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
   const action = String(body.action ?? 'brief');
+
+  if (action === 'context') {
+    const passage = str(body.passage, 60).trim();
+    if (!passage) return json({ error: 'Missing passage.' }, 400);
+    const key = `study:context:${normPassage(passage)}`;
+    if (env.ENGRAVED_KV && !body.force) {
+      const cached = await kvGetJson<any>(env.ENGRAVED_KV, key);
+      if (cached?.context) return json({ context: cached.context, cached: true });
+    }
+    const raw = await callLLM(env, CONTEXT_TOPICS_SYSTEM, `Reference: ${passage}`, 300);
+    const topics = parseTopics(raw);
+    const context: any[] = [];
+    for (const t of topics) {
+      const w = await fetchWikiSummary(t.wikiTitle);
+      if (w) context.push({ title: t.title || w.title, kind: t.kind, extract: w.extract, url: w.url, thumbnail: w.thumbnail });
+    }
+    if (env.ENGRAVED_KV && context.length) {
+      await kvPutJson(env.ENGRAVED_KV, key, { passage, context, createdAt: Date.now() });
+    }
+    return json({ context, cached: false });
+  }
+
+  if (action === 'ask') {
+    const passage = str(body.passage, 60).trim();
+    const question = str(body.question, 500).trim();
+    if (!passage || !question) return json({ error: 'Missing passage or question.' }, 400);
+    const hist = Array.isArray(body.history)
+      ? body.history.slice(-6).map((h: any) => `Q: ${str(h.q, 300)}\nA: ${str(h.a, 600)}`).join('\n')
+      : '';
+    const user = `Passage: ${passage}\n${hist ? `Earlier in this conversation:\n${hist}\n` : ''}Question: ${question}`;
+    const raw = await callLLM(env, ASK_SYSTEM, user, 700);
+    return json(parseAsk(raw));
+  }
 
   if (action === 'brief') {
     const passage = str(body.passage, 60).trim();
@@ -488,7 +592,7 @@ async function handleStudy(req: Request, env: Env): Promise<Response> {
     return json({ brief, cached: false });
   }
 
-  return json({ error: 'Unknown study action. Use brief.' }, 400);
+  return json({ error: 'Unknown study action. Use brief, context, or ask.' }, 400);
 }
 
 /**

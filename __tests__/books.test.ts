@@ -47,3 +47,14 @@ describe('parseReference', () => {
     expect(formatReference(parseReference('Romans 12:1-2')!)).toBe('Romans 12:1-2');
   });
 });
+
+describe('validateReferences (grounded-AI guard)', () => {
+  const { validateReferences } = require('@/data/books');
+  test('keeps valid, canonicalizes, dedupes, drops hallucinated', () => {
+    const out = validateReferences(['jn 3:16', 'John 3:16', 'Romans 8:28', 'Hesitations 4:1', 'not a ref']);
+    expect(out).toEqual(['John 3:16', 'Romans 8:28']);
+  });
+  test('empty in, empty out', () => {
+    expect(validateReferences([])).toEqual([]);
+  });
+});

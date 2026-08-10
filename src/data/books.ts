@@ -148,6 +148,24 @@ export function formatReference(p: ParsedReference): string {
 }
 
 /**
+ * Validate + canonicalize a list of AI-returned references, dropping any that
+ * don't resolve to a real book/chapter/verse (kills hallucinated citations) and
+ * de-duplicating. This is the grounded-AI guard shared by study "Ask", sermon,
+ * and song surfaces — an AI claim only stays if its reference is real.
+ */
+export function validateReferences(raw: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of raw) {
+    const p = parseReference(r);
+    if (!p) continue;
+    const canon = formatReference(p);
+    if (!seen.has(canon)) { seen.add(canon); out.push(canon); }
+  }
+  return out;
+}
+
+/**
  * A passage that may be a whole chapter ("John 3") or a verse range
  * ("John 3:1-21"). Unlike `parseReference`, the verse part is optional.
  */

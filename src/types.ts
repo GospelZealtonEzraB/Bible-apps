@@ -295,6 +295,15 @@ export interface StudyBrief {
   genre?: string;
   oneLine?: string;
 }
+/** A cited history/geography/culture item for a passage (from Wikipedia). */
+export interface StudyContextItem {
+  title: string;
+  kind: 'person' | 'place' | 'event' | 'concept';
+  extract: string;
+  url: string;
+  thumbnail?: string;
+}
+
 export interface StudySession {
   passage: string;
   passageKey: string;
