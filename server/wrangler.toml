@@ -6,9 +6,8 @@ compatibility_date = "2024-11-01"
 #   wrangler secret put OPENAI_API_KEY      # (or ANTHROPIC_API_KEY for Claude)
 #   wrangler secret put APP_SHARED_SECRET   # optional abuse protection
 #
-# ESV is disabled for now; to enable later also:
-#   wrangler secret put ESV_API_KEY
-# and uncomment the ESV handler/route in src/worker.ts.
+# ESV (copyrighted) is served through the Worker so the key never ships in the app:
+#   wrangler secret put ESV_API_KEY      # free key from https://api.esv.org
 
 # Non-secret config. Set AI_MODEL to your exact model id.
 [vars]
@@ -36,12 +35,13 @@ binding = "AI"
 binding = "VECTORIZE"
 index_name = "kjv-bge-base"
 
-# Song semantic search (optional; Tamil + English via the multilingual bge-m3, 1024 dims).
-# 1) npx wrangler vectorize create songs-bge-m3 --dimensions=1024 --metric=cosine
-# 2) node scripts/build-songs.mjs   (build the bundled songs first)
-# 3) node server/scripts/populate-songs.mjs   (embed them; needs CF_ACCOUNT_ID + CF_API_TOKEN)
-# Until populated, POST /search {kind:'songs'} returns nothing and the app uses
-# its offline keyword song search instead.
-[[vectorize]]
-binding = "VECTORIZE_SONGS"
-index_name = "songs-bge-m3"
+# Song semantic search (OPTIONAL — commented out so deploy works without it).
+# The app falls back to offline keyword song search until this is enabled.
+# To turn it on:
+#   1) npx wrangler vectorize create songs-bge-m3 --dimensions=1024 --metric=cosine
+#   2) node scripts/build-songs.mjs            (build the bundled songs first)
+#   3) node server/scripts/populate-songs.mjs  (embed them; needs CF_ACCOUNT_ID + CF_API_TOKEN)
+#   4) uncomment the block below, then re-deploy.
+# [[vectorize]]
+# binding = "VECTORIZE_SONGS"
+# index_name = "songs-bge-m3"
