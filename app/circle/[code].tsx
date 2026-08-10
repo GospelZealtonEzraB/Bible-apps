@@ -21,6 +21,8 @@ import { EmberTip } from '@/components/EmberGuide';
 import { usePaged, PageMore } from '@/components/Paginated';
 import { ReactionBar } from '@/components/ReactionBar';
 import { DailyTogetherCard } from '@/components/DailyTogetherCard';
+import { RefText } from '@/components/RefText';
+import { PeekableRef } from '@/components/PeekableRef';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Note, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
 const ACCENTS = ['#8AA6FF', '#57D9A3', '#FFC24B', '#FF8A8A', '#C79BFF', '#5AD1E0'];
@@ -143,6 +145,8 @@ export default function CircleHubScreen() {
 
         {view === 'challenges' ? <ChallengesCard code={code} members={members} myId={profile.memberId} /> : null}
 
+        {view === 'journal' ? <CircleJournalCard code={code} myId={profile.memberId} accent={accent} /> : null}
+
         {view === 'settings' ? (
           <>
             <CircleControlsCard code={code} />
@@ -186,6 +190,7 @@ export default function CircleHubScreen() {
     { key: 'prayer', icon: 'heart-outline', label: 'Prayer', hint: 'Pray for each other', badge: activePrayers },
     { key: 'challenges', icon: 'flash-outline', label: 'Challenges', hint: 'Spur each other on', badge: pendingForMe },
     { key: 'discussion', icon: 'chatbubbles-outline', label: 'Discussion', hint: 'Talk it through', badge: messagesCount },
+    { key: 'journal', icon: 'journal-outline', label: 'Our journal', hint: 'Days we’ve walked together', badge: 0 },
     { key: 'settings', icon: 'settings-outline', label: 'Settings', hint: 'Goal · covenant · more', badge: 0 },
   ];
 
@@ -293,13 +298,14 @@ export default function CircleHubScreen() {
   );
 }
 
-type Section = 'home' | 'people' | 'study' | 'prayer' | 'challenges' | 'settings';
+type Section = 'home' | 'people' | 'study' | 'prayer' | 'challenges' | 'journal' | 'settings';
 
 const SECTION_TITLES: Record<Exclude<Section, 'home'>, string> = {
   people: 'People',
   study: 'Study together',
   prayer: 'Prayer',
   challenges: 'Challenges',
+  journal: 'Our journal',
   settings: 'Settings',
 };
 
@@ -396,6 +402,70 @@ function SectionHeader({ title, circleName, onHome }: { title: string; circleNam
         <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.xl }}>{title}</Text>
         <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }} numberOfLines={1}>{circleName}</Text>
       </View>
+    </View>
+  );
+}
+
+/** The circle's shared journal — a dated timeline of the days walked together
+ *  (each day's devotional + everyone's shared reflections). The collaborative
+ *  record of "what the Lord taught us." */
+function CircleJournalCard({ code, myId, accent }: { code: string; myId: string; accent: string }) {
+  const { colors } = useTheme();
+  const router = useRouter();
+  const circle = useCircle(code);
+  const days = useMemo(() => {
+    const map = circle?.daily ?? {};
+    return Object.values(map)
+      .filter((d) => (d.reflections?.length ?? 0) > 0 || d.reading || d.verse || d.song || d.prayer)
+      .sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+  }, [circle?.daily]);
+  const page = usePaged(days, 10, days.length);
+
+  if (days.length === 0) {
+    return (
+      <EmptyState
+        emoji="📔"
+        title="Your circle’s journal"
+        subtitle="Each day you walk together — the song, the reading, and what the Lord showed each of you — is recorded here. Set today’s devotional on the home screen to begin."
+      />
+    );
+  }
+
+  const label = (day: string) => {
+    const [y, m, d] = day.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <View style={{ gap: spacing.sm }}>
+      <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+        A dated record of the days you’ve walked together — the readings, the songs, and what He showed each of you.
+      </Text>
+      {page.shown.map((d) => (
+        <Card key={d.day} style={{ gap: 6, borderLeftWidth: 3, borderLeftColor: accent }}>
+          <Text style={{ color: accent, fontWeight: '800', fontSize: font.sizes.sm }}>{label(d.day)}</Text>
+          {d.song ? <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs }}>🎵 {d.song}</Text> : null}
+          {d.reading ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name="book-outline" size={12} color={colors.textFaint} />
+              <PeekableRef reference={d.reading} tone="plain" />
+            </View>
+          ) : null}
+          {d.verse ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <Ionicons name="bookmark-outline" size={12} color={colors.textFaint} />
+              <PeekableRef reference={d.verse} tone="plain" />
+            </View>
+          ) : null}
+          {(d.reflections ?? []).map((r) => (
+            <View key={r.by} style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm, gap: 2 }}>
+              <Text style={{ color: colors.textFaint, fontSize: 10, fontWeight: '800' }}>{r.by === myId ? 'YOU' : (r.byName || 'A partner').toUpperCase()}</Text>
+              <RefText text={r.text} style={{ color: colors.text, fontSize: font.sizes.sm, lineHeight: 21, fontFamily: font.serif }} />
+            </View>
+          ))}
+        </Card>
+      ))}
+      <PageMore remaining={page.remaining} step={10} onPress={page.showMore} noun="earlier days" />
     </View>
   );
 }
