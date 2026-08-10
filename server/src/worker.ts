@@ -491,30 +491,47 @@ async function handleStudy(req: Request, env: Env): Promise<Response> {
   return json({ error: 'Unknown study action. Use brief.' }, 400);
 }
 
-/*
- * ESV is disabled for now (it needs a separate free Crossway API key). To
- * re-enable: uncomment this handler, uncomment the /esv route below, set the
- * ESV_API_KEY secret, and uncomment the ESV entry in the app's TRANSLATIONS.
- *
- * async function handleEsv(req: Request, env: Env): Promise<Response> {
- *   if (!env.ESV_API_KEY) return json({ error: 'ESV not configured on the server.' }, 501);
- *   const body: any = await req.json().catch(() => ({}));
- *   const reference = String(body.reference ?? '').trim();
- *   if (!reference) return json({ error: 'Missing reference.' }, 400);
- *
- *   const url =
- *     'https://api.esv.org/v3/passage/text/?q=' +
- *     encodeURIComponent(reference) +
- *     '&include-headings=false&include-footnotes=false&include-verse-numbers=false' +
- *     '&include-short-copyright=false&include-passage-references=false';
- *   const res = await fetch(url, { headers: { Authorization: `Token ${env.ESV_API_KEY}` } });
- *   if (!res.ok) return json({ error: `ESV HTTP ${res.status}` }, 502);
- *   const data: any = await res.json();
- *   const text = (data.passages ?? []).join(' ').replace(/\s+/g, ' ').trim();
- *   if (!text) return json({ error: 'Verse not found.' }, 404);
- *   return json({ reference: data.canonical || reference, text });
- * }
+/**
+ * ESV (© Crossway) — the copyrighted text is fetched here so the Crossway API key
+ * never ships in the app. Verse numbers are requested so a single response serves
+ * both a single verse and a whole chapter: `text` is the numbers-stripped prose,
+ * `verses` is the [n]-split structure the reader uses. The required attribution is
+ * returned for the app to display. Needs the ESV_API_KEY secret.
  */
+const ESV_ATTRIBUTION = 'Scripture quotations are from the ESV® Bible (The Holy Bible, English Standard Version®), © 2001 by Crossway. Used by permission. All rights reserved.';
+
+/** Split ESV verse-numbered prose ("[1] … [2] …") into structured verses. */
+function parseEsvVerses(raw: string): { verse: number; text: string }[] {
+  const out: { verse: number; text: string }[] = [];
+  const re = /\[(\d+)\]([\s\S]*?)(?=\[\d+\]|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(raw)) !== null) {
+    const text = m[2].replace(/\s+/g, ' ').trim();
+    if (text) out.push({ verse: Number(m[1]), text });
+  }
+  return out;
+}
+
+async function handleEsv(req: Request, env: Env): Promise<Response> {
+  if (!env.ESV_API_KEY) return json({ error: 'ESV not configured on the server.' }, 501);
+  const body: any = await req.json().catch(() => ({}));
+  const reference = String(body.reference ?? '').trim();
+  if (!reference) return json({ error: 'Missing reference.' }, 400);
+
+  const url =
+    'https://api.esv.org/v3/passage/text/?q=' +
+    encodeURIComponent(reference) +
+    '&include-headings=false&include-footnotes=false&include-verse-numbers=true' +
+    '&include-short-copyright=false&include-passage-references=false&indent-poetry=false';
+  const res = await fetch(url, { headers: { Authorization: `Token ${env.ESV_API_KEY}` } });
+  if (!res.ok) return json({ error: `ESV HTTP ${res.status}` }, 502);
+  const data: any = await res.json();
+  const raw = (data.passages ?? []).join('\n').trim();
+  if (!raw) return json({ error: 'Passage not found.' }, 404);
+  const verses = parseEsvVerses(raw);
+  const text = raw.replace(/\[\d+\]/g, ' ').replace(/\s+/g, ' ').trim();
+  return json({ reference: data.canonical || reference, text, verses, attribution: ESV_ATTRIBUTION });
+}
 
 // ===========================================================================
 // Growing Together — circles (shared state in KV)
@@ -1411,8 +1428,8 @@ export default {
       if (path === '/search') return await handleSearch(request, env);
       if (path === '/genius') return await handleGenius(request, env);
       if (path === '/transcribe') return await handleTranscribe(request, env);
-      // if (path === '/esv') return await handleEsv(request, env); // ESV disabled for now
-      return json({ error: 'Not found. Use /ai, /study, /circle, /search, /genius, or /transcribe.' }, 404);
+      if (path === '/esv') return await handleEsv(request, env);
+      return json({ error: 'Not found. Use /ai, /study, /circle, /search, /genius, /transcribe, or /esv.' }, 404);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Server error';
       return json({ error: message }, 500);

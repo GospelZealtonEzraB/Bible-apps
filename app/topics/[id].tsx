@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
 import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
+import { RefText } from '@/components/RefText';
 import { VerseActionSheet } from '@/components/VerseActionSheet';
 import { usePaged, PageMore } from '@/components/Paginated';
 import { useTheme, spacing, font, radius } from '@/theme';
@@ -275,7 +276,7 @@ function ThoughtBlock({
   return (
     <Card style={{ gap: spacing.sm }}>
       <Pressable onPress={() => { setDraft(reflection.text); setEditing(true); }}>
-        <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }}>{reflection.text}</Text>
+        <RefText text={reflection.text} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }} />
       </Pressable>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.lg }}>
         <Pressable onPress={() => { setDraft(reflection.text); setEditing(true); }} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -346,7 +347,7 @@ function TopicEntryRow({
         </View>
       ) : entry.note ? (
         <Pressable onPress={() => { setDraft(entry.note ?? ''); setEditing(true); }} style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm }}>
-          <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, fontStyle: 'italic' }}>“{entry.note}”</Text>
+          <RefText text={`“${entry.note}”`} style={{ color: colors.textMuted, fontSize: font.sizes.sm, fontStyle: 'italic' }} />
         </Pressable>
       ) : null}
 

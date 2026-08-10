@@ -9,6 +9,7 @@ import { useTheme } from '@/theme';
 import { configureNotificationHandler } from '@/notifications';
 import { Celebration } from '@/components/Celebration';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { VersePeekProvider } from '@/components/PeekableRef';
 import { useStore, useSettings } from '@/store/useStore';
 
 // Never let startup config throw before the app can render.
@@ -59,24 +60,26 @@ function AppShell() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <StatusBar style={dark ? 'light' : 'dark'} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.bg },
-          animation: 'slide_from_right',
-        }}
-      >
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
-        <Stack.Screen
-          name="review"
-          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-        />
-        <Stack.Screen
-          name="drill/[id]/[mode]"
-          options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
-        />
-      </Stack>
+      <VersePeekProvider>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.bg },
+            animation: 'slide_from_right',
+          }}
+        >
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="onboarding" options={{ animation: 'fade' }} />
+          <Stack.Screen
+            name="review"
+            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          />
+          <Stack.Screen
+            name="drill/[id]/[mode]"
+            options={{ presentation: 'modal', animation: 'slide_from_bottom' }}
+          />
+        </Stack>
+      </VersePeekProvider>
       <Celebration />
     </View>
   );

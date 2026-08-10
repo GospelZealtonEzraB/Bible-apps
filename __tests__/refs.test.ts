@@ -38,4 +38,14 @@ describe('linkifyReferences', () => {
     expect(linkifyReferences('Just a thought.')).toEqual([{ type: 'text', value: 'Just a thought.' }]);
     expect(hasReference('Just a thought.')).toBe(false);
   });
+
+  test('detects a reference inside a numbered discussion question', () => {
+    // Study briefs render questions as "1. …" — the leading number must not eat the ref.
+    const r = refs('1. How does Romans 8:28 shape your view of suffering?');
+    expect(r.map((x) => x.reference)).toEqual(['Romans 8:28']);
+  });
+
+  test('detects a reference embedded in a study fact value', () => {
+    expect(refs('Occasion: written after the events of Acts 2').map((x) => x.reference)).toEqual(['Acts 2']);
+  });
 });

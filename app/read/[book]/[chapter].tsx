@@ -17,6 +17,7 @@ import { useSettings, useStore } from '@/store/useStore';
 const READER_TRANSLATIONS = [
   { id: 'kjv', label: 'KJV' },
   { id: 'web', label: 'WEB' },
+  { id: 'esv', label: 'ESV' },
   { id: 'tamil', label: 'தமிழ்' },
 ];
 
@@ -30,10 +31,12 @@ export default function ChapterReaderScreen() {
   const count = chapterCount(bookNumber);
 
   const translation = useSettings((s) => s.readerTranslation);
+  const serverUrl = useSettings((s) => s.serverUrl);
   const setSettings = useStore((s) => s.setSettings);
   const setReadingPosition = useStore((s) => s.setReadingPosition);
 
   const [verses, setVerses] = useState<ChapterVerse[] | null>(null);
+  const [attribution, setAttribution] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<ChapterVerse | null>(null);
@@ -75,16 +78,21 @@ export default function ChapterReaderScreen() {
     setLoading(true);
     setError(null);
     setVerses(null);
+    setAttribution(null);
     setSelectMode(false);
     setPicked(new Set());
-    getChapterVerses(`${book.name} ${chapter}`, translation)
-      .then((r) => active && setVerses(r.verses))
+    getChapterVerses(`${book.name} ${chapter}`, translation, { serverUrl })
+      .then((r) => {
+        if (!active) return;
+        setVerses(r.verses);
+        setAttribution(r.attribution ?? null);
+      })
       .catch((e) => active && setError(e instanceof Error ? e.message : 'Could not load this chapter.'))
       .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
-  }, [bookNumber, chapter, translation]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [bookNumber, chapter, translation, serverUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!book || count === 0 || chapter < 1 || chapter > count) {
     return (
@@ -177,6 +185,10 @@ export default function ChapterReaderScreen() {
             );
           })}
         </View>
+      ) : null}
+
+      {attribution ? (
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.md, lineHeight: 16 }}>{attribution}</Text>
       ) : null}
 
       {verses ? (

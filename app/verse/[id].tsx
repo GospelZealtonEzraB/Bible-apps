@@ -10,6 +10,7 @@ import { ProgressRing } from '@/components/ProgressRing';
 import { VerseNotes } from '@/components/VerseNotes';
 import { VerseCircleNotes } from '@/components/VerseCircleNotes';
 import { CrossRefs } from '@/components/CrossRefs';
+import { RefText } from '@/components/RefText';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useVerse, useStore, useSettings } from '@/store/useStore';
 import { isLatinTranslation } from '@/data/bibleApi';
@@ -213,9 +214,7 @@ export default function VerseDetailScreen() {
                 <Text style={{ color: colors.accent, fontWeight: '800', fontSize: font.sizes.xs }}>
                   ✨ MEMORY HOOK
                 </Text>
-                <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }}>
-                  {verse.memoryHook}
-                </Text>
+                <RefText text={verse.memoryHook} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }} />
               </Card>
             ) : null}
 
@@ -224,9 +223,7 @@ export default function VerseDetailScreen() {
                 <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.xs }}>
                   💡 MEANING & CONTEXT
                 </Text>
-                <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }}>
-                  {verse.explanation}
-                </Text>
+                <RefText text={verse.explanation} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }} />
               </Card>
             ) : null}
           </View>

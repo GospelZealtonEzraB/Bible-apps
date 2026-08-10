@@ -4,7 +4,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
-import { Card, Button, Chip, SectionTitle, EmptyState, SpeechBubble } from '@/components/ui';
+import { Card, Button, SectionTitle, EmptyState, SpeechBubble } from '@/components/ui';
+import { RefText } from '@/components/RefText';
+import { PeekableRef } from '@/components/PeekableRef';
 import { Ember } from '@/components/Ember';
 import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
@@ -77,7 +79,7 @@ export default function StudyBriefScreen() {
         </Card>
       ) : null}
 
-      {brief ? <BriefBody brief={brief} passage={passage} translation={translation} serverUrl={serverUrl} onOpenRef={(r) => router.push(`/study/${encodeURIComponent(r)}`)} /> : null}
+      {brief ? <BriefBody brief={brief} passage={passage} translation={translation} serverUrl={serverUrl} /> : null}
 
       {brief ? <ApplicationCard passageKey={passageKey} passage={passage} /> : null}
     </Screen>
@@ -91,7 +93,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <Card style={{ marginBottom: spacing.sm }}>
       <SectionTitle>{title}</SectionTitle>
       {typeof children === 'string' ? (
-        <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }}>{children}</Text>
+        <RefText text={children} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }} />
       ) : (
         children
       )}
@@ -104,13 +106,11 @@ function BriefBody({
   passage,
   translation,
   serverUrl,
-  onOpenRef,
 }: {
   brief: StudyBrief;
   passage: string;
   translation: string;
   serverUrl: string | null;
-  onOpenRef: (ref: string) => void;
 }) {
   const { colors } = useTheme();
   const [sections, setSections] = useState<{ ref: string; verses: ChapterVerse[] }[] | null>(null);
@@ -157,12 +157,12 @@ function BriefBody({
       {facts.length > 0 || brief.oneLine ? (
         <Card style={{ marginBottom: spacing.sm, gap: spacing.sm }}>
           <SectionTitle style={{ marginBottom: 0 }}>At a glance</SectionTitle>
-          {brief.oneLine ? <Text style={{ color: colors.text, fontSize: font.sizes.md, fontStyle: 'italic', lineHeight: 22 }}>{brief.oneLine}</Text> : null}
+          {brief.oneLine ? <RefText text={brief.oneLine} style={{ color: colors.text, fontSize: font.sizes.md, fontStyle: 'italic', lineHeight: 22 }} /> : null}
           <View style={{ gap: 6 }}>
             {facts.map((f) => (
               <View key={f.label} style={{ flexDirection: 'row', gap: spacing.sm }}>
                 <Text style={{ width: 78, color: colors.textFaint, fontSize: font.sizes.sm, fontWeight: '700' }}>{f.label}</Text>
-                <Text style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, lineHeight: 20 }}>{f.value}</Text>
+                <RefText text={f.value ?? ''} style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, lineHeight: 20 }} />
               </View>
             ))}
           </View>
@@ -180,7 +180,7 @@ function BriefBody({
             {brief.characters.map((c, i) => (
               <View key={i}>
                 <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }}>{c.name}</Text>
-                <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, lineHeight: 22 }}>{c.insight}</Text>
+                <RefText text={c.insight} style={{ color: colors.textMuted, fontSize: font.sizes.sm, lineHeight: 22 }} />
               </View>
             ))}
           </View>
@@ -204,7 +204,7 @@ function BriefBody({
                 <Text style={{ color: colors.accent, fontWeight: '700', fontSize: font.sizes.md }}>
                   {w.term} <Text style={{ color: colors.textFaint, fontWeight: '400', fontSize: font.sizes.xs }}>({w.language})</Text>
                 </Text>
-                <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, lineHeight: 22 }}>{w.insight}</Text>
+                <RefText text={w.insight} style={{ color: colors.textMuted, fontSize: font.sizes.sm, lineHeight: 22 }} />
               </View>
             ))}
           </View>
@@ -215,9 +215,7 @@ function BriefBody({
         <Section title="Discussion questions">
           <View style={{ gap: spacing.sm }}>
             {brief.discussionQuestions.map((q, i) => (
-              <Text key={i} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }}>
-                {i + 1}. {q}
-              </Text>
+              <RefText key={i} text={`${i + 1}. ${q}`} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }} />
             ))}
           </View>
         </Section>
@@ -227,7 +225,7 @@ function BriefBody({
         <Section title="Related passages">
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
             {brief.crossReferences.map((r) => (
-              <Chip key={r} label={r} onPress={() => onOpenRef(r)} />
+              <PeekableRef key={r} reference={r} />
             ))}
           </View>
         </Section>

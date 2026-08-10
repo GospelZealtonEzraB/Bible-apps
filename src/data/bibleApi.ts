@@ -31,11 +31,13 @@ export const TRANSLATIONS: TranslationInfo[] = [
   { id: 'oeb-us', name: 'Open English Bible (US)', language: 'en', provider: 'bible-api' },
   { id: 'webbe', name: 'WEB British Edition', language: 'en', provider: 'bible-api' },
   { id: 'clementine', name: 'Clementine Latin Vulgate', language: 'la', provider: 'bible-api' },
-  { id: 'tamil', name: 'தமிழ் (Tamil)', language: 'ta', provider: 'bolls', providerCode: 'TAOVBSI' },
-  // ESV is disabled for now (needs a separate Crossway API key). Re-enable by
-  // uncommenting this entry, the /esv handler + route in server/src/worker.ts,
-  // and setting the ESV_API_KEY secret.
-  // { id: 'esv', name: 'English Standard Version', language: 'en', provider: 'esv' },
+  // Tamil Old Version (TAOVBSI) is served by getbible.net, not bolls — bolls uses
+  // its own numeric ids. The provider/code pairing here was the reason Tamil
+  // silently failed to load.
+  { id: 'tamil', name: 'தமிழ் (Tamil)', language: 'ta', provider: 'getbible', providerCode: 'TAOVBSI' },
+  // ESV is copyrighted: its text is fetched through the user's Worker (which holds
+  // the Crossway key as ESV_API_KEY). Available only when a Server URL is set.
+  { id: 'esv', name: 'English Standard Version', language: 'en', provider: 'esv' },
 ];
 
 const LATIN_LANGS = new Set(['en', 'la']);
@@ -64,6 +66,8 @@ export interface FetchedVerse {
   translationName: string;
   /** True when served from the offline fixture set rather than the network. */
   offline: boolean;
+  /** Publisher attribution to display (e.g. ESV/Crossway), when required. */
+  attribution?: string;
 }
 
 /** Lowercased, single-spaced reference used as a stable lookup/id key. */
@@ -217,7 +221,7 @@ async function fetchFromEsv(
     headers: serverHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify({ reference: ref }),
   });
-  const data: { reference?: string; text?: string; error?: string } = await res
+  const data: { reference?: string; text?: string; error?: string; attribution?: string } = await res
     .json()
     .catch(() => ({}));
   if (!res.ok || !data.text) throw new Error(data.error || `ESV request failed (${res.status}).`);
@@ -227,6 +231,43 @@ async function fetchFromEsv(
     translation: info.id,
     translationName: info.name,
     offline: false,
+    attribution: data.attribution,
+  };
+}
+
+interface EsvChapterResponse {
+  reference?: string;
+  verses?: { verse: number; text: string }[];
+  attribution?: string;
+  error?: string;
+}
+
+async function chapterFromEsv(
+  info: TranslationInfo,
+  bookName: string,
+  chapter: number,
+  serverUrl?: string | null,
+): Promise<{ verses: ChapterVerse[]; attribution?: string }> {
+  const resolved = resolveServerUrl(serverUrl);
+  if (!resolved) {
+    throw new Error('ESV needs a Server URL — add it in Settings → AI & Server.');
+  }
+  const base = resolved.replace(/\/+$/, '');
+  const res = await fetch(`${base}/esv`, {
+    method: 'POST',
+    headers: serverHeaders({ 'content-type': 'application/json' }),
+    body: JSON.stringify({ reference: `${bookName} ${chapter}` }),
+  });
+  const data: EsvChapterResponse = await res.json().catch(() => ({}));
+  if (!res.ok || !Array.isArray(data.verses) || data.verses.length === 0) {
+    throw new Error(data.error || `ESV request failed (${res.status}).`);
+  }
+  return {
+    verses: data.verses
+      .map((v) => ({ verse: Number(v.verse), text: cleanText(String(v.text ?? '')) }))
+      .filter((v) => v.text)
+      .sort((a, b) => a.verse - b.verse),
+    attribution: data.attribution,
   };
 }
 
@@ -308,6 +349,8 @@ export interface FetchedChapter {
   reference: string;
   verses: ChapterVerse[];
   translationName: string;
+  /** Publisher attribution to display (e.g. ESV/Crossway), when required. */
+  attribution?: string;
 }
 
 async function chapterFromBibleApi(info: TranslationInfo, bookName: string, chapter: number): Promise<ChapterVerse[]> {
@@ -348,7 +391,7 @@ async function chapterFromBolls(info: TranslationInfo, bookNumber: number, chapt
 export async function getChapterVerses(
   reference: string,
   translation = 'web',
-  _opts: { serverUrl?: string | null } = {},
+  opts: { serverUrl?: string | null } = {},
 ): Promise<FetchedChapter> {
   const passage = parsePassage(reference);
   if (!passage) {
@@ -368,6 +411,7 @@ export async function getChapterVerses(
   }
 
   let all: ChapterVerse[];
+  let attribution: string | undefined;
   switch (info.provider) {
     case 'bolls':
       all = await chapterFromBolls(info, passage.bookNumber, passage.chapter);
@@ -375,8 +419,12 @@ export async function getChapterVerses(
     case 'getbible':
       all = await chapterFromGetBible(info, passage.bookNumber, passage.chapter);
       break;
-    case 'esv':
-      throw new Error('ESV chapter view isn’t available yet.');
+    case 'esv': {
+      const esv = await chapterFromEsv(info, passage.bookName, passage.chapter, opts.serverUrl);
+      all = esv.verses;
+      attribution = esv.attribution;
+      break;
+    }
     case 'bible-api':
     default:
       all = await chapterFromBibleApi(info, passage.bookName, passage.chapter);
@@ -388,5 +436,5 @@ export async function getChapterVerses(
     : all.filter((v) => v.verse >= (passage.verseStart ?? 1) && v.verse <= (passage.verseEnd ?? 99999));
   if (verses.length === 0) throw new Error('No verses found for that passage.');
 
-  return { reference: formatPassage(passage), verses, translationName: info.name };
+  return { reference: formatPassage(passage), verses, translationName: info.name, attribution };
 }
