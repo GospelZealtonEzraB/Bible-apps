@@ -15,6 +15,7 @@ import {
   docPreview,
   extractRefs,
   docIsEmpty,
+  parseInline,
 } from '@/utils/blocks';
 import type { Block, Doc } from '@/types';
 
@@ -160,5 +161,28 @@ describe('derivations', () => {
     expect(docIsEmpty(emptyDoc('note'))).toBe(true);
     expect(docIsEmpty(doc([makeBlock('paragraph', 'x')]))).toBe(false);
     expect(docIsEmpty(doc([makeBlock('paragraph', '')], { title: 'has title' }))).toBe(false);
+  });
+});
+
+describe('parseInline', () => {
+  test('splits bold, italic, and references', () => {
+    const segs = parseInline('God is **love** and *good*; see John 3:16.');
+    expect(segs).toEqual([
+      { t: 'text', v: 'God is ' },
+      { t: 'bold', v: 'love' },
+      { t: 'text', v: ' and ' },
+      { t: 'italic', v: 'good' },
+      { t: 'text', v: '; see ' },
+      { t: 'ref', v: 'John 3:16', ref: 'John 3:16' },
+      { t: 'text', v: '.' },
+    ]);
+  });
+
+  test('underscore italics and plain text', () => {
+    expect(parseInline('_wait_ on Him')).toEqual([
+      { t: 'italic', v: 'wait' },
+      { t: 'text', v: ' on Him' },
+    ]);
+    expect(parseInline('nothing special')).toEqual([{ t: 'text', v: 'nothing special' }]);
   });
 });

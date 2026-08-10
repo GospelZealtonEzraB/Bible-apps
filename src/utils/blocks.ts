@@ -228,6 +228,41 @@ export function extractRefs(doc: Doc): string[] {
   return Array.from(out);
 }
 
+// --- Inline formatting (read mode): **bold**, *italic*/_italic_, and refs ------
+
+export type InlineSeg =
+  | { t: 'text'; v: string }
+  | { t: 'bold'; v: string }
+  | { t: 'italic'; v: string }
+  | { t: 'ref'; v: string; ref: string };
+
+/**
+ * Parse a block's plain text into inline segments for the read renderer:
+ * Scripture references first (via linkifyReferences), then lightweight markdown
+ * marks (`**bold**`, `*italic*`, `_italic_`) inside the non-ref runs. No nesting
+ * of marks — kept deliberately simple and predictable.
+ */
+export function parseInline(text: string): InlineSeg[] {
+  const out: InlineSeg[] = [];
+  for (const seg of linkifyReferences(text)) {
+    if (seg.type === 'ref') {
+      out.push({ t: 'ref', v: seg.value, ref: seg.reference });
+      continue;
+    }
+    let rest = seg.value;
+    const re = /(\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_)/;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(rest)) !== null) {
+      if (m.index > 0) out.push({ t: 'text', v: rest.slice(0, m.index) });
+      if (m[2] != null) out.push({ t: 'bold', v: m[2] });
+      else out.push({ t: 'italic', v: (m[3] ?? m[4]) as string });
+      rest = rest.slice(m.index + m[0].length);
+    }
+    if (rest) out.push({ t: 'text', v: rest });
+  }
+  return out;
+}
+
 /** True when the doc has no meaningful content (safe to discard). */
 export function docIsEmpty(doc: Doc): boolean {
   if (doc.title.trim()) return false;

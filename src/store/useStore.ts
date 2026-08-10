@@ -23,6 +23,9 @@ import type {
   Topic,
   JournalEntry,
   CircleDaily,
+  Doc,
+  DocType,
+  Folder,
   Verse,
   VerseStatus,
 } from '@/types';
@@ -40,6 +43,7 @@ import {
   addNote as addJournalNoteReducer,
   removeNote as removeJournalNoteReducer,
 } from '@/utils/journal';
+import { emptyDoc, extractRefs, genId as genBlockId } from '@/utils/blocks';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
 import * as circleApi from '@/data/circleClient';
@@ -87,6 +91,10 @@ interface StoreState {
   topics: Record<string, Topic>;
   /** Daily journal entries, keyed by local day (YYYY-MM-DD). Private to this device. */
   journal: Record<string, JournalEntry>;
+  /** Unified notes/writing documents (journal, study, verse, topic, sermon, article). */
+  documents: Record<string, Doc>;
+  /** Notebooks/folders that group documents. */
+  folders: Record<string, Folder>;
   /** Session memory for the welcome-back recap. */
   session: { lastOpenedDay: string | null };
   /** Where the Bible reader left off (null until they've read something). */
@@ -224,6 +232,22 @@ interface StoreState {
   addJournalNote: (note: { ref?: string; text: string }, day?: string) => void;
   /** Remove a note from a day. */
   removeJournalNote: (day: string, noteId: string) => void;
+
+  // Notes / writing documents (the unified block-based system)
+  /** Create a document; returns its id. */
+  createDoc: (type: DocType, opts?: Partial<Doc>) => string;
+  /** Patch a document (title/blocks/tags/etc.); refs + updatedAt are recomputed. */
+  updateDoc: (id: string, patch: Partial<Doc>) => void;
+  /** Delete a document. */
+  deleteDoc: (id: string) => void;
+  /** Get (or create) the journal document for a given day; returns its id. */
+  journalDocForDay: (day: string) => string;
+  /** Create a notebook/folder; returns its id. */
+  createFolder: (name: string, emoji?: string) => string;
+  /** Rename/re-emoji a folder. */
+  updateFolder: (id: string, patch: Partial<Folder>) => void;
+  /** Delete a folder (its documents become unfiled). */
+  deleteFolder: (id: string) => void;
   /** Post a message to a circle's discussion (optionally anchored to a reference). */
   postCircleMessage: (code: string, text: string, context?: string) => Promise<void>;
   /** Delete one of my own circle messages. */
@@ -562,6 +586,8 @@ export const useStore = create<StoreState>()(
       notes: {},
       topics: {},
       journal: {},
+      documents: {},
+      folders: {},
       session: { lastOpenedDay: null },
       reading: null,
       readingPlanProgress: {},
@@ -1229,6 +1255,63 @@ export const useStore = create<StoreState>()(
       removeJournalNote: (day, noteId) =>
         set((state) => ({ journal: removeJournalNoteReducer(state.journal, day, noteId, Date.now()) })),
 
+      // ---- Notes / writing documents ----
+      createDoc: (type, opts) => {
+        const d = emptyDoc(type, opts);
+        set((state) => ({ documents: { ...state.documents, [d.id]: d } }));
+        return d.id;
+      },
+
+      updateDoc: (id, patch) =>
+        set((state) => {
+          const prev = state.documents[id];
+          if (!prev) return {};
+          const next: Doc = { ...prev, ...patch, updatedAt: Date.now() };
+          next.refs = extractRefs(next);
+          return { documents: { ...state.documents, [id]: next } };
+        }),
+
+      deleteDoc: (id) =>
+        set((state) => {
+          const next = { ...state.documents };
+          delete next[id];
+          return { documents: next };
+        }),
+
+      journalDocForDay: (day) => {
+        const existing = Object.values(get().documents).find((d) => d.type === 'journal' && d.day === day);
+        if (existing) return existing.id;
+        const d = emptyDoc('journal', { day, title: '' });
+        set((state) => ({ documents: { ...state.documents, [d.id]: d } }));
+        return d.id;
+      },
+
+      createFolder: (name, emoji) => {
+        const id = genBlockId('f');
+        const folder: Folder = { id, name: name.trim() || 'Notebook', emoji, createdAt: Date.now() };
+        set((state) => ({ folders: { ...state.folders, [id]: folder } }));
+        return id;
+      },
+
+      updateFolder: (id, patch) =>
+        set((state) => {
+          const f = state.folders[id];
+          if (!f) return {};
+          return { folders: { ...state.folders, [id]: { ...f, ...patch } } };
+        }),
+
+      deleteFolder: (id) =>
+        set((state) => {
+          const folders = { ...state.folders };
+          delete folders[id];
+          // Unfile any documents that were in this folder.
+          const documents = { ...state.documents };
+          for (const d of Object.values(documents)) {
+            if (d.folderId === id) documents[d.id] = { ...d, folderId: null };
+          }
+          return { folders, documents };
+        }),
+
       addPrayer: async (code, text) => {
         const s = get();
         const prayerId = genLocalId();
@@ -1375,6 +1458,8 @@ export const useStore = create<StoreState>()(
             notes: s.notes,
             topics: s.topics,
             journal: s.journal,
+            documents: s.documents,
+            folders: s.folders,
             session: s.session,
             reading: s.reading,
             readingPlanProgress: s.readingPlanProgress,
@@ -1408,6 +1493,8 @@ export const useStore = create<StoreState>()(
           notes: d.notes ?? state.notes,
           topics: d.topics ?? state.topics,
           journal: d.journal ?? state.journal,
+          documents: d.documents ?? state.documents,
+          folders: d.folders ?? state.folders,
           session: d.session ?? state.session,
           reading: d.reading ?? state.reading,
           readingPlanProgress: d.readingPlanProgress ?? state.readingPlanProgress,
@@ -1460,6 +1547,8 @@ export const useStore = create<StoreState>()(
         notes: state.notes,
         topics: state.topics,
         journal: state.journal,
+        documents: state.documents,
+        folders: state.folders,
         session: state.session,
         reading: state.reading,
         readingPlanProgress: state.readingPlanProgress,
@@ -1500,6 +1589,8 @@ export const useStore = create<StoreState>()(
             notes: p.notes ?? {},
             topics: p.topics ?? {},
             journal: p.journal ?? {},
+            documents: p.documents ?? {},
+            folders: p.folders ?? {},
             session: { lastOpenedDay: null, ...(p.session ?? {}) },
             reading: p.reading ?? null,
             readingPlanProgress: p.readingPlanProgress ?? {},
@@ -1598,6 +1689,40 @@ export function useJournal(): Record<string, JournalEntry> {
 /** A single day's journal entry (undefined until something is written). */
 export function useJournalEntry(day: string | undefined): JournalEntry | undefined {
   return useStore((state) => (day ? state.journal[day] : undefined));
+}
+
+/** A single writing document by id. */
+export function useDoc(id: string | undefined): Doc | undefined {
+  return useStore((state) => (id ? state.documents[id] : undefined));
+}
+
+/** All documents, most-recently-updated first, optionally filtered by type/folder. */
+export function useDocList(filter?: { type?: DocType; folderId?: string | null }): Doc[] {
+  const documents = useStore((state) => state.documents);
+  return useMemo(() => {
+    let list = Object.values(documents);
+    if (filter?.type) list = list.filter((d) => d.type === filter.type);
+    if (filter?.folderId !== undefined) list = list.filter((d) => (d.folderId ?? null) === filter.folderId);
+    return list.sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [documents, filter?.type, filter?.folderId]);
+}
+
+/** Documents that reference a given verse (backlinks — "notes on this verse"). */
+export function useDocsForRef(reference: string | undefined): Doc[] {
+  const documents = useStore((state) => state.documents);
+  return useMemo(() => {
+    if (!reference) return [];
+    const key = normalizeKey(reference);
+    return Object.values(documents)
+      .filter((d) => (d.refs ?? []).some((r) => normalizeKey(r) === key))
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [documents, reference]);
+}
+
+/** All notebooks/folders. */
+export function useFolders(): Folder[] {
+  const folders = useStore((state) => state.folders);
+  return useMemo(() => Object.values(folders).sort((a, b) => a.createdAt - b.createdAt), [folders]);
 }
 
 /** All custom study topics, most-recently-updated first. */
