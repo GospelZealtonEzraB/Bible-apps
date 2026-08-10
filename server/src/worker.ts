@@ -1291,6 +1291,28 @@ them.</p>
 // (never verse text) are returned; the app hydrates snippets from its local KJV.
 // ===========================================================================
 
+// ===========================================================================
+// Audio → transcript (ASR) via Workers AI Whisper. Given base64 audio, return
+// the transcript text; the app then feeds it to /ai `sermon`. Best for audio the
+// user provides (uploaded/recorded) — no YouTube ripping. Short clips only on the
+// free model; long-form needs chunking or a paid ASR provider (a later seam).
+// ===========================================================================
+const ASR_MODEL = '@cf/openai/whisper-large-v3-turbo';
+
+async function handleTranscribe(request: Request, env: Env): Promise<Response> {
+  if (!env.AI) return json({ text: '', error: 'Transcription is not configured on this server yet.' }, 501);
+  const body = (await request.json().catch(() => ({}))) as { audioBase64?: unknown };
+  const audio = typeof body.audioBase64 === 'string' ? body.audioBase64 : '';
+  if (!audio) return json({ text: '', error: 'No audio provided.' }, 400);
+  try {
+    const out: any = await (env.AI as any).run(ASR_MODEL, { audio });
+    const text = String(out?.text ?? '').trim();
+    return json({ text });
+  } catch (e) {
+    return json({ text: '', error: e instanceof Error ? e.message : 'Transcription failed. The clip may be too long for the free model.' }, 502);
+  }
+}
+
 async function handleSearch(request: Request, env: Env): Promise<Response> {
   const body = (await request.json().catch(() => ({}))) as { query?: unknown; topK?: unknown; kind?: unknown };
   const kind = body.kind === 'songs' ? 'songs' : 'scripture';
@@ -1388,8 +1410,9 @@ export default {
       if (path === '/circle') return await handleCircle(request, env);
       if (path === '/search') return await handleSearch(request, env);
       if (path === '/genius') return await handleGenius(request, env);
+      if (path === '/transcribe') return await handleTranscribe(request, env);
       // if (path === '/esv') return await handleEsv(request, env); // ESV disabled for now
-      return json({ error: 'Not found. Use /ai, /study, /circle, /search, or /genius.' }, 404);
+      return json({ error: 'Not found. Use /ai, /study, /circle, /search, /genius, or /transcribe.' }, 404);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Server error';
       return json({ error: message }, 500);

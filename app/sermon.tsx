@@ -11,6 +11,7 @@ import { useStore } from '@/store/useStore';
 import { fetchSermon } from '@/data/aiClient';
 import { parseReference, formatReference } from '@/data/books';
 import { hydrateReference } from '@/data/localSearch';
+import { isYoutubeUrl, fetchYoutubeTranscript } from '@/data/youtube';
 import { HelpButton, EmberTip } from '@/components/EmberGuide';
 
 export default function SermonScreen() {
@@ -32,7 +33,15 @@ export default function SermonScreen() {
     setError(null);
     setSummary(null);
     try {
-      const r = await fetchSermon(serverUrl, isUrl ? { url: trimmed } : { transcript });
+      // For a YouTube link, try fetching captions ON THE DEVICE first (residential
+      // IP → far more reliable than the Worker's datacenter IP). Fall back to the
+      // server's best-effort URL read, then to paste.
+      let input: { transcript?: string; url?: string } = isUrl ? { url: trimmed } : { transcript };
+      if (isUrl && isYoutubeUrl(trimmed)) {
+        const captions = await fetchYoutubeTranscript(trimmed).catch(() => '');
+        if (captions.trim().length > 40) input = { transcript: captions };
+      }
+      const r = await fetchSermon(serverUrl, input);
       if (r.error && !r.summary) { setError(r.error); return; }
       setSummary(r.summary);
       // Validate references against the canonical book table (drop hallucinated/bad ones).

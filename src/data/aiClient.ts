@@ -90,6 +90,16 @@ export async function fetchVersesForSong(serverUrl: string | null, title: string
   return Array.isArray(data.references) ? data.references : [];
 }
 
+/**
+ * Transcribe base64 audio via the server's Whisper route (ASR). For sermon audio
+ * the user uploads/records — feed the result into fetchSermon({ transcript }).
+ * Short clips only on the free model; long-form may error (needs chunking/paid ASR).
+ */
+export async function transcribeAudio(serverUrl: string | null, audioBase64: string): Promise<{ text: string; error?: string }> {
+  const data = await postServer<{ text?: string; error?: string }>(serverUrl, '/transcribe', { audioBase64 });
+  return { text: data.text ?? '', error: data.error };
+}
+
 /** Suggest verse references for a theme (references only — the app fetches text). */
 export async function suggestPack(serverUrl: string | null, theme: string): Promise<string[]> {
   const { references } = await postServer<{ references: string[] }>(serverUrl, '/ai', {
