@@ -104,7 +104,18 @@ export default function HymnsScreen() {
         contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl }}
         keyboardShouldPersistTaps="handled"
         initialNumToRender={12}
-        ListEmptyComponent={<Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl }}>No hymns found — try a different word.</Text>}
+        ListEmptyComponent={query.trim().length >= 2 ? <Text style={{ color: colors.textMuted, textAlign: 'center', marginTop: spacing.xl }}>Not in your songbook — try the web below.</Text> : null}
+        ListFooterComponent={
+          query.trim().length >= 2 ? (
+            <Pressable
+              onPress={() => router.push(`/songs?q=${encodeURIComponent(query.trim())}`)}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.md, paddingVertical: spacing.md, borderRadius: radius.lg, backgroundColor: colors.surfaceAlt }}
+            >
+              <Ionicons name="globe-outline" size={16} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>Find “{query.trim()}” on the web (Genius)</Text>
+            </Pressable>
+          ) : null
+        }
       />
     </SafeAreaView>
   );

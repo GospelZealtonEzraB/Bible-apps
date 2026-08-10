@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, Pressable, Image, ActivityIndicator, Linking, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { matchHymnByTitle } from '@/data/hymns';
 
 import { Header } from '@/components/layout';
 import { Card, Chip, EmptyState } from '@/components/ui';
@@ -48,20 +50,29 @@ export default function SongsScreen() {
     }
   };
 
-  const run = async () => {
-    const q = query.trim();
-    if (q.length < 2) return;
+  const runQuery = async (q: string) => {
+    if (q.trim().length < 2) return;
     setLoading(true);
     setResults(null);
     setError(null);
     try {
-      setResults(await searchSongs(serverUrl, q));
+      setResults(await searchSongs(serverUrl, q.trim()));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Search failed.');
     } finally {
       setLoading(false);
     }
   };
+  const run = () => runQuery(query);
+
+  // Deep-linked from the songbook ("Find … on the web"): prefill + auto-search once.
+  const params = useLocalSearchParams<{ q?: string }>();
+  const router = useRouter();
+  const didAuto = useRef(false);
+  useEffect(() => {
+    const q = typeof params.q === 'string' ? params.q : '';
+    if (q && !didAuto.current) { didAuto.current = true; setQuery(q); runQuery(q); }
+  }, [params.q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const open = (url: string) => Linking.openURL(url);
 
@@ -78,6 +89,9 @@ export default function SongsScreen() {
         <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }} numberOfLines={2}>{s.title}</Text>
         <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }} numberOfLines={1}>{s.artist}</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: 2 }}>
+          {matchHymnByTitle(s.title) ? (
+            <LinkChip icon="library-outline" label="In your songbook" onPress={() => router.push(`/hymns/${matchHymnByTitle(s.title)!.id}`)} />
+          ) : null}
           <LinkChip icon="document-text-outline" label="Lyrics" onPress={() => open(s.url)} />
           <LinkChip icon="book-outline" label="Related verses" onPress={() => getVerses(s)} />
           <LinkChip icon="sparkles-outline" label="AI chords" onPress={() => getChords(s)} />
