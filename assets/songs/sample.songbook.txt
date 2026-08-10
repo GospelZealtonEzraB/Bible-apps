@@ -1,0 +1,26 @@
+# Doxology (Praise God from Whom All Blessings Flow)
+@author: Thomas Ken
+@year: 1674
+@key: G
+@source: pd
+@ref: Psalm 103:1; Revelation 5:13
+@listen: https://www.youtube.com/results?search_query=Doxology+Old+100th
+
+[verse]
+Praise [G]God, from whom all [C]blessings [G]flow;
+Praise Him, all creatures [D]here be-[G]low;
+Praise Him a-[C]bove, ye [G]heavenly host;
+Praise [G]Father, [C]Son, and [D]Holy [G]Ghost.
+
+# ஆராதனை (A sample Tamil praise chorus)
+@author: Traditional
+@key: C
+@source: personal
+
+[pallavi]
+ஆராதனை ஆராதனை
+தேவனுக்கே மகிமை உண்டாகட்டும்
+
+[verse]
+உம்மைப் போற்றுகிறோம் தேவனே
+என்றென்றும் உமக்கே துதி

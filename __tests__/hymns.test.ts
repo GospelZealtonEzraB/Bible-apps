@@ -1,16 +1,17 @@
 import { HYMNS, hymnsForRef, matchHymnByTitle, hymnHasChords, searchHymns } from '../src/data/hymns';
 
 describe('hymn library invariants', () => {
-  test('every hymn is public domain (bundled) or a deep-link', () => {
+  test('every song carries a valid source', () => {
     for (const h of HYMNS) {
-      expect(['pd', 'link', 'ccli']).toContain(h.source);
+      expect(['pd', 'personal', 'link', 'ccli']).toContain(h.source);
     }
   });
 
-  test('curated chorded classics carry scripture links', () => {
-    const chorded = HYMNS.filter(hymnHasChords);
-    expect(chorded.length).toBeGreaterThan(0);
-    for (const h of chorded) {
+  test('the curated chorded classics carry scripture links', () => {
+    const CURATED_IDS = ['amazing-grace', 'it-is-well', 'holy-holy-holy', 'come-thou-fount', 'when-i-survey', 'rock-of-ages', 'blessed-assurance', 'what-a-friend'];
+    for (const id of CURATED_IDS) {
+      const h = HYMNS.find((x) => x.id === id)!;
+      expect(hymnHasChords(h)).toBe(true);
       expect((h.scriptureRefs ?? []).length).toBeGreaterThan(0);
     }
   });

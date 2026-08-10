@@ -26,9 +26,12 @@ export interface Hymn {
   scriptureRefs: string[];
   /** "Listen" deep-link (YouTube search) — playback happens outside the app. */
   listenUrl?: string;
+  /** External lyrics page for link-only (copyrighted, un-bundled) songs. */
+  lyricsUrl?: string;
   language?: 'en' | 'ta';
-  /** 'pd' bundled public-domain; 'link' metadata + deep-link only; 'ccli' licensed (future). */
-  source: 'pd' | 'link' | 'ccli';
+  /** 'pd' public-domain; 'personal' privately-owned (bundled, non-commercial);
+   * 'link' metadata + deep-link only; 'ccli' licensed (future). */
+  source: 'pd' | 'personal' | 'link' | 'ccli';
   stanzas: HymnStanza[];
 }
 
@@ -207,8 +210,19 @@ const CURATED: Hymn[] = [
 // Bulk public-domain library (Believers Hymn Book, lyrics-only) merged under the
 // hand-authored, chorded classics. Deduped by title so the chorded version wins.
 const BULK = require('../../assets/hymns/hymns.json') as Hymn[];
+// The user's personal songbook (Tamil + English), built from assets/songs/*.songbook.txt.
+const USER_SONGS = require('../../assets/songs/songs.json') as Hymn[];
 const curatedTitles = new Set(CURATED.map((h) => h.title.toLowerCase()));
-export const HYMNS: Hymn[] = [...CURATED, ...BULK.filter((h) => !curatedTitles.has(h.title.toLowerCase()))];
+// User songs win over the bulk PD library on a title clash; curated chorded win over all.
+const seenTitles = new Set(curatedTitles);
+const merged: Hymn[] = [...CURATED];
+for (const h of [...USER_SONGS, ...BULK]) {
+  const key = h.title.toLowerCase();
+  if (seenTitles.has(key)) continue;
+  seenTitles.add(key);
+  merged.push(h);
+}
+export const HYMNS: Hymn[] = merged;
 
 /** True when a hymn has any chords (so the view can show transpose controls). */
 export function hymnHasChords(h: Hymn): boolean {

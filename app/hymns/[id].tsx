@@ -76,10 +76,19 @@ export default function HymnScreen() {
       </Card>
       ) : null}
 
-      {/* Lyrics + chords */}
-      {hymn.stanzas.map((st, i) => (
-        <Stanza key={i} stanza={st} steps={steps} />
-      ))}
+      {/* Lyrics + chords — or, for a link-only (copyrighted) song, a deep-link */}
+      {hymn.stanzas.length > 0 ? (
+        hymn.stanzas.map((st, i) => (
+          <Stanza key={i} stanza={st} steps={steps} tamil={hymn.language === 'ta'} />
+        ))
+      ) : (
+        <Card style={{ gap: spacing.sm }}>
+          <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>
+            Lyrics for this song aren’t bundled. Open them on the web.
+          </Text>
+          <Button title="Lyrics on the web" variant="secondary" icon={<Ionicons name="open-outline" size={16} color={colors.text} />} onPress={() => Linking.openURL(hymn.lyricsUrl || hymn.listenUrl || `https://www.google.com/search?q=${encodeURIComponent(hymn.title + ' lyrics')}`)} />
+        </Card>
+      )}
 
       {/* Scripture behind the hymn */}
       {hymn.scriptureRefs.length > 0 ? (
@@ -118,14 +127,14 @@ export default function HymnScreen() {
         <Button title="Listen on YouTube" variant="secondary" icon={<Ionicons name="play-circle-outline" size={18} color={colors.text} />} onPress={() => Linking.openURL(hymn.listenUrl!)} />
       ) : null}
 
-      <Text style={{ color: colors.textFaint, fontSize: 10, textAlign: 'center' }}>Public domain</Text>
+      <Text style={{ color: colors.textFaint, fontSize: 10, textAlign: 'center' }}>{hymn.source === 'pd' ? 'Public domain' : hymn.source === 'personal' ? 'Personal songbook' : ''}</Text>
 
       <VersePeek reference={peek} onClose={() => setPeek(null)} />
     </Screen>
   );
 }
 
-function Stanza({ stanza, steps }: { stanza: HymnStanza; steps: number }) {
+function Stanza({ stanza, steps, tamil }: { stanza: HymnStanza; steps: number; tamil: boolean }) {
   const { colors } = useTheme();
   const isChorus = stanza.kind !== 'verse';
   return (
@@ -134,21 +143,23 @@ function Stanza({ stanza, steps }: { stanza: HymnStanza; steps: number }) {
         {stanza.kind === 'verse' ? `Verse ${stanza.label ?? ''}`.trim() : stanza.kind === 'chorus' ? 'Chorus' : 'Refrain'}
       </Text>
       {stanza.lines.map((line, i) => (
-        <ChordLine key={i} line={line} steps={steps} />
+        <ChordLine key={i} line={line} steps={steps} tamil={tamil} />
       ))}
     </Card>
   );
 }
 
-function ChordLine({ line, steps }: { line: string; steps: number }) {
+function ChordLine({ line, steps, tamil }: { line: string; steps: number; tamil: boolean }) {
   const { colors } = useTheme();
   const segments = parseChordLine(line, steps);
+  // Tamil has no glyphs in the Georgia serif stack — render it in the system font.
+  const lyricFont = tamil ? undefined : font.serif;
   return (
     <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end' }}>
       {segments.map((s, i) => (
         <View key={i}>
           <Text style={{ color: colors.accent, fontWeight: '800', fontSize: font.sizes.xs, height: 16 }}>{s.chord ?? ' '}</Text>
-          <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24, fontFamily: font.serif }}>{s.text}</Text>
+          <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24, fontFamily: lyricFont }}>{s.text}</Text>
         </View>
       ))}
     </View>

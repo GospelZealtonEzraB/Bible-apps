@@ -14,7 +14,12 @@ export default function HymnsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const [query, setQuery] = useState('');
-  const results = useMemo(() => searchHymns(query), [query]);
+  const [lang, setLang] = useState<'all' | 'en' | 'ta'>('all');
+  const hasTamil = useMemo(() => HYMNS.some((h) => h.language === 'ta'), []);
+  const results = useMemo(() => {
+    const base = searchHymns(query);
+    return lang === 'all' ? base : base.filter((h) => (h.language ?? 'en') === lang);
+  }, [query, lang]);
 
   const renderItem = ({ item: h }: { item: Hymn }) => (
     <Pressable
@@ -25,8 +30,8 @@ export default function HymnsScreen() {
         <Ionicons name="musical-notes-outline" size={20} color={colors.accent} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }} numberOfLines={1}>{h.title}</Text>
-        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }} numberOfLines={1}>{h.author ?? 'Traditional'}</Text>
+        <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md, fontFamily: h.language === 'ta' ? undefined : undefined }} numberOfLines={1}>{h.title}</Text>
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }} numberOfLines={1}>{h.author ?? 'Traditional'}{h.language === 'ta' ? ' · தமிழ்' : ''}</Text>
       </View>
       <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
     </Pressable>
@@ -62,6 +67,15 @@ export default function HymnsScreen() {
             </Pressable>
           ) : null}
         </Card>
+        {hasTamil ? (
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            {([['all', 'All'], ['en', 'English'], ['ta', 'தமிழ்']] as const).map(([k, label]) => (
+              <Pressable key={k} onPress={() => setLang(k)} style={{ paddingVertical: 6, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: lang === k ? colors.primary : colors.surfaceAlt }}>
+                <Text style={{ color: lang === k ? colors.onPrimary : colors.textMuted, fontWeight: '700', fontSize: font.sizes.sm }}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </View>
       <FlatList
         data={results}

@@ -47,6 +47,10 @@
     "testMatch": [
       "**/__tests__/**/*.test.ts"
     ],
+    "moduleFileExtensions": ["ts", "tsx", "js", "jsx", "mjs", "json", "node"],
+    "transform": {
+      "\\.mjs$": "babel-jest"
+    },
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
     }
