@@ -3,7 +3,7 @@
  * an `action` and returns the updated `snapshot` (except `leave`).
  */
 import { postServer } from './serverClient';
-import type { ChallengeKind, CircleGoal, CircleSnapshot } from '@/types';
+import type { ChallengeKind, CircleGoal, CircleSnapshot, CircleDaily } from '@/types';
 
 /** The progress snapshot a device pushes up about itself. */
 export interface MemberSnapshotInput {
@@ -42,7 +42,7 @@ async function circleCall(
 }
 
 /** The API version this app build expects from the Worker. */
-export const EXPECTED_API_VERSION = 8;
+export const EXPECTED_API_VERSION = 9;
 
 /** Upload an opaque backup blob keyed by the device/transfer id. Best-effort. */
 export async function pushBackup(serverUrl: string | null, memberId: string, blob: string): Promise<void> {
@@ -268,6 +268,46 @@ export function addPrayer(
   prayerId?: string,
 ): Promise<CircleSnapshot> {
   return circleCall(serverUrl, { action: 'addPrayer', code, memberId: member.memberId, displayName: member.displayName, text, prayerId });
+}
+
+// ---- Daily devotional (the shared "today") ----
+export function setDaily(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  day: string,
+  patch: Partial<Pick<CircleDaily, 'song' | 'reading' | 'prayer' | 'verse' | 'note'>>,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'setDaily', code, memberId: member.memberId, displayName: member.displayName, day, patch });
+}
+
+export function completeDaily(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  day: string,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'completeDaily', code, memberId: member.memberId, displayName: member.displayName, day });
+}
+
+export function shareReflection(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  day: string,
+  text: string,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'shareReflection', code, memberId: member.memberId, displayName: member.displayName, day, text });
+}
+
+export function setCircleReadingPlan(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  readingPlanId: string | null,
+  startedAt?: number,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'setCircleReadingPlan', code, memberId: member.memberId, displayName: member.displayName, readingPlanId, startedAt });
 }
 
 export function prayFor(

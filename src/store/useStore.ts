@@ -22,6 +22,7 @@ import type {
   StudySession,
   Topic,
   JournalEntry,
+  CircleDaily,
   Verse,
   VerseStatus,
 } from '@/types';
@@ -229,6 +230,14 @@ interface StoreState {
   deleteCircleMessage: (code: string, msgId: string) => Promise<void>;
   /** Toggle a reaction on a prayer/note/message (same emoji clears it). */
   reactTo: (code: string, targetType: 'prayer' | 'note' | 'message', targetId: string, emoji: string) => Promise<void>;
+  /** Set/patch a day's shared devotional (song/reading/prayer/verse/note). Open to anyone. */
+  setCircleDaily: (code: string, day: string, patch: Partial<CircleDaily>) => Promise<void>;
+  /** Toggle my "did today's devotional" completion mark. */
+  completeCircleDaily: (code: string, day: string) => Promise<void>;
+  /** Share (or, with empty text, unshare) my reflection for a day. */
+  shareCircleReflection: (code: string, day: string, text: string) => Promise<void>;
+  /** Set the circle's shared reading plan (auto-advances by date); null clears it. */
+  setCircleReadingPlan: (code: string, readingPlanId: string | null) => Promise<void>;
   addPrayer: (code: string, text: string) => Promise<void>;
   prayForRequest: (code: string, prayerId: string) => Promise<void>;
   answerPrayer: (code: string, prayerId: string, answerNote?: string) => Promise<void>;
@@ -1022,6 +1031,73 @@ export const useStore = create<StoreState>()(
             return { ...c, reactions };
           },
           () => circleApi.react(s.settings.serverUrl, code, { memberId: me, displayName: s.profile.displayName }, targetType, targetId, emoji),
+        );
+      },
+
+      // ---- Circle daily devotional (the shared "today") ----
+      setCircleDaily: async (code, day, patch) => {
+        const s = get();
+        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
+        await optimisticCircle(set, get, code,
+          (c) => {
+            const daily = { ...(c.daily ?? {}) };
+            const prev = daily[day] ?? { day, doneByIds: [], reflections: [] };
+            const next = { ...prev };
+            for (const [k, v] of Object.entries(patch)) {
+              if (v && String(v).trim()) (next as any)[k] = String(v).trim();
+              else delete (next as any)[k];
+            }
+            next.setBy = me.memberId;
+            next.setByName = me.displayName;
+            next.updatedAt = Date.now();
+            daily[day] = next;
+            return { ...c, daily };
+          },
+          () => circleApi.setDaily(s.settings.serverUrl, code, me, day, patch),
+        );
+      },
+
+      completeCircleDaily: async (code, day) => {
+        const s = get();
+        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
+        await optimisticCircle(set, get, code,
+          (c) => {
+            const daily = { ...(c.daily ?? {}) };
+            const prev = daily[day] ?? { day, doneByIds: [], reflections: [] };
+            const has = (prev.doneByIds ?? []).includes(me.memberId);
+            daily[day] = { ...prev, doneByIds: has ? prev.doneByIds.filter((id) => id !== me.memberId) : [...(prev.doneByIds ?? []), me.memberId] };
+            return { ...c, daily };
+          },
+          () => circleApi.completeDaily(s.settings.serverUrl, code, me, day),
+        );
+      },
+
+      shareCircleReflection: async (code, day, text) => {
+        const s = get();
+        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
+        const trimmed = text.trim();
+        await optimisticCircle(set, get, code,
+          (c) => {
+            const daily = { ...(c.daily ?? {}) };
+            const prev = daily[day] ?? { day, doneByIds: [], reflections: [] };
+            const others = (prev.reflections ?? []).filter((r) => r.by !== me.memberId);
+            const reflections = trimmed
+              ? [{ by: me.memberId, byName: me.displayName, text: trimmed, updatedAt: Date.now() }, ...others]
+              : others;
+            daily[day] = { ...prev, reflections };
+            return { ...c, daily };
+          },
+          () => circleApi.shareReflection(s.settings.serverUrl, code, me, day, trimmed),
+        );
+      },
+
+      setCircleReadingPlan: async (code, readingPlanId) => {
+        const s = get();
+        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
+        const startedAt = Date.now();
+        await optimisticCircle(set, get, code,
+          (c) => ({ ...c, meta: { ...c.meta, readingPlanId, readingPlanStartedAt: readingPlanId ? startedAt : null } }),
+          () => circleApi.setCircleReadingPlan(s.settings.serverUrl, code, me, readingPlanId, startedAt),
         );
       },
 

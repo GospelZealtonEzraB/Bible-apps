@@ -127,6 +127,10 @@ export interface CircleMeta {
   /** Consecutive days every member was active (server-computed). */
   togetherStreak: number;
   lastTogetherDay: string | null;
+  /** The circle's shared reading plan id (auto-advances by date), if chosen. */
+  readingPlanId?: string | null;
+  /** When the shared reading plan was started (ms) — day-for-today derives from it. */
+  readingPlanStartedAt?: number | null;
 }
 
 export type ActivityType =
@@ -343,6 +347,42 @@ export interface CircleSnapshot {
   messages?: Message[];
   /** Reactions grouped by "{targetType}:{targetId}" (prayer/note/message). */
   reactions?: Record<string, Reaction[]>;
+  /** Recent shared-devotional days, keyed by day (YYYY-MM-DD). The viewer picks "today". */
+  daily?: Record<string, CircleDailyDay>;
+}
+
+/** One member's shared reflection on a circle's daily. */
+export interface DailyReflection {
+  by: string;
+  byName: string;
+  text: string;
+  updatedAt: number;
+}
+
+/** The editable fields of a circle's shared devotional for a day. */
+export interface CircleDaily {
+  /** A hymn/song id for the day (from the songbook). */
+  song?: string;
+  /** The day's reading (a passage reference). */
+  reading?: string;
+  /** A shared prayer prompt for the day. */
+  prayer?: string;
+  /** A verse to carry (a reference). */
+  verse?: string;
+  /** A short note/theme from whoever set the day. */
+  note?: string;
+}
+
+/** A day's shared devotional as returned in the snapshot (record + who's done + reflections). */
+export interface CircleDailyDay extends CircleDaily {
+  day: string;
+  setBy?: string;
+  setByName?: string;
+  updatedAt?: number;
+  /** Member ids who marked the day complete. */
+  doneByIds: string[];
+  /** Shared reflections for the day (newest first). */
+  reflections: DailyReflection[];
 }
 
 /** A lightweight reaction (amen/💡/❤️) on a prayer, note, or message. */

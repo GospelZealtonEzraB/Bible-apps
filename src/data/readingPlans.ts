@@ -8,6 +8,7 @@
  * matching the believer's daily rhythm.
  */
 import { CHAPTER_COUNTS, bookByNumber } from './structure';
+import { dayKey, daysBetweenKeys } from '@/utils/date';
 
 export interface ReadingPlan {
   id: string;
@@ -76,4 +77,23 @@ export const READING_PLANS: ReadingPlan[] = [
 
 export function getReadingPlan(id: string | null | undefined): ReadingPlan | undefined {
   return id ? READING_PLANS.find((p) => p.id === id) : undefined;
+}
+
+/**
+ * The reading portion for a circle's shared plan on a given date — the plan
+ * "auto-advances" by counting whole days from its start. Loops gently once the
+ * plan is finished. Returns null when there's no plan/start or the date precedes
+ * the start. Kept pure (date passed in) for testability.
+ */
+export function planPortionForDate(
+  planId: string | null | undefined,
+  startedAt: number | null | undefined,
+  todayKey: string,
+): { refs: string[]; dayNumber: number; total: number } | null {
+  const plan = getReadingPlan(planId);
+  if (!plan || !startedAt || plan.days.length === 0) return null;
+  const offset = daysBetweenKeys(dayKey(startedAt), todayKey);
+  if (offset < 0) return null;
+  const idx = offset % plan.days.length;
+  return { refs: plan.days[idx] ?? [], dayNumber: offset + 1, total: plan.days.length };
 }

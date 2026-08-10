@@ -12,6 +12,7 @@ import { useCircle, useCirclePref, useProfile, useStore } from '@/store/useStore
 import { getVerse, normalizeKey, verseId } from '@/data/bibleApi';
 import { dayKey, daysBetweenKeys, relativeTimeAgo } from '@/utils/date';
 import { PLAN_TEMPLATES } from '@/data/plans';
+import { READING_PLANS, getReadingPlan, planPortionForDate } from '@/data/readingPlans';
 import { levelInfo } from '@/gamification';
 import { togetherTotals, coverage, mergeActivity, rankMembers, presenceToday, weeklyRecap, circleMilestones, goalProgress } from '@/utils/circleProgress';
 import { ProgressRing } from '@/components/ProgressRing';
@@ -19,6 +20,7 @@ import { EXPECTED_API_VERSION } from '@/data/circleClient';
 import { EmberTip } from '@/components/EmberGuide';
 import { usePaged, PageMore } from '@/components/Paginated';
 import { ReactionBar } from '@/components/ReactionBar';
+import { DailyTogetherCard } from '@/components/DailyTogetherCard';
 import type { Challenge, ChallengeKind, CircleGoal, CircleMember, Note, Prayer, SharedVerseRef, StudyPlan } from '@/types';
 
 const ACCENTS = ['#8AA6FF', '#57D9A3', '#FFC24B', '#FF8A8A', '#C79BFF', '#5AD1E0'];
@@ -144,6 +146,7 @@ export default function CircleHubScreen() {
         {view === 'settings' ? (
           <>
             <CircleControlsCard code={code} />
+            <CircleReadingPlanCard code={code} />
             <CovenantCard code={code} />
             <GoalCard code={code} />
             {renaming ? (
@@ -220,6 +223,9 @@ export default function CircleHubScreen() {
           </Text>
         </Card>
       ) : null}
+
+      {/* Today, together — the shared daily devotional hero */}
+      <DailyTogetherCard code={code} accent={accent} members={members} myId={profile.memberId} />
 
       {/* Invite — foregrounded only while the circle is still small */}
       {members.length <= 2 ? (
@@ -1159,6 +1165,49 @@ const GOAL_KINDS: { kind: CircleGoal['kind']; label: string; hasTarget: boolean 
   { kind: 'sharedVerses', label: 'All shared verses', hasTarget: false },
   { kind: 'streak', label: 'N-day streak', hasTarget: true },
 ];
+
+/** Choose the circle's shared reading plan — it auto-advances by date, and today's
+ *  portion appears in the "Today, together" hero (unless a member overrides it). */
+function CircleReadingPlanCard({ code }: { code: string }) {
+  const { colors } = useTheme();
+  const circle = useCircle(code);
+  const setCircleReadingPlan = useStore((s) => s.setCircleReadingPlan);
+  const planId = circle?.meta?.readingPlanId ?? null;
+  const startedAt = circle?.meta?.readingPlanStartedAt ?? null;
+  const portion = useMemo(() => planPortionForDate(planId, startedAt, dayKey()), [planId, startedAt]);
+
+  return (
+    <Card style={{ gap: spacing.sm }}>
+      <SectionTitle style={{ marginBottom: 0 }}>Shared reading plan</SectionTitle>
+      <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+        Walk the Word together — the plan advances a day at a time and shows up in “Today, together”.
+      </Text>
+      <View style={{ gap: spacing.sm }}>
+        {READING_PLANS.map((p) => {
+          const active = planId === p.id;
+          return (
+            <Pressable
+              key={p.id}
+              onPress={() => setCircleReadingPlan(code, active ? null : p.id)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, borderRadius: radius.md, borderWidth: 1.5, borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.primarySoft : 'transparent' }}
+            >
+              <Ionicons name={active ? 'checkmark-circle' : 'ellipse-outline'} size={20} color={active ? colors.primary : colors.textFaint} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.sm }}>{p.title}</Text>
+                <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{p.description}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+      {portion ? (
+        <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs }}>
+          Today is day {portion.dayNumber} of {portion.total}: {portion.refs.join(' · ')}
+        </Text>
+      ) : null}
+    </Card>
+  );
+}
 
 function GoalCard({ code }: { code: string }) {
   const { colors } = useTheme();
