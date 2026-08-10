@@ -57,12 +57,15 @@ export interface Env {
   AI?: WorkersAiLike;
   /** Vectorize index of KJV verse embeddings (optional; /search 501 without it). */
   VECTORIZE?: VectorizeLike;
+  VECTORIZE_SONGS?: VectorizeLike;
   /** Genius API token for song search/metadata (optional; /genius 501 without it). */
   GENIUS_ACCESS_TOKEN?: string;
 }
 
-/** Embedding model for semantic search — must match the Vectorize index dims (768). */
+/** Embedding model for scripture semantic search — must match the Vectorize index dims (768). */
 const EMBED_MODEL = '@cf/baai/bge-base-en-v1.5';
+/** Multilingual embedding model for song search (Tamil + English) — index dims 1024. */
+const SONG_EMBED_MODEL = '@cf/baai/bge-m3';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -1289,28 +1292,33 @@ them.</p>
 // ===========================================================================
 
 async function handleSearch(request: Request, env: Env): Promise<Response> {
-  if (!env.AI || !env.VECTORIZE) {
-    return json({ error: 'Semantic search is not configured on this server yet.', results: [] }, 501);
-  }
-  const body = (await request.json().catch(() => ({}))) as { query?: unknown; topK?: unknown };
+  const body = (await request.json().catch(() => ({}))) as { query?: unknown; topK?: unknown; kind?: unknown };
+  const kind = body.kind === 'songs' ? 'songs' : 'scripture';
   const query = typeof body.query === 'string' ? body.query.trim().slice(0, 200) : '';
   if (query.length < 2) return json({ results: [] });
 
-  const cacheKey = env.ENGRAVED_KV ? `search:${query.toLowerCase()}` : null;
+  // Songs use a multilingual model (Tamil + English) + their own index.
+  const model = kind === 'songs' ? SONG_EMBED_MODEL : EMBED_MODEL;
+  const index = kind === 'songs' ? env.VECTORIZE_SONGS : env.VECTORIZE;
+  if (!env.AI || !index) {
+    return json({ error: `Semantic ${kind} search is not configured on this server yet.`, results: [] }, 501);
+  }
+
+  const cacheKey = env.ENGRAVED_KV ? `search:${kind}:${query.toLowerCase()}` : null;
   if (cacheKey) {
     const cached = await kvGetJson<{ results: unknown[] }>(env.ENGRAVED_KV!, cacheKey);
     if (cached) return json(cached);
   }
 
-  const embed = await env.AI.run(EMBED_MODEL, { text: [query] });
+  const embed = await env.AI.run(model, { text: [query] });
   const vector = embed?.data?.[0];
   if (!vector) return json({ results: [] });
 
   const topK = Math.min(Math.max(Number(body.topK) || 20, 1), 20);
-  const res = await env.VECTORIZE.query(vector, { topK, returnMetadata: true });
-  const results = (res.matches || [])
-    .map((m) => ({ reference: String(m.metadata?.ref ?? ''), score: m.score }))
-    .filter((r) => r.reference);
+  const res = await index.query(vector, { topK, returnMetadata: true });
+  const results = kind === 'songs'
+    ? (res.matches || []).map((m) => ({ id: String(m.metadata?.id ?? m.id ?? ''), score: m.score })).filter((r) => r.id)
+    : (res.matches || []).map((m) => ({ reference: String(m.metadata?.ref ?? ''), score: m.score })).filter((r) => r.reference);
 
   const out = { results };
   if (cacheKey) await kvPutJson(env.ENGRAVED_KV!, cacheKey, out);

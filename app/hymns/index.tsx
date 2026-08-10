@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, TextInput, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -7,19 +7,39 @@ import { Ionicons } from '@expo/vector-icons';
 import { Header } from '@/components/layout';
 import { Card } from '@/components/ui';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { HYMNS, searchHymns, type Hymn } from '@/data/hymns';
+import { HYMNS, type Hymn } from '@/data/hymns';
+import { searchSongbook } from '@/data/songSearch';
+import { useStore } from '@/store/useStore';
 import { EmberTip } from '@/components/EmberGuide';
 
 export default function HymnsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  const serverUrl = useStore((s) => s.settings.serverUrl);
   const [query, setQuery] = useState('');
   const [lang, setLang] = useState<'all' | 'en' | 'ta'>('all');
+  const [base, setBase] = useState<Hymn[]>(HYMNS);
+  const [semantic, setSemantic] = useState(false);
   const hasTamil = useMemo(() => HYMNS.some((h) => h.language === 'ta'), []);
-  const results = useMemo(() => {
-    const base = searchHymns(query);
-    return lang === 'all' ? base : base.filter((h) => (h.language ?? 'en') === lang);
-  }, [query, lang]);
+
+  // Meaning-based search (online, Tamil+English) with an offline keyword fallback.
+  // Debounced so we don't fire a request on every keystroke.
+  useEffect(() => {
+    let active = true;
+    const t = setTimeout(() => {
+      searchSongbook(query, { serverUrl }).then((r) => {
+        if (!active) return;
+        setBase(r.results);
+        setSemantic(r.source === 'semantic');
+      });
+    }, query.trim().length >= 2 ? 300 : 0);
+    return () => { active = false; clearTimeout(t); };
+  }, [query, serverUrl]);
+
+  const results = useMemo(
+    () => (lang === 'all' ? base : base.filter((h) => (h.language ?? 'en') === lang)),
+    [base, lang],
+  );
 
   const renderItem = ({ item: h }: { item: Hymn }) => (
     <Pressable

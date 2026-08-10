@@ -35,3 +35,13 @@ binding = "AI"
 [[vectorize]]
 binding = "VECTORIZE"
 index_name = "kjv-bge-base"
+
+# Song semantic search (optional; Tamil + English via the multilingual bge-m3, 1024 dims).
+# 1) npx wrangler vectorize create songs-bge-m3 --dimensions=1024 --metric=cosine
+# 2) node scripts/build-songs.mjs   (build the bundled songs first)
+# 3) node server/scripts/populate-songs.mjs   (embed them; needs CF_ACCOUNT_ID + CF_API_TOKEN)
+# Until populated, POST /search {kind:'songs'} returns nothing and the app uses
+# its offline keyword song search instead.
+[[vectorize]]
+binding = "VECTORIZE_SONGS"
+index_name = "songs-bge-m3"
