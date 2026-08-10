@@ -75,6 +75,18 @@ export default function PersonalSpaceScreen() {
         <Button title="New reflection" icon={<Ionicons name="create-outline" size={18} color={colors.onPrimary} />} onPress={() => setWriting(true)} />
       )}
 
+      {/* Notes — the writing workspace (block editor: journal, study, sermons, articles) */}
+      <Card onPress={() => router.push('/notes')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft }}>
+          <Ionicons name="create-outline" size={20} color={colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>Notes & writing</Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>A real editor — study notes, sermon prep, articles, with inline verses</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+      </Card>
+
       {/* Daily journal — the heart of the private space */}
       <Card onPress={() => router.push('/journal')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
         <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft }}>
