@@ -398,6 +398,90 @@ export type Circle = CircleSnapshot & {
   lastSyncedAt: number | null;
 };
 
+// ===========================================================================
+// Notes / Writing — the block-document model (the Notion/Evernote pillar).
+// One document type unifies journal, study notes, verse notes, topics, and
+// long-form (sermon/article). Everything is a Doc of Blocks; inline Scripture
+// references stay linkable (rendered via linkifyReferences); blocks carry the
+// structure (headings, lists, todo, quote, callout, toggle, divider).
+// ===========================================================================
+
+export type BlockType =
+  | 'paragraph'
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'bulleted'
+  | 'numbered'
+  | 'todo'
+  | 'quote'
+  | 'callout'
+  | 'toggle'
+  | 'divider';
+
+/**
+ * One block in a document. `text` is plain text with two rendered layers on top:
+ * inline Scripture references (auto-linked → peekable) and lightweight inline
+ * marks (`**bold**`, `*italic*`) rendered in read mode. Block-type props:
+ * `checked` (todo), `collapsed` + `detail` (toggle body).
+ */
+export interface Block {
+  id: string;
+  type: BlockType;
+  text: string;
+  /** todo: whether it's checked. */
+  checked?: boolean;
+  /** toggle: whether the detail is hidden. */
+  collapsed?: boolean;
+  /** toggle: the collapsible body text (rendered like a paragraph). */
+  detail?: string;
+}
+
+/** What a document *is* — drives its template, icon, and where it surfaces. */
+export type DocType =
+  | 'journal'   // a dated daily entry (day set)
+  | 'study'     // notes on a passage/study
+  | 'verse'     // notes anchored to a single reference
+  | 'topic'     // a study thread: collected verses + writing
+  | 'sermon'    // long-form message/sermon prep
+  | 'article'   // long-form article/teaching
+  | 'note';     // a free note
+
+/**
+ * A single document — the one unit that replaces the old journal-entry,
+ * topic-reflection, per-verse-note, and application silos. Holds a title, an
+ * ordered list of blocks, tags, and a derived list of referenced verses (for
+ * backlinks / "notes on this verse").
+ */
+export interface Doc {
+  id: string;
+  type: DocType;
+  title: string;
+  blocks: Block[];
+  /** Free-form tags for organization/search. */
+  tags: string[];
+  /** Scripture references this doc links to (derived from blocks + anchor). */
+  refs: string[];
+  /** Optional folder/notebook id for grouping. */
+  folderId?: string | null;
+  /** journal docs: the local day key (YYYY-MM-DD) this entry belongs to. */
+  day?: string;
+  /** verse/study docs: the reference/passage this doc is anchored to. */
+  anchorRef?: string;
+  /** Whether this doc has been shared to the partner/circle (default private). */
+  shared?: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A notebook/folder for grouping documents. */
+export interface Folder {
+  id: string;
+  name: string;
+  emoji?: string;
+  createdAt: number;
+}
+
 // ---- Custom study topics (tag-as-you-read) --------------------------------
 
 /** One verse tagged into a topic, with an optional "why this fits" note. */
