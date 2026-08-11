@@ -13,7 +13,7 @@ import { transposeKey } from '@/utils/chords';
 import { useStore, useSongbook } from '@/store/useStore';
 import { fetchVersesForSong } from '@/data/aiClient';
 import { validateReferences } from '@/data/books';
-import { dayKey } from '@/utils/date';
+import { AssetActions } from '@/components/AssetActions';
 
 export default function SongScreen() {
   const { colors } = useTheme();
@@ -26,9 +26,7 @@ export default function SongScreen() {
   const serverUrl = useStore((s) => s.settings.serverUrl);
   const toggleFavoriteSong = useStore((s) => s.toggleFavoriteSong);
   const deleteSong = useStore((s) => s.deleteSong);
-  const completeWalkMovement = useStore((s) => s.completeWalkMovement);
-  const shareDailyItem = useStore((s) => s.shareDailyItem);
-  const circleCodes = useStore((s) => Object.keys(s.circles));
+  const addLogEntry = useStore((s) => s.addLogEntry);
 
   const [steps, setSteps] = useState(0);
   const [peek, setPeek] = useState<string | null>(null);
@@ -53,16 +51,11 @@ export default function SongScreen() {
     }
   };
 
-  /**
-   * "Sing this today" — credits the worship movement of today's walk and, when
-   * they have a partner, puts the song in today's shared window so the other
-   * can sing it too.
-   */
+  /** "Sang this today" — the song goes into today's log, where your partner sees it. */
   const singToday = () => {
     if (!song) return;
-    completeWalkMovement('worship');
+    addLogEntry({ kind: 'song', assetId: song.id, title: song.title });
     setSung(true);
-    for (const code of circleCodes) void shareDailyItem(code, dayKey(), 'song', song.id);
   };
 
   const confirmDelete = () => {
@@ -116,17 +109,13 @@ export default function SongScreen() {
 
       {/* Sing it today — the worship movement of the daily walk. */}
       <Button
-        title={sung ? 'Sung today ✓' : 'Sing this today'}
+        title={sung ? 'In today’s log ✓' : 'Sang this today'}
         variant={sung ? 'secondary' : 'primary'}
         disabled={sung}
         icon={<Ionicons name="musical-notes" size={18} color={sung ? colors.text : colors.onPrimary} />}
         onPress={singToday}
       />
-      {sung && circleCodes.length > 0 ? (
-        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, textAlign: 'center', marginTop: -spacing.sm }}>
-          Added to today’s walk, and shared to your devotion window.
-        </Text>
-      ) : null}
+      <AssetActions asset={{ kind: 'song', assetId: song.id, title: song.title }} />
 
       {/* Key + transpose (only when there are chords to transpose) */}
       {hasChords ? (

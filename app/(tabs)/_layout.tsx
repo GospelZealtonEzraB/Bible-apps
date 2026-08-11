@@ -37,11 +37,11 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="together"
+        name="chat"
         options={{
-          title: 'Together',
+          title: 'Chat',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people-outline" color={color} size={size} />
+            <Ionicons name="chatbubbles-outline" color={color} size={size} />
           ),
         }}
       />
@@ -51,15 +51,6 @@ export default function TabsLayout() {
           title: 'Library',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="library-outline" color={color} size={size} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="add"
-        options={{
-          title: 'Add',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="add-circle-outline" color={color} size={size} />
           ),
         }}
       />

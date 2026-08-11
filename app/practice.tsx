@@ -79,7 +79,7 @@ export default function ReviewScreen() {
             Review complete!
           </Text>
           <Text style={{ color: colors.textMuted, textAlign: 'center', maxWidth: 300 }}>
-            {`You reviewed ${queue.length} verse${queue.length === 1 ? '' : 's'}. Streak: ${stats.streak} day${stats.streak === 1 ? '' : 's'} 🔥`}
+            {`You reviewed ${queue.length} verse${queue.length === 1 ? '' : 's'}. Well done.`}
           </Text>
           <Button title="Done" onPress={close} style={{ marginTop: spacing.sm }} />
         </View>

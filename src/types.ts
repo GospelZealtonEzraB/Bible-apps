@@ -37,43 +37,14 @@ export interface Verse {
 }
 
 export interface Stats {
-  /** Consecutive days with at least one review/drill. */
-  streak: number;
-  /** Day key (YYYY-MM-DD) of the most recent active day. */
+  /** Day key (YYYY-MM-DD) of the most recent day a verse was reviewed. */
   lastActiveDay: string | null;
   /** Target number of reviews per day. */
   dailyGoal: number;
   /** Reviews completed on `lastActiveDay`. */
   reviewsToday: number;
-  /** Longest streak ever reached. */
-  bestStreak: number;
-  /** Total experience points earned. */
-  xp: number;
-  /** "Streak freeze" tokens that protect a streak across a missed day. */
-  graceTokens: number;
-  /** Ids of badges the user has earned. */
-  earnedBadges: string[];
-  /** Count of 100%-accuracy recitations (drives the Word-Perfect badge). */
-  perfectRecitations: number;
-  /** Count of reviews completed before 7am (drives the Early Light badge). */
-  earlyReviews: number;
-  /** Today's quest counters (reset when the day changes). */
-  daily: DailyProgress;
 }
 
-export interface DailyProgress {
-  /** Day key (YYYY-MM-DD) these counters belong to. */
-  day: string;
-  reviews: number;
-  drills: number;
-  /** Drills scored 90%+ today. */
-  perfect: number;
-  added: number;
-  /** Whether the all-quests-complete bonus was already awarded today. */
-  questBonusClaimed: boolean;
-}
-
-/** Local anonymous identity for Growing Together (no accounts — see identity seam). */
 export interface Profile {
   /** Stable device-minted id; the authoritative writer id for shared data. */
   memberId: string;
@@ -165,19 +136,27 @@ export interface CircleMember {
   id: string;
   displayName: string;
   memorizedCount: number;
-  streak: number;
   versesDone: string[];
   planDone: string[];
   /** Deduped references this member has memorized (empty if they opt out). */
   memorizedRefs?: string[];
   /** References currently in progress (learning/reviewing). */
   learningRefs?: string[];
-  bestStreak?: number;
-  xp?: number;
-  /** Rolling last-10 events for the shared activity feed. */
-  recentActivity?: Activity[];
   lastActiveDay: string | null;
-  lastActivity?: Activity | null;
+  updatedAt: number;
+}
+
+/**
+ * What a partner publishes for the other to look through: their notes, the
+ * songs they've starred, and the topics they're gathering. Private items never
+ * make it into a shelf — it is built from public items only.
+ */
+export interface MemberShelf {
+  memberId: string;
+  displayName: string;
+  notes: Doc[];
+  songs: { id: string; title: string; author?: string }[];
+  topics: { id: string; title: string; refs: string[] }[];
   updatedAt: number;
 }
 
@@ -373,8 +352,10 @@ export interface CircleSnapshot {
   messages?: Message[];
   /** Reactions grouped by "{targetType}:{targetId}" (prayer/note/message). */
   reactions?: Record<string, Reaction[]>;
-  /** Recent shared-devotional days, keyed by day (YYYY-MM-DD). The viewer picks "today". */
-  daily?: Record<string, CircleDailyDay>;
+  /** Each member's recent daily-log entries, keyed by memberId then entry id. */
+  logs?: Record<string, Log>;
+  /** Each member's published shelf (notes, favourite songs, topics), by memberId. */
+  shelves?: Record<string, MemberShelf>;
 }
 
 /** One member's shared reflection on a circle's daily. */
@@ -474,15 +455,44 @@ export interface Block {
   detail?: string;
 }
 
-/** What a document *is* — drives its template, icon, and where it surfaces. */
+/** The kinds of thing that can land in a daily log. */
+export type LogKind = 'verse' | 'passage' | 'note' | 'song' | 'teaching' | 'topic' | 'text';
+
+/**
+ * One entry in the daily log — a dated pointer to something you did with God.
+ * `ref` carries Scripture kinds; `assetId` carries note/song/teaching/topic ids;
+ * `text` is either a free line (kind 'text') or an optional aside on any entry.
+ * Entries are visible to your covenant partner unless `private` is set.
+ */
+export interface LogEntry {
+  id: string;
+  /** Local day key, YYYY-MM-DD. */
+  day: string;
+  kind: LogKind;
+  /** Scripture reference, for 'verse' and 'passage' entries. */
+  ref?: string;
+  /** Id of the note / song / teaching / topic this points at. */
+  assetId?: string;
+  /** Display title captured at log time, so the entry reads well even if the asset changes. */
+  title?: string;
+  /** A free line, or a short aside on an asset entry. */
+  text?: string;
+  /** Kept off your partner's view. */
+  private?: boolean;
+  createdAt: number;
+}
+
+export type Log = Record<string, LogEntry>;
+
+/**
+ * What a document *is*. Three kinds only — the journal / verse-note / topic /
+ * article silos were folded into plain notes by the simplification, and any
+ * legacy value is coerced to 'note' on hydration (`normalizeDocType`).
+ */
 export type DocType =
-  | 'journal'   // a dated daily entry (day set)
-  | 'study'     // notes on a passage/study
-  | 'verse'     // notes anchored to a single reference
-  | 'topic'     // a study thread: collected verses + writing
-  | 'sermon'    // long-form message/sermon prep
-  | 'article'   // long-form article/teaching
-  | 'note';     // a free note
+  | 'note'      // anything you write (optionally anchored to a reference)
+  | 'study'     // saved output of a passage study
+  | 'sermon';   // teaching notes from a message
 
 /**
  * A single document — the one unit that replaces the old journal-entry,
@@ -499,25 +509,15 @@ export interface Doc {
   tags: string[];
   /** Scripture references this doc links to (derived from blocks + anchor). */
   refs: string[];
-  /** Optional folder/notebook id for grouping. */
-  folderId?: string | null;
-  /** journal docs: the local day key (YYYY-MM-DD) this entry belongs to. */
-  day?: string;
-  /** verse/study docs: the reference/passage this doc is anchored to. */
+  /** The reference/passage this doc is anchored to, when it has one. */
   anchorRef?: string;
-  /** Whether this doc has been shared to the partner/circle (default private). */
-  shared?: boolean;
+  /** Kept off your partner's shelf when true. */
+  private?: boolean;
   createdAt: number;
   updatedAt: number;
 }
 
 /** A notebook/folder for grouping documents. */
-export interface Folder {
-  id: string;
-  name: string;
-  emoji?: string;
-  createdAt: number;
-}
 
 // ---- Custom study topics (tag-as-you-read) --------------------------------
 
@@ -525,39 +525,24 @@ export interface Folder {
 export interface TopicEntry {
   /** Canonical display reference, e.g. "1 Thessalonians 4:16". */
   ref: string;
-  /** Optional insight: why this verse belongs in the topic. */
-  note?: string;
   addedAt: number;
 }
 
-/** A free-form thought / journal entry / draft block inside a topic workspace. */
-export interface TopicReflection {
-  /** Stable local id (`r_…`). */
-  id: string;
-  text: string;
-  updatedAt: number;
-}
-
 /**
- * A user-named study collection ("The Rapture", "Grace", "Names of God") that
- * doubles as a workspace: collect verses AND record your own thoughts, then
- * compose it into a message / article / journal entry. Private (Personal Space)
- * in this phase; shares to a circle come later.
+ * A named tag over verses — "The Rapture", "Grace", "Names of God". Nothing but
+ * a title and the references gathered under it; writing lives in Notes.
  */
 export interface Topic {
   /** Stable local id (`t_…`). */
   id: string;
   title: string;
-  description?: string;
   /** Verses tagged into this topic (newest first as stored). */
   entries: TopicEntry[];
-  /** Free-form thoughts / journal / draft blocks (ordered). */
-  reflections?: TopicReflection[];
   createdAt: number;
   updatedAt: number;
 }
 
-/** A note captured during the day (often while reading), attached to a journal day. */
+/** LEGACY (migration only — the journal was retired). A note captured during the day (often while reading), attached to a journal day. */
 export interface JournalNote {
   /** Stable local id (`jn_…`). */
   id: string;
@@ -619,6 +604,4 @@ export interface Settings {
   shareLibrary: boolean;
   /** Has the first-run onboarding flow been completed (or skipped)? */
   onboarded: boolean;
-  /** Ordered movement keys for the composable Abide quiet-time flow. */
-  abideRhythm?: string[];
 }

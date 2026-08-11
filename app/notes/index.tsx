@@ -13,23 +13,16 @@ import { relativeTimeAgo } from '@/utils/date';
 import type { Doc, DocType } from '@/types';
 
 const TYPE_ICON: Record<DocType, keyof typeof Ionicons.glyphMap> = {
-  journal: 'book-outline',
-  study: 'sparkles-outline',
-  verse: 'bookmark-outline',
-  topic: 'pricetag-outline',
-  sermon: 'mic-outline',
-  article: 'newspaper-outline',
   note: 'document-text-outline',
+  study: 'sparkles-outline',
+  sermon: 'mic-outline',
 };
 
 const FILTERS: { key: DocType | 'all'; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'note', label: 'Notes' },
-  { key: 'journal', label: 'Journal' },
   { key: 'study', label: 'Study' },
-  { key: 'sermon', label: 'Sermons' },
-  { key: 'article', label: 'Articles' },
-  { key: 'topic', label: 'Topics' },
+  { key: 'sermon', label: 'Teachings' },
 ];
 
 export default function NotesScreen() {
@@ -69,7 +62,7 @@ export default function NotesScreen() {
           <Text numberOfLines={1} style={{ flex: 1, color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>
             {d.title.trim() || 'Untitled'}
           </Text>
-          {d.shared ? <Ionicons name="people" size={13} color={colors.primary} /> : null}
+          {d.private ? <Ionicons name="people" size={13} color={colors.primary} /> : null}
         </View>
         {docPreview(d) ? (
           <Text numberOfLines={2} style={{ color: colors.textMuted, fontSize: font.sizes.sm, lineHeight: 20, marginTop: 2 }}>{docPreview(d)}</Text>

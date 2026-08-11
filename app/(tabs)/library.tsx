@@ -6,17 +6,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Screen, Header } from '@/components/layout';
 import { Card, Chip, StatusBadge, EmptyState, Button } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
-import { JourneyMap } from '@/components/JourneyMap';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useVerseList, useStore, useSongbook, useDocList } from '@/store/useStore';
-import { allSongs } from '@/data/songbook';
-import { EmberTip } from '@/components/EmberGuide';
+import { useVerseList, useStore, useSongbook, useDocList, useTopicList } from '@/store/useStore';
 import { usePaged, PageMore } from '@/components/Paginated';
+import { allSongs } from '@/data/songbook';
 import { isDue } from '@/srs/sm2';
 import { relativeDueLabel } from '@/utils/date';
 import type { Verse } from '@/types';
-
-type ViewMode = 'list' | 'journey';
 
 type Filter = 'all' | 'due' | 'learning' | 'memorized';
 
@@ -27,18 +23,28 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: 'memorized', label: 'Memorized' },
 ];
 
+/**
+ * Library — everything that's yours: the verses you're hiding in your heart,
+ * your notes, your topics, your songbook, your saved teachings, and one place
+ * to practise. Your partner can look through all of it except what you've
+ * marked private.
+ */
 export default function LibraryScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const verses = useVerseList();
   const removeVerse = useStore((s) => s.removeVerse);
-  const [filter, setFilter] = useState<Filter>('all');
   const songbook = useSongbook();
-  const songCount = useMemo(() => allSongs(songbook).length, [songbook]);
+  const notes = useDocList({ type: 'note' });
+  const studies = useDocList({ type: 'study' });
   const teachings = useDocList({ type: 'sermon' });
-  const [view, setView] = useState<ViewMode>('list');
+  const topics = useTopicList();
 
-  const openVerse = (id: string) => router.push(`/verse/${encodeURIComponent(id)}`);
+  const [filter, setFilter] = useState<Filter>('all');
+
+  const songCount = useMemo(() => allSongs(songbook).length, [songbook]);
+  const dueCount = useMemo(() => verses.filter((v) => isDue(v.srs)).length, [verses]);
+  const noteCount = notes.length + studies.length;
 
   const filtered = useMemo(() => {
     switch (filter) {
@@ -64,148 +70,94 @@ export default function LibraryScreen() {
 
   return (
     <Screen>
-      <Header
-        title="Library"
-        subtitle={`${verses.length} verse${verses.length === 1 ? '' : 's'} saved`}
-        right={
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <Pressable
-              onPress={() => router.push('/topics')}
-              hitSlop={12}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt }}
-            >
-              <Ionicons name="pricetag-outline" size={16} color={colors.warning} />
-              <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.sm }}>Topics</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => router.push('/quiz')}
-              hitSlop={12}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 8, paddingHorizontal: spacing.md, borderRadius: radius.pill, backgroundColor: colors.primarySoft }}
-            >
-              <Ionicons name="game-controller-outline" size={16} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>Quiz</Text>
-            </Pressable>
+      <Header title="Library" subtitle="Everything that's yours" />
+
+      {/* The shelves */}
+      <View style={{ gap: spacing.sm }}>
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <Shelf
+            icon="document-text-outline"
+            color={colors.success}
+            title="Notes"
+            subtitle={noteCount ? `${noteCount} saved` : 'Write anything'}
+            onPress={() => router.push('/notes')}
+          />
+          <Shelf
+            icon="pricetag-outline"
+            color={colors.warning}
+            title="Topics"
+            subtitle={topics.length ? `${topics.length} tags` : 'Group verses'}
+            onPress={() => router.push('/topics')}
+          />
+        </View>
+        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+          <Shelf
+            icon="musical-notes-outline"
+            color={colors.accent}
+            title="Songbook"
+            subtitle={`${songCount} songs`}
+            onPress={() => router.push('/songbook')}
+          />
+          <Shelf
+            icon="mic-outline"
+            color={colors.primary}
+            title="Teachings"
+            subtitle={teachings.length ? `${teachings.length} saved` : 'From a message'}
+            onPress={() => (teachings.length ? router.push('/notes?type=sermon') : router.push('/sermon'))}
+          />
+        </View>
+      </View>
+
+      {/* Practice — the one place review and the game modes live */}
+      <Pressable onPress={() => router.push('/practice')}>
+        <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+          <View style={{ width: 42, height: 42, borderRadius: 21, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="repeat" size={20} color={colors.primary} />
           </View>
-        }
-      />
-
-      <EmberTip topic="memorize" />
-
-      {/* Worship & teaching — the shelf beside the memory work. */}
-      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-        <ShelfCard
-          icon="musical-notes"
-          color={colors.accent}
-          title="Songbook"
-          subtitle={`${songCount} songs · lyrics & chords`}
-          onPress={() => router.push('/songbook')}
-        />
-        <ShelfCard
-          icon="mic"
-          color={colors.primary}
-          title="Teachings"
-          subtitle={teachings.length ? `${teachings.length} saved` : 'Notes from a message'}
-          onPress={() => (teachings.length ? router.push('/notes?type=sermon') : router.push('/sermon'))}
-        />
-      </View>
-
-      {/* List / Journey toggle */}
-      <View
-        style={{
-          flexDirection: 'row',
-          backgroundColor: colors.surfaceAlt,
-          borderRadius: radius.pill,
-          padding: 4,
-        }}
-      >
-        {(['list', 'journey'] as ViewMode[]).map((m) => (
-          <Pressable
-            key={m}
-            onPress={() => setView(m)}
-            style={{
-              flex: 1,
-              paddingVertical: spacing.sm,
-              borderRadius: radius.pill,
-              alignItems: 'center',
-              backgroundColor: view === m ? colors.primary : 'transparent',
-            }}
-          >
-            <Text style={{ color: view === m ? colors.onPrimary : colors.textMuted, fontWeight: '700' }}>
-              {m === 'list' ? 'List' : 'Journey'}
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>Practice</Text>
+            <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>
+              {dueCount > 0 ? `${dueCount} due now` : 'Nothing due — practise anyway'}
             </Text>
-          </Pressable>
-        ))}
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
+        </Card>
+      </Pressable>
+
+      {/* The verses themselves */}
+      <View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+          {FILTERS.map((f) => (
+            <Chip key={f.key} label={f.label} active={filter === f.key} onPress={() => setFilter(f.key)} />
+          ))}
+        </ScrollView>
       </View>
 
-      {view === 'journey' ? (
-        verses.length === 0 ? (
-          <Card>
-            <EmptyState
-              emoji="🗺️"
-              title="Your journey starts here"
-              subtitle="Add verses and watch them climb the path as you master them."
-              action={<Button title="Add a verse" onPress={() => router.push('/add')} />}
-            />
-          </Card>
-        ) : (
-          <JourneyMap verses={[...verses].reverse()} onSelect={openVerse} />
-        )
-      ) : (
-        <>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: spacing.sm }}
-          >
-            {FILTERS.map((f) => (
-              <Chip
-                key={f.key}
-                label={f.label}
-                active={filter === f.key}
-                onPress={() => setFilter(f.key)}
-              />
-            ))}
-          </ScrollView>
-
-          {filtered.length === 0 ? (
+      {filtered.length === 0 ? (
         <Card>
           <EmptyState
             emoji={verses.length === 0 ? '📖' : '🔍'}
-            title={verses.length === 0 ? 'Your library is empty' : 'Nothing here yet'}
+            title={verses.length === 0 ? 'No verses yet' : 'Nothing here'}
             subtitle={
               verses.length === 0
-                ? 'Add verses to start building your memory collection.'
+                ? 'Find a verse while you read and tap “Memorize this verse”.'
                 : 'No verses match this filter.'
             }
-            action={
-              verses.length === 0 ? (
-                <Button title="Add a verse" onPress={() => router.push('/add')} />
-              ) : undefined
-            }
+            action={verses.length === 0 ? <Button title="Open the Bible" onPress={() => router.push('/read')} /> : undefined}
           />
         </Card>
       ) : (
         <View style={{ gap: spacing.sm }}>
           {versePage.shown.map((v) => (
-            <Card
-              key={v.id}
-              onPress={() => router.push(`/verse/${encodeURIComponent(v.id)}`)}
-              style={{ paddingVertical: spacing.md }}
-            >
+            <Card key={v.id} onPress={() => router.push(`/verse/${encodeURIComponent(v.id)}`)} style={{ paddingVertical: spacing.md }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
                 <ProgressRing progress={v.mastery} size={46} stroke={5} label={`${v.mastery}`} />
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }}>
-                    {v.reference}
-                  </Text>
-                  <Text numberOfLines={2} style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>
-                    {v.text}
-                  </Text>
+                  <Text style={{ color: colors.text, fontWeight: '700', fontSize: font.sizes.md }}>{v.reference}</Text>
+                  <Text numberOfLines={2} style={{ color: colors.textMuted, fontSize: font.sizes.sm }}>{v.text}</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 6 }}>
                     <StatusBadge status={v.status} />
-                    <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
-                      {relativeDueLabel(v.srs.dueDate)}
-                    </Text>
+                    <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>{relativeDueLabel(v.srs.dueDate)}</Text>
                   </View>
                 </View>
                 <Pressable onPress={() => confirmDelete(v)} hitSlop={10} style={{ padding: 4 }}>
@@ -216,15 +168,13 @@ export default function LibraryScreen() {
           ))}
           <PageMore remaining={versePage.remaining} step={25} onPress={versePage.showMore} noun="more verses" />
         </View>
-          )}
-        </>
       )}
     </Screen>
   );
 }
 
-/** A shelf tile — worship and teaching, side by side above the verse list. */
-function ShelfCard({
+/** One shelf tile in the library's top grid. */
+function Shelf({
   icon,
   color,
   title,

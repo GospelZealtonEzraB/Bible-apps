@@ -7,8 +7,8 @@ import * as Speech from 'expo-speech';
 import { Screen, Header } from '@/components/layout';
 import { Card, StatusBadge, Button, SectionTitle, EmptyState } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
-import { VerseNotes } from '@/components/VerseNotes';
-import { VerseCircleNotes } from '@/components/VerseCircleNotes';
+import { VerseDocs } from '@/components/VerseDocs';
+import { AssetActions } from '@/components/AssetActions';
 import { CrossRefs } from '@/components/CrossRefs';
 import { RefText } from '@/components/RefText';
 import { useTheme, spacing, font, radius } from '@/theme';
@@ -163,11 +163,11 @@ export default function VerseDetailScreen() {
         </View>
       </Card>
 
+      <AssetActions asset={{ kind: 'verse', ref: verse.reference, title: verse.reference, text: verse.text }} />
+
       <CrossRefs reference={verse.reference} />
 
-      <VerseNotes reference={verse.reference} />
-
-      <VerseCircleNotes reference={verse.reference} />
+      <VerseDocs reference={verse.reference} />
 
       {/* AI insights */}
       <View>

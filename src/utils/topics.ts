@@ -1,9 +1,11 @@
 /**
- * Pure reducers + derivations for Custom Study Topics (tag-as-you-read).
- * Kept UI-free and side-effect-free so they can be unit-tested; the store's
- * topic actions are thin wrappers over these.
+ * Study topics — named tags over verses.
+ *
+ * A topic is nothing but a title and the references gathered under it ("Grace",
+ * "Names of God", "The Rapture"). Writing lives in Notes; this file only groups
+ * Scripture. Pure and UI-free, so the store's topic actions are thin wrappers.
  */
-import type { Topic, TopicEntry, TopicReflection } from '@/types';
+import type { Topic, TopicEntry } from '@/types';
 import { normalizeKey } from '@/data/bibleApi';
 import { parseReference } from '@/data/books';
 
@@ -22,45 +24,19 @@ export function topicHasRef(topic: Topic, ref: string): boolean {
   return (topic.entries ?? []).some((e) => normalizeKey(e.ref) === key);
 }
 
-/**
- * Add a verse to a topic (deduped by normalized reference). If it's already
- * present, only the note is updated (when a non-empty note is supplied) — never
- * a duplicate row. Returns a new Topic (immutable); stamps `updatedAt`.
- */
-export function addEntry(topic: Topic, ref: string, note: string | undefined, now: number): Topic {
-  const key = normalizeKey(ref);
-  const trimmedNote = note?.trim() || undefined;
-  const entries = topic.entries ?? [];
-  const exists = entries.some((e) => normalizeKey(e.ref) === key);
-  if (exists) {
-    if (!trimmedNote) return topic; // nothing to change
-    return {
-      ...topic,
-      entries: entries.map((e) => (normalizeKey(e.ref) === key ? { ...e, note: trimmedNote } : e)),
-      updatedAt: now,
-    };
-  }
-  const entry: TopicEntry = { ref: ref.trim(), note: trimmedNote, addedAt: now };
-  return { ...topic, entries: [entry, ...entries], updatedAt: now };
+/** Tag a verse into a topic (deduped by normalized reference). */
+export function addEntry(topic: Topic, ref: string, now: number): Topic {
+  if (topicHasRef(topic, ref)) return topic;
+  const entry: TopicEntry = { ref: ref.trim(), addedAt: now };
+  return { ...topic, entries: [entry, ...(topic.entries ?? [])], updatedAt: now };
 }
 
-/** Remove a verse from a topic (by normalized reference). */
+/** Untag a verse from a topic (by normalized reference). */
 export function removeEntry(topic: Topic, ref: string, now: number): Topic {
   const key = normalizeKey(ref);
   const entries = (topic.entries ?? []).filter((e) => normalizeKey(e.ref) !== key);
   if (entries.length === (topic.entries ?? []).length) return topic;
   return { ...topic, entries, updatedAt: now };
-}
-
-/** Update just the "why this fits" note on an existing entry. */
-export function updateEntryNote(topic: Topic, ref: string, note: string, now: number): Topic {
-  const key = normalizeKey(ref);
-  const trimmed = note.trim() || undefined;
-  return {
-    ...topic,
-    entries: (topic.entries ?? []).map((e) => (normalizeKey(e.ref) === key ? { ...e, note: trimmed } : e)),
-    updatedAt: now,
-  };
 }
 
 /** Canonical sort key: [book, chapter, verse] so entries read in Bible order. */
@@ -92,74 +68,25 @@ export function topicsForRef(topics: Record<string, Topic>, ref: string): string
     .map((t) => t.id);
 }
 
-// ---- Workspace: free-form thoughts / journal / draft blocks ---------------
-
-/** Append a thought/journal block to a topic. No-op on empty text. */
-export function addReflection(topic: Topic, id: string, text: string, now: number): Topic {
-  const t = text.trim();
-  if (!t) return topic;
-  const reflection: TopicReflection = { id, text: t, updatedAt: now };
-  return { ...topic, reflections: [...(topic.reflections ?? []), reflection], updatedAt: now };
-}
-
-/** Edit a thought block. Empty text removes it (a natural "clear to delete"). */
-export function updateReflection(topic: Topic, id: string, text: string, now: number): Topic {
-  const t = text.trim();
-  if (!t) return removeReflection(topic, id, now);
-  return {
-    ...topic,
-    reflections: (topic.reflections ?? []).map((r) => (r.id === id ? { ...r, text: t, updatedAt: now } : r)),
-    updatedAt: now,
-  };
-}
-
-/** Remove a thought block. */
-export function removeReflection(topic: Topic, id: string, now: number): Topic {
-  const reflections = (topic.reflections ?? []).filter((r) => r.id !== id);
-  if (reflections.length === (topic.reflections ?? []).length) return topic;
-  return { ...topic, reflections, updatedAt: now };
-}
-
-/** Move a thought block up (dir=-1) or down (dir=+1) in the list. */
-export function moveReflection(topic: Topic, id: string, dir: -1 | 1, now: number): Topic {
-  const list = [...(topic.reflections ?? [])];
-  const i = list.findIndex((r) => r.id === id);
-  const j = i + dir;
-  if (i === -1 || j < 0 || j >= list.length) return topic;
-  [list[i], list[j]] = [list[j], list[i]];
-  return { ...topic, reflections: list, updatedAt: now };
-}
-
 /**
- * Assemble a topic into a single plain-text document for message prep, an
- * article, or a journal entry — title, description, your thoughts, then every
- * collected verse (reference + text via `hydrate` + your note). Non-throwing.
+ * Flatten a topic to shareable plain text — the title, then every collected
+ * verse (reference + text via `hydrate`). Used by "Share to chat" and export.
  */
-export function composeTopic(topic: Topic, hydrate: (ref: string) => string | null, order: TopicOrder = 'canonical'): string {
-  const lines: string[] = [];
-  lines.push(topic.title.trim() || 'Untitled topic');
-  if (topic.description?.trim()) lines.push('', topic.description.trim());
-
-  const reflections = topic.reflections ?? [];
-  if (reflections.length) {
-    lines.push('', 'THOUGHTS', '');
-    reflections.forEach((r, i) => {
-      lines.push(r.text.trim());
-      if (i < reflections.length - 1) lines.push('');
-    });
-  }
-
+export function composeTopic(
+  topic: Topic,
+  hydrate: (ref: string) => string | null,
+  order: TopicOrder = 'canonical',
+): string {
+  const lines: string[] = [topic.title.trim() || 'Untitled topic'];
   const entries = sortedEntries(topic, order);
   if (entries.length) {
-    lines.push('', 'VERSES', '');
+    lines.push('');
     for (const e of entries) {
       const text = hydrate(e.ref);
-      lines.push(`${e.ref}`);
+      lines.push(e.ref);
       if (text) lines.push(`  "${text}"`);
-      if (e.note?.trim()) lines.push(`  — ${e.note.trim()}`);
       lines.push('');
     }
   }
-
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }

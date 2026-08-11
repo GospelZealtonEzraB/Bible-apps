@@ -1,5 +1,5 @@
 import { normalizeKey } from '@/data/bibleApi';
-import type { Verse, CircleMember, CircleGoal } from '@/types';
+import type { Verse, CircleMember } from '@/types';
 
 /**
  * Which references from a circle's shared list this device has *memorized*.
@@ -77,78 +77,6 @@ export function commonMemorized(members: CircleMember[]): RefEntry[] {
   return commonKeys.map((k) => ({ key: k, display: displayOf(k) }));
 }
 
-export interface CoverageRow extends RefEntry {
-  byMemberIds: string[];
-}
-
-/** Who-knows-what: each memorized reference with the members who know it,
- * sorted by how many know it (everyone first), then alphabetically. */
-export function coverage(members: CircleMember[]): CoverageRow[] {
-  const map = new Map<string, CoverageRow>();
-  for (const m of members) {
-    for (const r of m.memorizedRefs ?? []) {
-      const k = normalizeKey(r);
-      const row = map.get(k) ?? { key: k, display: r, byMemberIds: [] };
-      if (!row.byMemberIds.includes(m.id)) row.byMemberIds.push(m.id);
-      map.set(k, row);
-    }
-  }
-  return [...map.values()].sort(
-    (a, b) => b.byMemberIds.length - a.byMemberIds.length || a.display.localeCompare(b.display),
-  );
-}
-
-export interface TogetherTotals {
-  combinedUnique: number;
-  common: number;
-  perMember: { id: string; name: string; memorized: number }[];
-}
-
-export function togetherTotals(members: CircleMember[]): TogetherTotals {
-  return {
-    combinedUnique: unionMemorized(members).length,
-    common: commonMemorized(members).length,
-    perMember: members.map((m) => ({
-      id: m.id,
-      name: m.displayName,
-      memorized: m.memorizedRefs && m.memorizedRefs.length ? m.memorizedRefs.length : m.memorizedCount,
-    })),
-  };
-}
-
-/** Rank circle members for the leaderboard: memorized, then streak, then xp. */
-export function rankMembers(members: CircleMember[]): CircleMember[] {
-  return [...members].sort(
-    (a, b) =>
-      (b.memorizedCount ?? 0) - (a.memorizedCount ?? 0) ||
-      (b.streak ?? 0) - (a.streak ?? 0) ||
-      (b.xp ?? 0) - (a.xp ?? 0) ||
-      (a.displayName ?? '').localeCompare(b.displayName ?? ''),
-  );
-}
-
-export interface FeedItem {
-  memberId: string;
-  name: string;
-  type: string;
-  ref?: string;
-  at: number;
-}
-
-/** Merge every member's recent-activity buffers into one sorted feed. */
-export function mergeActivity(members: CircleMember[], limit = 20): FeedItem[] {
-  const items: FeedItem[] = [];
-  for (const m of members) {
-    for (const a of m.recentActivity ?? []) {
-      items.push({ memberId: m.id, name: m.displayName, type: a.type, ref: a.ref, at: a.at });
-    }
-  }
-  items.sort((a, b) => b.at - a.at);
-  return items.slice(0, limit);
-}
-
-// ---- Presence & weekly recap (the "alive" layer) --------------------------
-
 export interface Presence {
   /** memberIds active on `todayKey`. */
   activeIds: string[];
@@ -163,64 +91,6 @@ export function presenceToday(members: CircleMember[], todayKey: string): Presen
   };
 }
 
-export interface WeeklyRecap {
-  memorized: number;
-  reviewed: number;
-  studied: number;
-  /** Distinct members with any activity in the window. */
-  activeMembers: number;
-  /** Member (name) with the most `memorized` events this week, if any. */
-  topMemberName?: string;
-  /** True when no activity fell in the window (hide the card). */
-  empty: boolean;
-}
-
-/**
- * A "how we grew together this week" summary from members' recent-activity
- * buffers within the last 7 days. Approximate — buffers are capped per member —
- * so it's framed as recent highlights, not an audit.
- */
-export function weeklyRecap(members: CircleMember[], now: number): WeeklyRecap {
-  const since = now - 7 * 24 * 60 * 60 * 1000;
-  let memorized = 0;
-  let reviewed = 0;
-  let studied = 0;
-  const activeIds = new Set<string>();
-  const memorizedByMember = new Map<string, { name: string; count: number }>();
-
-  for (const m of members) {
-    for (const a of m.recentActivity ?? []) {
-      if (a.at < since) continue;
-      activeIds.add(m.id);
-      if (a.type === 'memorized') {
-        memorized++;
-        const cur = memorizedByMember.get(m.id) ?? { name: m.displayName, count: 0 };
-        cur.count++;
-        memorizedByMember.set(m.id, cur);
-      } else if (a.type === 'reviewed') {
-        reviewed++;
-      } else if (a.type === 'studied') {
-        studied++;
-      }
-    }
-  }
-
-  let topMemberName: string | undefined;
-  let topCount = 0;
-  for (const { name, count } of memorizedByMember.values()) {
-    if (count > topCount) { topCount = count; topMemberName = name; }
-  }
-
-  return {
-    memorized,
-    reviewed,
-    studied,
-    activeMembers: activeIds.size,
-    topMemberName,
-    empty: memorized + reviewed + studied === 0,
-  };
-}
-
 /**
  * "Learn from them": references a partner has memorized that you don't have in
  * your library yet — turns visible progress into a growth path. `myKeys` is the
@@ -230,69 +100,3 @@ export function learnFromThem(memberMemorizedRefs: string[], myKeys: Set<string>
   return dedupeRefs(memberMemorizedRefs ?? []).filter((r) => !myKeys.has(normalizeKey(r)));
 }
 
-// ---- Milestones & goal progress (the celebrate-together layer) -------------
-
-export interface CircleMilestones {
-  /** Verses every member has now memorized (celebrated as "we all know this"). */
-  allKnow: RefEntry[];
-  /** True when the shared goal has been reached by the whole circle. */
-  goalReached: boolean;
-  /** A crossed together-streak milestone (7/30/100/365), or null. */
-  streakMilestone: number | null;
-  /** True when there's anything worth celebrating. */
-  any: boolean;
-}
-
-const STREAK_MILESTONES = [7, 30, 100, 365];
-
-/** Detect shared achievements worth celebrating together. */
-export function circleMilestones(
-  members: CircleMember[],
-  goal: CircleGoal | null,
-  togetherStreak: number,
-): CircleMilestones {
-  const allKnow = members.length >= 2 ? commonMemorized(members) : [];
-  const goalReached = goal ? goalProgress(members, goal, togetherStreak).reached : false;
-  const streakMilestone = STREAK_MILESTONES.includes(togetherStreak) ? togetherStreak : null;
-  return {
-    allKnow,
-    goalReached,
-    streakMilestone,
-    any: allKnow.length > 0 || goalReached || streakMilestone != null,
-  };
-}
-
-export interface GoalProgress {
-  /** 0..1 collective progress toward the goal. */
-  fraction: number;
-  /** How many members have individually reached the goal (for count/streak goals). */
-  membersThere: number;
-  total: number;
-  reached: boolean;
-  label: string;
-}
-
-/** Collective progress toward a circle goal, for the shared progress ring. */
-export function goalProgress(members: CircleMember[], goal: CircleGoal, togetherStreak: number): GoalProgress {
-  const total = members.length || 1;
-  const clamp = (n: number) => Math.max(0, Math.min(1, n));
-
-  if (goal.kind === 'streak') {
-    const membersThere = members.filter((m) => (m.streak ?? 0) >= goal.target).length;
-    const fraction = clamp(togetherStreak / goal.target);
-    return { fraction, membersThere, total, reached: togetherStreak >= goal.target, label: `${togetherStreak} / ${goal.target}-day together streak` };
-  }
-
-  if (goal.kind === 'sharedVerses') {
-    const per = members.map((m) => clamp((m.versesDone?.length ?? 0) / (goal.target || 1)));
-    const fraction = per.reduce((a, b) => a + b, 0) / total;
-    const membersThere = members.filter((m) => (m.versesDone?.length ?? 0) >= goal.target).length;
-    return { fraction, membersThere, total, reached: membersThere === total && total > 0, label: `${membersThere} of ${total} know all shared verses` };
-  }
-
-  // memorizeCount
-  const per = members.map((m) => clamp((m.memorizedCount ?? 0) / (goal.target || 1)));
-  const fraction = per.reduce((a, b) => a + b, 0) / total;
-  const membersThere = members.filter((m) => (m.memorizedCount ?? 0) >= goal.target).length;
-  return { fraction, membersThere, total, reached: membersThere === total && total > 0, label: `${membersThere} of ${total} reached ${goal.target}` };
-}

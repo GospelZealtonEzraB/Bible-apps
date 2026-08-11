@@ -29,7 +29,6 @@ export default function ChallengeScreen() {
 
   const circle = useCircle(code);
   const submitChallenge = useStore((s) => s.submitChallenge);
-  const submitDuel = useStore((s) => s.submitDuel);
   const myId = useStore((s) => s.profile.memberId);
   const translation = useStore((s) => s.settings.translation);
   const serverUrl = useStore((s) => s.settings.serverUrl);
@@ -70,16 +69,11 @@ export default function ChallengeScreen() {
     setSubmitting(true);
     try {
       const accuracy = prompt.scored && expected ? diffWords(expected, answer).accuracy : undefined;
-      if (isDuel) {
-        await submitDuel(code, chalId, accuracy ?? 0);
-        Alert.alert('Your score is in ⚔️', `You matched ${accuracy ?? 0}% of the words. See how you stack up when the other player finishes.`);
-      } else {
-        await submitChallenge(code, chalId, answer.trim(), accuracy);
-        Alert.alert(
-          'Sent to your partner 💛',
-          accuracy != null ? `You matched ${accuracy}% of the words. ${challenge.fromName} will review it.` : `${challenge.fromName} will see your response.`,
-        );
-      }
+      await submitChallenge(code, chalId, answer.trim(), accuracy);
+      Alert.alert(
+        'Sent to your partner 💛',
+        accuracy != null ? `You matched ${accuracy}% of the words. ${challenge.fromName} will review it.` : `${challenge.fromName} will see your response.`,
+      );
       router.back();
     } catch (e) {
       Alert.alert('Couldn’t submit', e instanceof Error ? e.message : 'Please try again.');

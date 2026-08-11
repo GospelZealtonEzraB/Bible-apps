@@ -21,6 +21,17 @@ export function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${__seq.toString(36)}`;
 }
 
+const DOC_TYPES: DocType[] = ['note', 'study', 'sermon'];
+
+/**
+ * Coerce any stored doc type to a current one. Documents saved before the
+ * simplification carry retired types ('journal', 'verse', 'topic', 'article');
+ * they are all just notes now. Used on hydration, so it must never throw.
+ */
+export function normalizeDocType(type: unknown): DocType {
+  return DOC_TYPES.includes(type as DocType) ? (type as DocType) : 'note';
+}
+
 export function makeBlock(type: BlockType = 'paragraph', text = ''): Block {
   return { id: genId('b'), type, text };
 }
@@ -35,8 +46,6 @@ export function emptyDoc(type: DocType, opts: Partial<Doc> = {}): Doc {
     blocks: [makeBlock('paragraph', '')],
     tags: [],
     refs: [],
-    folderId: null,
-    shared: false,
     createdAt: now,
     updatedAt: now,
     ...opts,

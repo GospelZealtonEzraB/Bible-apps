@@ -1,368 +1,145 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable, Alert, Share } from 'react-native';
+import { View, Text, Pressable, Alert, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
-import { Card, Button, Chip, SectionTitle, EmptyState } from '@/components/ui';
-import { RefText } from '@/components/RefText';
-import { VerseActionSheet } from '@/components/VerseActionSheet';
-import { usePaged, PageMore } from '@/components/Paginated';
+import { Card, Button, Chip, EmptyState, SectionTitle } from '@/components/ui';
+import { VersePeek } from '@/components/VersePeek';
+import { AssetActions } from '@/components/AssetActions';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useTopic, useStore } from '@/store/useStore';
 import { sortedEntries, composeTopic, type TopicOrder } from '@/utils/topics';
 import { hydrateReference } from '@/data/localSearch';
-import { translationName as translationNameOf, type FetchedVerse } from '@/data/bibleApi';
-import type { TopicEntry, TopicReflection } from '@/types';
 
-export default function TopicDetailScreen() {
+/**
+ * A topic: its title and the verses tagged into it. Tap a verse to peek it,
+ * long-press to untag. Everything else a topic used to hold (descriptions,
+ * reflections, drafts) now lives in Notes.
+ */
+export default function TopicScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const id = typeof params.id === 'string' ? params.id : '';
-
   const topic = useTopic(id);
+
   const updateTopic = useStore((s) => s.updateTopic);
   const deleteTopic = useStore((s) => s.deleteTopic);
   const removeFromTopic = useStore((s) => s.removeFromTopic);
-  const setTopicEntryNote = useStore((s) => s.setTopicEntryNote);
-  const addFetchedVerse = useStore((s) => s.addFetchedVerse);
-  const hasVerse = useStore((s) => s.hasVerse);
-  const addTopicThought = useStore((s) => s.addTopicThought);
-  const editTopicThought = useStore((s) => s.editTopicThought);
-  const removeTopicThought = useStore((s) => s.removeTopicThought);
-  const moveTopicThought = useStore((s) => s.moveTopicThought);
 
   const [order, setOrder] = useState<TopicOrder>('canonical');
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState('');
-  const [selected, setSelected] = useState<{ reference: string; text: string } | null>(null);
+  const [peek, setPeek] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState('');
 
   const entries = useMemo(() => (topic ? sortedEntries(topic, order) : []), [topic, order]);
-  const entryPage = usePaged(entries, 25, order);
 
   if (!topic) {
     return (
       <Screen>
         <Header title="Topic" back />
-        <EmptyState emoji="🔎" title="Topic not found" subtitle="It may have been deleted." />
+        <EmptyState emoji="🏷️" title="Topic not found" subtitle="It may have been deleted." />
       </Screen>
     );
   }
 
-  const saveTitle = () => {
-    const t = titleDraft.trim();
-    if (t) updateTopic(topic.id, t, topic.description);
-    setEditingTitle(false);
+  const untag = (ref: string) => {
+    Alert.alert('Remove verse', `Take ${ref} out of “${topic.title}”?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: () => removeFromTopic(topic.id, ref) },
+    ]);
   };
 
   const confirmDelete = () => {
-    Alert.alert('Delete topic', `Delete “${topic.title}” and its ${(topic.entries ?? []).length} tagged ${(topic.entries ?? []).length === 1 ? 'verse' : 'verses'}? Your memorized verses stay in your library.`, [
+    Alert.alert('Delete topic', `Delete “${topic.title}”? The verses stay in your library.`, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: () => { deleteTopic(topic.id); router.back(); } },
     ]);
   };
 
-  const openVerse = (entry: TopicEntry) => {
-    const hit = hydrateReference(entry.ref);
-    setSelected({ reference: entry.ref, text: hit?.text ?? '' });
-  };
-
-  // Add every tagged verse to the memory library (KJV text hydrated locally).
-  const memorizeAll = () => {
-    let added = 0;
-    let skipped = 0;
-    for (const e of topic.entries ?? []) {
-      const hit = hydrateReference(e.ref);
-      if (!hit) { skipped++; continue; }
-      const fetched: FetchedVerse = { reference: hit.reference, text: hit.text, translation: 'kjv', translationName: translationNameOf('kjv'), offline: true };
-      const before = hasVerse(`kjv:${e.ref.trim().toLowerCase()}`);
-      addFetchedVerse(fetched);
-      if (!before) added++;
-    }
-    Alert.alert(
-      'Added to your library 💛',
-      `${added} ${added === 1 ? 'verse' : 'verses'} added to memorize.${skipped ? ` ${skipped} couldn’t be loaded offline.` : ''}`,
-    );
-  };
-
-  // Assemble the whole workspace (thoughts + verses) into shareable text.
-  const compose = async () => {
-    const doc = composeTopic(topic, (ref) => hydrateReference(ref)?.text ?? null, order);
-    try { await Share.share({ message: doc }); } catch {}
-  };
-
-  const count = (topic.entries ?? []).length;
-  const thoughts = topic.reflections ?? [];
+  const shareText = composeTopic(topic, (r) => hydrateReference(r)?.text ?? null, order);
 
   return (
     <Screen>
       <Header
         title={topic.title}
-        subtitle={`${count} ${count === 1 ? 'verse' : 'verses'} · private`}
+        subtitle={`${topic.entries.length} verse${topic.entries.length === 1 ? '' : 's'}`}
         back
         right={
-          <Pressable onPress={confirmDelete} hitSlop={10} style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceAlt }}>
-            <Ionicons name="trash-outline" size={20} color={colors.danger} />
+          <Pressable onPress={() => { setDraft(topic.title); setRenaming(true); }} hitSlop={12} style={{ padding: 4 }}>
+            <Ionicons name="pencil" size={18} color={colors.textFaint} />
           </Pressable>
         }
       />
 
-      {editingTitle ? (
+      {renaming ? (
         <Card style={{ gap: spacing.sm }}>
-          <TextInput
-            value={titleDraft}
-            onChangeText={setTitleDraft}
-            autoFocus
-            onSubmitEditing={saveTitle}
-            style={{ color: colors.text, fontSize: font.sizes.md, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
-          />
-          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-            <Button title="Cancel" variant="secondary" onPress={() => setEditingTitle(false)} style={{ flex: 1 }} />
-            <Button title="Save" onPress={saveTitle} style={{ flex: 1 }} />
-          </View>
-        </Card>
-      ) : (
-        <View style={{ gap: spacing.sm }}>
-          <Button title="Compose & share" onPress={compose} icon={<Ionicons name="share-outline" size={16} color={colors.onPrimary} />} />
-          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-            <Button title="Memorize all" variant="secondary" onPress={memorizeAll} icon={<Ionicons name="sparkles" size={15} color={colors.text} />} style={{ flex: 1 }} small />
-            <Button title="Rename" variant="secondary" onPress={() => { setTitleDraft(topic.title); setEditingTitle(true); }} icon={<Ionicons name="pencil" size={15} color={colors.text} />} style={{ flex: 1 }} small />
-          </View>
-        </View>
-      )}
-
-      {/* Thoughts / journal — the workspace for message prep, an article, journaling. */}
-      <View style={{ gap: spacing.sm }}>
-        <SectionTitle style={{ marginBottom: 0 }}>Thoughts & journal</SectionTitle>
-        {thoughts.length === 0 ? (
-          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
-            Record what you’re seeing — build this topic toward a message, an article, or a journal entry.
-          </Text>
-        ) : (
-          thoughts.map((r, i) => (
-            <ThoughtBlock
-              key={r.id}
-              reflection={r}
-              isFirst={i === 0}
-              isLast={i === thoughts.length - 1}
-              onSave={(text) => editTopicThought(topic.id, r.id, text)}
-              onRemove={() => removeTopicThought(topic.id, r.id)}
-              onMove={(dir) => moveTopicThought(topic.id, r.id, dir)}
-            />
-          ))
-        )}
-        <AddThought onAdd={(text) => addTopicThought(topic.id, text)} />
-      </View>
-
-      {count > 0 ? <SectionTitle style={{ marginBottom: 0, marginTop: spacing.sm }}>Collected verses</SectionTitle> : null}
-
-      {count > 1 ? (
-        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-          <Chip label="Bible order" active={order === 'canonical'} onPress={() => setOrder('canonical')} />
-          <Chip label="Recently added" active={order === 'added'} onPress={() => setOrder('added')} />
-        </View>
-      ) : null}
-
-      {count === 0 ? (
-        <EmptyState
-          emoji="📖"
-          title="No verses yet"
-          subtitle="As you read, tap ‘Add to a topic’ on any verse to collect it into this thread."
-        />
-      ) : (
-        <View style={{ gap: spacing.sm }}>
-          {entryPage.shown.map((e) => (
-            <TopicEntryRow
-              key={e.ref}
-              entry={e}
-              onOpen={() => openVerse(e)}
-              onRemove={() => removeFromTopic(topic.id, e.ref)}
-              onSaveNote={(note) => setTopicEntryNote(topic.id, e.ref, note)}
-            />
-          ))}
-          <PageMore remaining={entryPage.remaining} step={25} onPress={entryPage.showMore} noun="more verses" />
-        </View>
-      )}
-
-      <VerseActionSheet visible={!!selected} onClose={() => setSelected(null)} reference={selected?.reference ?? ''} text={selected?.text ?? ''} translation="kjv" />
-    </Screen>
-  );
-}
-
-function AddThought({ onAdd }: { onAdd: (text: string) => void }) {
-  const { colors } = useTheme();
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState('');
-
-  const save = () => { if (draft.trim()) onAdd(draft); setDraft(''); setOpen(false); };
-
-  if (!open) {
-    return (
-      <Pressable onPress={() => setOpen(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm }}>
-        <Ionicons name="add-circle-outline" size={20} color={colors.primary} />
-        <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>Add a thought</Text>
-      </Pressable>
-    );
-  }
-  return (
-    <Card style={{ gap: spacing.sm }}>
-      <TextInput
-        value={draft}
-        onChangeText={setDraft}
-        placeholder="Write freely — an insight, an outline point, a paragraph for your message…"
-        placeholderTextColor={colors.textFaint}
-        multiline
-        autoFocus
-        textAlignVertical="top"
-        style={{ color: colors.text, fontSize: font.sizes.md, minHeight: 90, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
-      />
-      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-        <Pressable onPress={() => { setDraft(''); setOpen(false); }} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center' }}>
-          <Text style={{ color: colors.textFaint, fontWeight: '700' }}>Cancel</Text>
-        </Pressable>
-        <Pressable onPress={save} disabled={!draft.trim()} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: draft.trim() ? colors.primary : colors.surfaceAlt, borderRadius: radius.md }}>
-          <Text style={{ color: draft.trim() ? colors.onPrimary : colors.textFaint, fontWeight: '800' }}>Save</Text>
-        </Pressable>
-      </View>
-    </Card>
-  );
-}
-
-function ThoughtBlock({
-  reflection,
-  isFirst,
-  isLast,
-  onSave,
-  onRemove,
-  onMove,
-}: {
-  reflection: TopicReflection;
-  isFirst: boolean;
-  isLast: boolean;
-  onSave: (text: string) => void;
-  onRemove: () => void;
-  onMove: (dir: -1 | 1) => void;
-}) {
-  const { colors } = useTheme();
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(reflection.text);
-
-  const save = () => { onSave(draft); setEditing(false); };
-
-  if (editing) {
-    return (
-      <Card style={{ gap: spacing.sm }}>
-        <TextInput
-          value={draft}
-          onChangeText={setDraft}
-          multiline
-          autoFocus
-          textAlignVertical="top"
-          style={{ color: colors.text, fontSize: font.sizes.md, minHeight: 90, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
-        />
-        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-          <Pressable onPress={() => { setDraft(reflection.text); setEditing(false); }} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center' }}>
-            <Text style={{ color: colors.textFaint, fontWeight: '700' }}>Cancel</Text>
-          </Pressable>
-          <Pressable onPress={save} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.primary, borderRadius: radius.md }}>
-            <Text style={{ color: colors.onPrimary, fontWeight: '800' }}>Save</Text>
-          </Pressable>
-        </View>
-      </Card>
-    );
-  }
-
-  return (
-    <Card style={{ gap: spacing.sm }}>
-      <Pressable onPress={() => { setDraft(reflection.text); setEditing(true); }}>
-        <RefText text={reflection.text} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24 }} />
-      </Pressable>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.lg }}>
-        <Pressable onPress={() => { setDraft(reflection.text); setEditing(true); }} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Ionicons name="create-outline" size={15} color={colors.textFaint} />
-          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>Edit</Text>
-        </Pressable>
-        {!isFirst ? <Pressable onPress={() => onMove(-1)} hitSlop={6}><Ionicons name="arrow-up" size={16} color={colors.textFaint} /></Pressable> : null}
-        {!isLast ? <Pressable onPress={() => onMove(1)} hitSlop={6}><Ionicons name="arrow-down" size={16} color={colors.textFaint} /></Pressable> : null}
-        <View style={{ flex: 1 }} />
-        <Pressable onPress={onRemove} hitSlop={6}><Ionicons name="trash-outline" size={15} color={colors.textFaint} /></Pressable>
-      </View>
-    </Card>
-  );
-}
-
-function TopicEntryRow({
-  entry,
-  onOpen,
-  onRemove,
-  onSaveNote,
-}: {
-  entry: TopicEntry;
-  onOpen: () => void;
-  onRemove: () => void;
-  onSaveNote: (note: string) => void;
-}) {
-  const { colors } = useTheme();
-  const hit = useMemo(() => hydrateReference(entry.ref), [entry.ref]);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(entry.note ?? '');
-
-  const save = () => { onSaveNote(draft); setEditing(false); };
-
-  return (
-    <Card style={{ gap: spacing.sm }}>
-      <Pressable onPress={onOpen}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>{entry.ref}</Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.textFaint} />
-        </View>
-        {hit ? (
-          <Text numberOfLines={3} style={{ color: colors.text, fontSize: font.sizes.sm, lineHeight: 22, fontFamily: font.serif, marginTop: 4 }}>{hit.text}</Text>
-        ) : (
-          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: 4 }}>Tap to open</Text>
-        )}
-      </Pressable>
-
-      {editing ? (
-        <View style={{ gap: spacing.sm }}>
           <TextInput
             value={draft}
             onChangeText={setDraft}
-            placeholder="Why this verse fits…"
-            placeholderTextColor={colors.textFaint}
-            multiline
             autoFocus
-            textAlignVertical="top"
-            style={{ color: colors.text, fontSize: font.sizes.sm, minHeight: 54, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
+            style={{ color: colors.text, fontSize: font.sizes.md, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
           />
           <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-            <Pressable onPress={() => { setDraft(entry.note ?? ''); setEditing(false); }} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center' }}>
-              <Text style={{ color: colors.textFaint, fontWeight: '700' }}>Cancel</Text>
-            </Pressable>
-            <Pressable onPress={save} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.primary, borderRadius: radius.md }}>
-              <Text style={{ color: colors.onPrimary, fontWeight: '800' }}>Save note</Text>
-            </Pressable>
+            <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setRenaming(false)} />
+            <Button
+              title="Save"
+              small
+              style={{ flex: 1 }}
+              disabled={!draft.trim()}
+              onPress={() => { updateTopic(topic.id, draft); setRenaming(false); }}
+            />
           </View>
-        </View>
-      ) : entry.note ? (
-        <Pressable onPress={() => { setDraft(entry.note ?? ''); setEditing(true); }} style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm }}>
-          <RefText text={`“${entry.note}”`} style={{ color: colors.textMuted, fontSize: font.sizes.sm, fontStyle: 'italic' }} />
-        </Pressable>
+        </Card>
       ) : null}
 
-      <View style={{ flexDirection: 'row', gap: spacing.lg }}>
-        {!editing && !entry.note ? (
-          <Pressable onPress={() => { setDraft(''); setEditing(true); }} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name="create-outline" size={15} color={colors.textFaint} />
-            <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>Add note</Text>
-          </Pressable>
-        ) : null}
-        <Pressable onPress={onRemove} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-          <Ionicons name="remove-circle-outline" size={15} color={colors.textFaint} />
-          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>Remove</Text>
-        </Pressable>
-      </View>
-    </Card>
+      <AssetActions asset={{ kind: 'topic', assetId: topic.id, title: topic.title, text: shareText.slice(0, 400) }} />
+
+      {entries.length === 0 ? (
+        <Card>
+          <EmptyState
+            emoji="📖"
+            title="No verses yet"
+            subtitle="While you read, tap a verse → “Add to a topic” and pick this one."
+          />
+        </Card>
+      ) : (
+        <>
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <Chip label="Bible order" active={order === 'canonical'} onPress={() => setOrder('canonical')} />
+            <Chip label="Recently added" active={order === 'added'} onPress={() => setOrder('added')} />
+          </View>
+
+          <View>
+            <SectionTitle>Verses</SectionTitle>
+            <View style={{ gap: spacing.sm }}>
+              {entries.map((e) => {
+                const hit = hydrateReference(e.ref);
+                return (
+                  <Pressable key={e.ref} onPress={() => setPeek(e.ref)} onLongPress={() => untag(e.ref)} delayLongPress={300}>
+                    <Card style={{ gap: 4 }}>
+                      <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>{e.ref}</Text>
+                      {hit?.text ? (
+                        <Text numberOfLines={3} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 23, fontFamily: font.serif }}>
+                          {hit.text}
+                        </Text>
+                      ) : null}
+                    </Card>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
+              Tap to read · long-press to take one out
+            </Text>
+          </View>
+        </>
+      )}
+
+      <Button title="Delete topic" variant="ghost" onPress={confirmDelete} />
+
+      <VersePeek reference={peek} onClose={() => setPeek(null)} />
+    </Screen>
   );
 }

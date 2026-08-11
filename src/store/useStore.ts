@@ -4,49 +4,34 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type {
-  Activity,
-  CelebrationEvent,
   ChallengeKind,
   Circle,
-  CircleGoal,
-  CirclePref,
   CircleSnapshot,
-  LocalNote,
-  NoteScope,
+  LogEntry,
+  LogKind,
   Prayer,
   Profile,
   ReadingPosition,
   Settings,
   Stats,
-  StudyApplication,
   StudySession,
   Topic,
-  JournalEntry,
-  CircleDaily,
   Doc,
   DocType,
-  Folder,
   MessageAttachment,
   Verse,
   VerseStatus,
 } from '@/types';
+import { addEntry as addTopicEntry, removeEntry as removeTopicEntry } from '@/utils/topics';
 import {
-  addEntry as addTopicEntry,
-  removeEntry as removeTopicEntry,
-  updateEntryNote,
-  addReflection as addTopicReflection,
-  updateReflection as updateTopicReflection,
-  removeReflection as removeTopicReflection,
-  moveReflection as moveTopicReflection,
-} from '@/utils/topics';
-import {
-  patchEntry as patchJournalEntry,
-  addNote as addJournalNoteReducer,
-  removeNote as removeJournalNoteReducer,
-} from '@/utils/journal';
-import { emptyDoc, extractRefs, genId as genBlockId, markdownToBlocks } from '@/utils/blocks';
+  addEntry as addLog,
+  removeEntry as removeLog,
+  setEntryPrivate as setLogPrivate,
+  setEntryText as setLogText,
+  entriesForDay as logEntriesForDay,
+} from '@/utils/log';
+import { emptyDoc, extractRefs, markdownToBlocks, normalizeDocType } from '@/utils/blocks';
 import { migrateDocs } from '@/utils/notesMigration';
-import { completeMovement as walkComplete, uncompleteMovement as walkUncomplete, type WalkDay } from '@/utils/dailyWalk';
 import { toUserSong, newSongId, isMine, toggleFavorite, type Hymn, type HymnStanza, type SongbookState } from '@/data/songbook';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
@@ -65,14 +50,6 @@ import {
 import { versesDoneFrom, memorizedReferences, learningReferences } from '@/utils/circleProgress';
 import { bookByNumber } from '@/data/structure';
 import { dayKey, daysBetweenKeys } from '@/utils/date';
-import {
-  xpForPractice,
-  xpForReview,
-  newlyEarnedBadges,
-  type BadgeContext,
-} from '@/gamification';
-import { allQuestsDone, QUEST_BONUS_XP } from '@/quests';
-import type { DailyProgress } from '@/types';
 
 /** Interval (days) at which a verse is considered memorized. */
 const MEMORIZED_INTERVAL = 21;
@@ -82,26 +59,16 @@ interface StoreState {
   stats: Stats;
   settings: Settings;
   profile: Profile;
-  /** Growing Together circles, cached by invite code. */
+  /** The covenant partnership, cached by invite code. */
   circles: Record<string, Circle>;
-  /** Per-circle personalization + control, keyed by invite code. */
-  circlePrefs: Record<string, CirclePref>;
   /** Cached AI study briefs, keyed by normalized passage. */
   studySessions: Record<string, StudySession>;
-  /** "One thing I'll live out" applications, keyed by passage. */
-  applications: Record<string, StudyApplication>;
-  /** Private notes kept only on this device. */
-  notes: Record<string, LocalNote>;
-  /** Custom study topics (tag-as-you-read collections), private to this device. */
+  /** Named tags over verses ("Grace", "Names of God"), by id. */
   topics: Record<string, Topic>;
-  /** Daily journal entries, keyed by local day (YYYY-MM-DD). Private to this device. */
-  journal: Record<string, JournalEntry>;
-  /** Unified notes/writing documents (journal, study, verse, topic, sermon, article). */
+  /** Everything you write — one notes system, by doc id. */
   documents: Record<string, Doc>;
-  /** Notebooks/folders that group documents. */
-  folders: Record<string, Folder>;
-  /** The daily walk — movements/acts done with God per day; feeds the ONE streak. */
-  walk: Record<string, WalkDay>;
+  /** The daily log: what you did with God, by entry id. THE record of the walk. */
+  log: Record<string, LogEntry>;
   /** Songs the family added in-app (Tamil included), by id. Full lyrics + chords. */
   songs: Record<string, Hymn>;
   /** Chords written onto a bundled (lyrics-only) song, by that song's id. */
@@ -112,25 +79,13 @@ interface StoreState {
   session: { lastOpenedDay: string | null };
   /** Where the Bible reader left off (null until they've read something). */
   reading: ReadingPosition | null;
-  /** Reading-plan progress by plan id: which day-indices are done. */
-  readingPlanProgress: Record<string, { startedAt: number; completed: number[] }>;
-  /** The plan the user is currently following (null if none started). */
-  activeReadingPlanId: string | null;
   /** Ids of Ember first-run tips the user has already dismissed. */
   seenTips: string[];
-  /** Rolling log of recent activity, shared to circles for the feed. */
-  activityLog: Activity[];
   /** Expo push token for partner-activity notifications (null until registered). */
   pushToken: string | null;
   hydrated: boolean;
-  /** Id of a badge just earned, for the celebration overlay (transient). */
-  recentBadgeId: string | null;
-  /** XP just awarded, for inline feedback (transient). */
-  recentXp: number | null;
-  /** True right after finishing all daily quests, for a celebration (transient). */
-  recentQuestComplete: boolean;
-  /** A generic milestone to celebrate (memorized verse, streak, plan) — transient. */
-  recentCelebration: CelebrationEvent | null;
+  /** An attachment waiting to be sent in chat (transient — set by "Share to chat"). */
+  pendingChatAttachment: MessageAttachment | null;
 
   addFetchedVerse: (fetched: FetchedVerse, packId?: string) => Verse;
   removeVerse: (id: string) => void;
@@ -147,10 +102,6 @@ interface StoreState {
   /** Remember where the reader is, for "Continue reading". */
   setReadingPosition: (book: number, chapter: number, verse?: number) => void;
 
-  /** Start (or resume) following a reading plan. */
-  startReadingPlan: (planId: string) => void;
-  /** Mark a plan day done/undone. */
-  toggleReadingDay: (planId: string, dayIndex: number) => void;
 
   /** Mark an Ember first-run tip as seen so it won't show again. */
   markTipSeen: (id: string) => void;
@@ -159,8 +110,6 @@ interface StoreState {
   ensureProfile: () => void;
   /** Set the display name shown to circle partners. */
   setDisplayName: (name: string) => void;
-  /** Update this circle's personalization/control prefs (merged). */
-  setCirclePref: (code: string, patch: Partial<CirclePref>) => void;
   /** Adopt a transfer code from another device; returns false if malformed. */
   restoreFromBackup: (code: string) => boolean;
 
@@ -172,79 +121,31 @@ interface StoreState {
   refreshCircle: (code: string) => Promise<void>;
   /** Push my progress + pull the board for a circle. */
   syncCircle: (code: string) => Promise<void>;
-  /** Add a verse reference to a circle's shared list (optionally "for" a member). */
-  addSharedVerse: (code: string, reference: string, forMemberId?: string) => Promise<void>;
-  /** Set the circle's shared goal (or clear it with null). */
-  setCircleGoal: (code: string, goal: CircleGoal | null) => Promise<void>;
   /** Rename a circle. */
   setCircleName: (code: string, name: string) => Promise<void>;
-  /** Remove a verse from a circle's shared list. */
-  removeSharedVerse: (code: string, reference: string) => Promise<void>;
-  /** Delete a study plan from a circle. */
-  deleteCirclePlan: (code: string, planId: string) => Promise<void>;
   /** Assign a memorization/study challenge to a partner. */
   assignChallenge: (code: string, toMemberId: string, toName: string, reference: string, kind: ChallengeKind) => Promise<void>;
   /** Submit my attempt at a challenge (text + optional accuracy). */
   submitChallenge: (code: string, chalId: string, text: string, accuracy?: number) => Promise<void>;
-  /** Submit my recite score for a duel challenge. */
-  submitDuel: (code: string, chalId: string, accuracy: number) => Promise<void>;
   /** Review a partner's submission with an encouraging note. */
   reviewChallenge: (code: string, chalId: string, note: string, meaningPrompt?: string) => Promise<void>;
 
   /** Cache a fetched study brief. */
   setStudySession: (session: StudySession) => void;
-  /** Capture "one thing I'll live out this week" for a studied passage. */
-  addApplication: (passageKey: string, passage: string, text: string) => void;
-  /** Mark an application revisited, optionally recording how it went. */
-  revisitApplication: (passageKey: string, outcome?: string) => void;
-  /** Edit the text of a saved application. */
-  editApplication: (passageKey: string, text: string) => void;
-  /** Delete a saved application. */
-  deleteApplication: (passageKey: string) => void;
 
-  // Growing Together — plans, notes, prayer, cheers
-  createCirclePlan: (code: string, title: string, items: string[]) => Promise<void>;
-  updateCirclePlan: (code: string, planId: string, title: string, items: string[]) => Promise<void>;
-  shareNote: (code: string, text: string, scope?: NoteScope, ref?: string, noteId?: string) => Promise<void>;
-  editSharedNote: (code: string, noteId: string, text: string, scope?: NoteScope, ref?: string) => Promise<void>;
-  deleteSharedNote: (code: string, noteId: string) => Promise<void>;
-  addPrivateNote: (scope: NoteScope, text: string, ref?: string) => void;
-  editPrivateNote: (noteId: string, text: string) => void;
-  deletePrivateNote: (noteId: string) => void;
 
   // Custom study topics (tag-as-you-read)
   /** Create a new topic; returns its id. */
-  createTopic: (title: string, description?: string) => string;
+  createTopic: (title: string) => string;
   /** Rename / re-describe a topic. */
-  updateTopic: (id: string, title: string, description?: string) => void;
+  updateTopic: (id: string, title: string) => void;
   /** Delete a topic (and all its tagged verses). */
   deleteTopic: (id: string) => void;
   /** Tag a verse into a topic (deduped); optional "why this fits" note. */
-  addToTopic: (id: string, ref: string, note?: string) => void;
+  addToTopic: (id: string, ref: string) => void;
   /** Remove a verse from a topic. */
   removeFromTopic: (id: string, ref: string) => void;
-  /** Edit the note on an already-tagged verse. */
-  setTopicEntryNote: (id: string, ref: string, note: string) => void;
-  /** Add a free-form thought/journal block to a topic workspace. */
-  addTopicThought: (id: string, text: string) => void;
-  /** Edit a thought block (empty text removes it). */
-  editTopicThought: (id: string, reflectionId: string, text: string) => void;
-  /** Remove a thought block. */
-  removeTopicThought: (id: string, reflectionId: string) => void;
-  /** Reorder a thought block up (-1) or down (+1). */
-  moveTopicThought: (id: string, reflectionId: string, dir: -1 | 1) => void;
 
-  // Daily journal (the journaling core — private to this device)
-  /** Set/replace a day's reflection ("what He showed me"). Empty clears it. */
-  setJournalReflection: (day: string, text: string) => void;
-  /** Set the verse/passage carried on a day (a reference). Empty clears it. */
-  setJournalVerse: (day: string, ref: string) => void;
-  /** Set a day's gratitude line. Empty clears it. */
-  setJournalGratitude: (day: string, text: string) => void;
-  /** Append a note to a day (optionally about a reference). Defaults to today. */
-  addJournalNote: (note: { ref?: string; text: string }, day?: string) => void;
-  /** Remove a note from a day. */
-  removeJournalNote: (day: string, noteId: string) => void;
 
   // Notes / writing documents (the unified block-based system)
   /** Create a document; returns its id. */
@@ -253,16 +154,20 @@ interface StoreState {
   updateDoc: (id: string, patch: Partial<Doc>) => void;
   /** Delete a document. */
   deleteDoc: (id: string) => void;
-  /** Get (or create) the journal document for a given day; returns its id. */
-  journalDocForDay: (day: string) => string;
-  /** Create a notebook/folder; returns its id. */
-  createFolder: (name: string, emoji?: string) => string;
-  /** Rename/re-emoji a folder. */
-  updateFolder: (id: string, patch: Partial<Folder>) => void;
-  /** Delete a folder (its documents become unfiled). */
-  deleteFolder: (id: string) => void;
   /** One-time move of legacy private notes into documents (idempotent). */
   runNotesMigration: () => void;
+
+  // The daily log — the one record of the walk
+  /** Add something you did today to your log. Re-adding the same asset is a no-op. */
+  addLogEntry: (entry: { kind: LogKind; ref?: string; assetId?: string; title?: string; text?: string; day?: string; private?: boolean }) => void;
+  /** Remove an entry from the log. */
+  removeLogEntry: (id: string) => void;
+  /** Hide an entry from your partner (or show it again). */
+  setLogEntryPrivate: (id: string, isPrivate: boolean) => void;
+  /** Edit the free line on an entry. */
+  setLogEntryText: (id: string, text: string) => void;
+  /** Park an asset for the chat composer ("Share to chat"); cleared once sent. */
+  setPendingChatAttachment: (attachment: MessageAttachment | null) => void;
 
   // The songbook
   /** Add or replace one of the family's own songs; returns its id. */
@@ -274,27 +179,12 @@ interface StoreState {
   /** Write chords onto a bundled song (pass null to drop back to the original). */
   setSongChords: (id: string, stanzas: HymnStanza[] | null) => void;
 
-  // The daily walk (the one habit engine)
-  /** Check off a movement/act for today (or a given day). */
-  completeWalkMovement: (movement: string, day?: string) => void;
-  /** Un-check a movement. */
-  uncompleteWalkMovement: (movement: string, day?: string) => void;
   /** Post a message to a circle's discussion (optionally anchored to a reference, with rich attachments). */
   postCircleMessage: (code: string, text: string, context?: string, attachments?: MessageAttachment[]) => Promise<void>;
   /** Delete one of my own circle messages. */
   deleteCircleMessage: (code: string, msgId: string) => Promise<void>;
   /** Toggle a reaction on a prayer/note/message (same emoji clears it). */
   reactTo: (code: string, targetType: 'prayer' | 'note' | 'message', targetId: string, emoji: string) => Promise<void>;
-  /** Set/patch a day's shared devotional (song/reading/prayer/verse/note). Open to anyone. */
-  setCircleDaily: (code: string, day: string, patch: Partial<CircleDaily>) => Promise<void>;
-  /** Toggle my "did today's devotional" completion mark. */
-  completeCircleDaily: (code: string, day: string) => Promise<void>;
-  /** Share (or, with empty text, unshare) my reflection for a day. */
-  shareCircleReflection: (code: string, day: string, text: string) => Promise<void>;
-  /** Set the circle's shared reading plan (auto-advances by date); null clears it. */
-  setCircleReadingPlan: (code: string, readingPlanId: string | null) => Promise<void>;
-  /** Broadcast (or remove) a verse/song into the day's "Our devotions" window. */
-  shareDailyItem: (code: string, day: string, kind: 'verse' | 'song', value: string, remove?: boolean) => Promise<void>;
   /** Adopt a partner's reflection into your own notes (attributed). Returns the new doc id. */
   adoptReflection: (text: string, byName: string, ref?: string) => string;
   /** Adopt a partner's verse into your library (hydrated); optionally into today's journal. */
@@ -307,7 +197,6 @@ interface StoreState {
   deletePrayer: (code: string, prayerId: string) => Promise<void>;
   togglePrayed: (code: string, prayer: Prayer) => Promise<void>;
   deleteChallenge: (code: string, chalId: string) => Promise<void>;
-  cheerMember: (code: string, toMemberId: string) => Promise<void>;
   /** Record that the app was opened today (for the welcome-back recap). */
   markOpened: () => void;
   /** Register this device for partner-activity push notifications (real builds only). */
@@ -318,7 +207,6 @@ interface StoreState {
   setCircleCovenant: (code: string, cadenceLabel: string, goalText: string) => Promise<void>;
   /** Cache AI-generated content (memory hook / explanation) on a verse. */
   setVerseAi: (id: string, patch: { memoryHook?: string; explanation?: string }) => void;
-  clearCelebration: () => void;
   resetAll: () => void;
   /** Serialize all saved data to a JSON string the user can save as a backup. */
   exportBackup: () => string;
@@ -333,56 +221,10 @@ interface StoreState {
 }
 
 const defaultStats: Stats = {
-  streak: 0,
   lastActiveDay: null,
   dailyGoal: 5,
   reviewsToday: 0,
-  bestStreak: 0,
-  xp: 0,
-  graceTokens: 1,
-  earnedBadges: [],
-  perfectRecitations: 0,
-  earlyReviews: 0,
-  daily: { day: '', reviews: 0, drills: 0, perfect: 0, added: 0, questBonusClaimed: false },
 };
-
-/** Today's quest counters, resetting to zero when the stored day isn't today. */
-export function todaysDaily(stats: Stats, now: number = Date.now()): DailyProgress {
-  const today = dayKey(now);
-  if (stats.daily && stats.daily.day === today) return stats.daily;
-  return { day: today, reviews: 0, drills: 0, perfect: 0, added: 0, questBonusClaimed: false };
-}
-
-interface DailyResult {
-  daily: DailyProgress;
-  xpBonus: number;
-  questJustCompleted: boolean;
-}
-
-/** Apply per-metric increments to today's quest counters, awarding the bonus
- * once when every quest is complete. */
-function advanceDaily(
-  stats: Stats,
-  now: number,
-  inc: Partial<Pick<DailyProgress, 'reviews' | 'drills' | 'perfect' | 'added'>>,
-): DailyResult {
-  const base = todaysDaily(stats, now);
-  let daily: DailyProgress = {
-    ...base,
-    reviews: base.reviews + (inc.reviews ?? 0),
-    drills: base.drills + (inc.drills ?? 0),
-    perfect: base.perfect + (inc.perfect ?? 0),
-    added: base.added + (inc.added ?? 0),
-  };
-  let xpBonus = 0;
-  let questJustCompleted = false;
-  if (!daily.questBonusClaimed && allQuestsDone(daily)) {
-    daily = { ...daily, questBonusClaimed: true };
-    xpBonus = QUEST_BONUS_XP;
-    questJustCompleted = true;
-  }
-  return { daily, xpBonus, questJustCompleted };
-}
 
 const defaultSettings: Settings = {
   translation: 'web',
@@ -392,13 +234,7 @@ const defaultSettings: Settings = {
   serverUrl: null,
   shareLibrary: true,
   onboarded: false,
-  abideRhythm: ['come', 'worship', 'word', 'deeper', 'respond', 'close'],
 };
-
-/** Append an event to a rolling activity log, keeping the most recent `cap`. */
-function pushActivity(log: Activity[], evt: Activity, cap = 15): Activity[] {
-  return [...(log ?? []), evt].slice(-cap);
-}
 
 const defaultProfile: Profile = { memberId: '', displayName: '', backupCode: '' };
 
@@ -416,16 +252,11 @@ function myMemberSnapshot(
     memberId: state.profile.memberId,
     displayName: state.profile.displayName,
     memorizedCount: memorizedCount(state.verses),
-    streak: state.stats.streak,
     versesDone: versesDoneFrom(state.verses, sharedRefs),
     planDone: versesDoneFrom(state.verses, planRefs),
     memorizedRefs: share ? memorizedReferences(state.verses).slice(0, 400) : [],
     learningRefs: share ? learningReferences(state.verses).slice(0, 200) : [],
-    bestStreak: state.stats.bestStreak,
-    xp: state.stats.xp,
-    recentActivity: (state.activityLog ?? []).slice(-10),
     lastActiveDay: state.stats.lastActiveDay,
-    lastActivity: (state.activityLog ?? []).slice(-1)[0] ?? null,
     pushToken: state.pushToken,
     muted,
   };
@@ -486,127 +317,54 @@ function masteryFromInterval(interval: number): number {
   return Math.max(0, Math.min(100, Math.round((interval / MEMORIZED_INTERVAL) * 100)));
 }
 
-/**
- * Update streak/reviewsToday for an activity happening at `now`, spending
- * "grace" tokens to protect the streak across missed days, and refilling one
- * token at each 7-day milestone (capped at 3).
- */
-function touchActivity(stats: Stats, now: number): Stats {
+/** Count today's review toward the daily goal (no streaks, no XP). */
+function countReview(stats: Stats, now: number): Stats {
   const today = dayKey(now);
-  if (stats.lastActiveDay === today) {
-    return { ...stats, reviewsToday: stats.reviewsToday + 1 };
-  }
-  const gap =
-    stats.lastActiveDay == null
-      ? Infinity
-      : daysBetweenKeys(stats.lastActiveDay, today);
-
-  let streak: number;
-  let graceTokens = stats.graceTokens;
-  if (gap === 1) {
-    streak = stats.streak + 1;
-  } else if (gap !== Infinity && gap > 1) {
-    const missed = gap - 1;
-    if (graceTokens >= missed) {
-      graceTokens -= missed; // grace covered the gap — streak survives
-      streak = stats.streak + 1;
-    } else {
-      streak = 1;
-    }
-  } else {
-    streak = 1; // first ever activity
-  }
-
-  if (streak > 0 && streak % 7 === 0) {
-    graceTokens = Math.min(3, graceTokens + 1);
-  }
-
-  return {
-    ...stats,
-    streak,
-    bestStreak: Math.max(stats.bestStreak, streak),
-    lastActiveDay: today,
-    reviewsToday: 1,
-    graceTokens,
-  };
-}
-
-interface ProgressResult {
-  stats: Stats;
-  recentBadgeId: string | null;
-  recentXp: number | null;
+  return stats.lastActiveDay === today
+    ? { ...stats, reviewsToday: stats.reviewsToday + 1 }
+    : { ...stats, lastActiveDay: today, reviewsToday: 1 };
 }
 
 /**
- * Apply XP, activity, and badge evaluation in one step. `versesOverride` lets
- * callers pass the post-update verse map so badge checks see fresh statuses.
+ * Coerce stored documents to the current shape: retired doc types become plain
+ * notes, and the dropped `folderId`/`shared` fields fall away. Never throws —
+ * it runs inside `merge`.
  */
-function withProgress(
-  state: { stats: Stats; verses: Record<string, Verse> },
-  opts: {
-    xpDelta: number;
-    touch: boolean;
-    perfect?: boolean;
-    now: number;
-    versesOverride?: Record<string, Verse>;
-  },
-): ProgressResult {
-  let stats = opts.touch ? touchActivity(state.stats, opts.now) : state.stats;
-  const early = opts.touch && new Date(opts.now).getHours() < 7 ? 1 : 0;
-  stats = {
-    ...stats,
-    xp: stats.xp + opts.xpDelta,
-    perfectRecitations: stats.perfectRecitations + (opts.perfect ? 1 : 0),
-    earlyReviews: stats.earlyReviews + early,
-  };
-
-  const verses = opts.versesOverride ?? state.verses;
-  const ctx: BadgeContext = {
-    memorizedCount: memorizedCount(verses),
-    verseCount: Object.keys(verses).length,
-    bestStreak: stats.bestStreak,
-    perfectRecitations: stats.perfectRecitations,
-    earlyReviews: stats.earlyReviews,
-  };
-  const newBadges = newlyEarnedBadges(ctx, stats.earnedBadges);
-  if (newBadges.length) {
-    stats = { ...stats, earnedBadges: [...stats.earnedBadges, ...newBadges] };
+function normalizeDocs(docs: Record<string, Doc> | undefined): Record<string, Doc> {
+  const out: Record<string, Doc> = {};
+  for (const [id, d] of Object.entries(docs ?? {})) {
+    if (!d || typeof d !== 'object') continue;
+    const legacy = d as Doc & { shared?: boolean };
+    out[id] = {
+      ...d,
+      type: normalizeDocType(d.type),
+      tags: Array.isArray(d.tags) ? d.tags : [],
+      refs: Array.isArray(d.refs) ? d.refs : [],
+      blocks: Array.isArray(d.blocks) ? d.blocks : [],
+      // A doc that was explicitly shared stays visible; everything else keeps
+      // whatever privacy flag it already had.
+      private: d.private ?? (legacy.shared === true ? false : undefined),
+    };
   }
-  return { stats, recentBadgeId: newBadges[0] ?? null, recentXp: opts.xpDelta };
+  return out;
 }
 
-/** Streak lengths worth a full-screen celebration. */
-const STREAK_MILESTONES = [7, 30, 100, 365];
-
-/**
- * Choose the most exciting milestone to celebrate from a scoring event.
- * A crossed streak milestone outranks a freshly memorized verse.
- */
-function pickCelebration(opts: {
-  becameMemorized: boolean;
-  reference: string;
-  prevStreak: number;
-  nextStreak: number;
-}): CelebrationEvent | null {
-  const crossed =
-    opts.nextStreak > opts.prevStreak && STREAK_MILESTONES.includes(opts.nextStreak);
-  if (crossed) {
-    return {
-      eyebrow: 'STREAK MILESTONE',
-      title: `${opts.nextStreak}-day streak!`,
-      subtitle: 'Faithful, day after day. Keep going!',
-      emoji: '🔥',
+/** Topics are plain tags now — drop the retired description/reflections. */
+function normalizeTopics(topics: Record<string, Topic> | undefined): Record<string, Topic> {
+  const out: Record<string, Topic> = {};
+  for (const [id, t] of Object.entries(topics ?? {})) {
+    if (!t || typeof t !== 'object') continue;
+    out[id] = {
+      id: t.id ?? id,
+      title: t.title ?? 'Untitled topic',
+      entries: (Array.isArray(t.entries) ? t.entries : [])
+        .filter((e) => e && typeof e.ref === 'string')
+        .map((e) => ({ ref: e.ref, addedAt: e.addedAt ?? 0 })),
+      createdAt: t.createdAt ?? 0,
+      updatedAt: t.updatedAt ?? 0,
     };
   }
-  if (opts.becameMemorized) {
-    return {
-      eyebrow: 'VERSE MEMORIZED',
-      title: opts.reference,
-      subtitle: 'You’ve hidden it in your heart! 🎉',
-      emoji: '💛',
-    };
-  }
-  return null;
+  return out;
 }
 
 export const useStore = create<StoreState>()(
@@ -617,26 +375,19 @@ export const useStore = create<StoreState>()(
       settings: defaultSettings,
       profile: defaultProfile,
       circles: {},
-      circlePrefs: {},
       studySessions: {},
-      applications: {},
-      notes: {},
       topics: {},
-      journal: {},
       documents: {},
-      folders: {},
-      walk: {},
+      log: {},
       songs: {},
       songChords: {},
       favoriteSongs: [],
       session: { lastOpenedDay: null },
       reading: null,
-      readingPlanProgress: {},
-      activeReadingPlanId: null,
       seenTips: [],
-      activityLog: [],
       pushToken: null,
       hydrated: false,
+      pendingChatAttachment: null,
       recentBadgeId: null,
       recentXp: null,
       recentQuestComplete: false,
@@ -663,28 +414,7 @@ export const useStore = create<StoreState>()(
           srs: initialSRS(now),
           mastery: 0,
         };
-        set((state) => {
-          const verses = { ...state.verses, [id]: verse };
-          const ctx: BadgeContext = {
-            memorizedCount: memorizedCount(verses),
-            verseCount: Object.keys(verses).length,
-            bestStreak: state.stats.bestStreak,
-            perfectRecitations: state.stats.perfectRecitations,
-            earlyReviews: state.stats.earlyReviews,
-          };
-          const newBadges = newlyEarnedBadges(ctx, state.stats.earnedBadges);
-          const withBadges = newBadges.length
-            ? { ...state.stats, earnedBadges: [...state.stats.earnedBadges, ...newBadges] }
-            : state.stats;
-          const d = advanceDaily(withBadges, now, { added: 1 });
-          return {
-            verses,
-            stats: { ...withBadges, daily: d.daily, xp: withBadges.xp + d.xpBonus },
-            recentBadgeId: newBadges[0] ?? state.recentBadgeId,
-            recentQuestComplete: d.questJustCompleted,
-            activityLog: pushActivity(state.activityLog, { type: 'added', ref: verse.reference, at: now }),
-          };
-        });
+        set((state) => ({ verses: { ...state.verses, [id]: verse } }));
         return verse;
       },
 
@@ -714,36 +444,9 @@ export const useStore = create<StoreState>()(
             100,
             Math.max(blended, accuracy >= 95 ? masteryFromInterval(srs.interval) : 0),
           );
-          const becameMemorized = v.status !== 'memorized' && status === 'memorized';
           const verses = { ...state.verses, [id]: { ...v, srs, status, mastery } };
-          const progress = withProgress(state, {
-            xpDelta: xpForPractice(accuracy),
-            touch: accuracy >= 95,
-            perfect: accuracy >= 100,
-            now,
-            versesOverride: verses,
-          });
-          const d = advanceDaily(progress.stats, now, {
-            drills: 1,
-            perfect: accuracy >= 90 ? 1 : 0,
-          });
-          const celebration = pickCelebration({
-            becameMemorized,
-            reference: v.reference,
-            prevStreak: state.stats.streak,
-            nextStreak: progress.stats.streak,
-          });
-          return {
-            verses,
-            recentBadgeId: progress.recentBadgeId,
-            recentXp: (progress.recentXp ?? 0) + d.xpBonus,
-            recentQuestComplete: d.questJustCompleted,
-            recentCelebration: celebration ?? state.recentCelebration,
-            stats: { ...progress.stats, daily: d.daily, xp: progress.stats.xp + d.xpBonus },
-            activityLog: becameMemorized
-              ? pushActivity(state.activityLog, { type: 'memorized', ref: v.reference, at: now })
-              : state.activityLog,
-          };
+          // A near-perfect drill also counts as a review against the daily goal.
+          return { verses, stats: accuracy >= 95 ? countReview(state.stats, now) : state.stats };
         }),
 
       gradeReview: (id, rating) =>
@@ -759,41 +462,9 @@ export const useStore = create<StoreState>()(
               ? Math.round(v.mastery * 0.5)
               : Math.max(v.mastery, masteryFromInterval(srs.interval)),
           );
-          const becameMemorized = v.status !== 'memorized' && status === 'memorized';
           const verses = { ...state.verses, [id]: { ...v, srs, status, mastery } };
-          const progress = withProgress(state, {
-            xpDelta: xpForReview(rating),
-            touch: true,
-            now,
-            versesOverride: verses,
-          });
-          const d = advanceDaily(progress.stats, now, { reviews: 1 });
-          const celebration = pickCelebration({
-            becameMemorized,
-            reference: v.reference,
-            prevStreak: state.stats.streak,
-            nextStreak: progress.stats.streak,
-          });
-          return {
-            verses,
-            recentBadgeId: progress.recentBadgeId,
-            recentXp: (progress.recentXp ?? 0) + d.xpBonus,
-            recentQuestComplete: d.questJustCompleted,
-            recentCelebration: celebration ?? state.recentCelebration,
-            stats: { ...progress.stats, daily: d.daily, xp: progress.stats.xp + d.xpBonus },
-            // Reviewing His Word counts toward today's walk (the one streak).
-            walk: walkComplete(state.walk, dayKey(now), 'respond', now),
-            activityLog: pushActivity(
-              state.activityLog,
-              becameMemorized
-                ? { type: 'memorized', ref: v.reference, at: now }
-                : { type: 'reviewed', ref: v.reference, at: now },
-            ),
-          };
+          return { verses, stats: countReview(state.stats, now) };
         }),
-
-      clearCelebration: () =>
-        set({ recentBadgeId: null, recentXp: null, recentQuestComplete: false, recentCelebration: null }),
 
       setSettings: (patch) =>
         set((state) => ({ settings: { ...state.settings, ...patch } })),
@@ -816,11 +487,6 @@ export const useStore = create<StoreState>()(
       setDisplayName: (name) =>
         set((state) => ({
           profile: { ...state.profile, displayName: name.trim().slice(0, 40) },
-        })),
-
-      setCirclePref: (code, patch) =>
-        set((state) => ({
-          circlePrefs: { ...state.circlePrefs, [code]: { ...(state.circlePrefs[code] ?? {}), ...patch } },
         })),
 
       restoreFromBackup: (code) => {
@@ -856,30 +522,8 @@ export const useStore = create<StoreState>()(
         const circle = s.circles[code];
         const sharedRefs = (circle?.sharedVerses ?? []).map((v) => v.reference);
         const planRefs = (circle?.plans ?? []).flatMap((p) => p.items);
-        const pref = s.circlePrefs[code]?.sharing;
-        const shareOverride = pref ? pref === 'full' : undefined; // undefined → fall back to global
-        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs, planRefs, shareOverride, s.circlePrefs[code]?.muted));
+        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs, planRefs));
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
-      },
-
-      addSharedVerse: async (code, reference, forMemberId) => {
-        const s = get();
-        const ref = reference.trim();
-        const optimistic = { reference: ref, addedBy: s.profile.memberId, addedByName: s.profile.displayName, addedAt: Date.now(), forMemberId };
-        await optimisticCircle(set, get, code,
-          (c) => c.sharedVerses.some((v) => normalizeKey(v.reference) === normalizeKey(ref))
-            ? c
-            : { ...c, sharedVerses: [optimistic, ...c.sharedVerses] },
-          () => circleApi.addSharedVerse(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, ref, forMemberId),
-        );
-      },
-
-      setCircleGoal: async (code, goal) => {
-        const s = get();
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, meta: { ...c.meta, goal: goal ?? null } }),
-          () => circleApi.setGoal(s.settings.serverUrl, code, s.profile.memberId, goal),
-        );
       },
 
       setCircleName: async (code, name) => {
@@ -887,22 +531,6 @@ export const useStore = create<StoreState>()(
         await optimisticCircle(set, get, code,
           (c) => ({ ...c, meta: { ...c.meta, name: name.trim() || c.meta.name } }),
           () => circleApi.renameCircle(s.settings.serverUrl, code, s.profile.memberId, name.trim()),
-        );
-      },
-
-      removeSharedVerse: async (code, reference) => {
-        const s = get();
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, sharedVerses: c.sharedVerses.filter((v) => normalizeKey(v.reference) !== normalizeKey(reference)) }),
-          () => circleApi.removeVerse(s.settings.serverUrl, code, s.profile.memberId, reference),
-        );
-      },
-
-      deleteCirclePlan: async (code, planId) => {
-        const s = get();
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, plans: c.plans.filter((p) => p.planId !== planId) }),
-          () => circleApi.deletePlan(s.settings.serverUrl, code, s.profile.memberId, planId),
         );
       },
 
@@ -923,17 +551,6 @@ export const useStore = create<StoreState>()(
           (c) => ({ ...c, challenges: c.challenges.map((ch) => ch.chalId === chalId ? { ...ch, status: 'submitted', submission: { by: s.profile.memberId, text, accuracy, submittedAt: Date.now() } } : ch) }),
           () => circleApi.submitChallenge(s.settings.serverUrl, code, s.profile.memberId, chalId, text, accuracy),
         );
-        const chal = get().circles[code]?.challenges.find((ch) => ch.chalId === chalId);
-        if (chal?.reference) set((state) => ({ activityLog: pushActivity(state.activityLog, { type: 'challenge', ref: chal.reference, at: Date.now() }) }));
-      },
-
-      submitDuel: async (code, chalId, accuracy) => {
-        const s = get();
-        const mine = { by: s.profile.memberId, byName: s.profile.displayName, accuracy, at: Date.now() };
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, challenges: c.challenges.map((ch) => ch.chalId === chalId ? { ...ch, duel: [...(ch.duel ?? []).filter((d) => d.by !== s.profile.memberId), mine].sort((a, b) => b.accuracy - a.accuracy) } : ch) }),
-          () => circleApi.submitDuel(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, chalId, accuracy),
-        );
       },
 
       reviewChallenge: async (code, chalId, note, meaningPrompt) => {
@@ -947,125 +564,10 @@ export const useStore = create<StoreState>()(
       setStudySession: (session) =>
         set((state) => ({
           studySessions: { ...state.studySessions, [session.passageKey]: session },
-          activityLog: pushActivity(state.activityLog, { type: 'studied', ref: session.passage, at: Date.now() }),
         })),
 
       setReadingPosition: (book, chapter, verse) =>
-        set((state) => {
-          const ref = `${bookByNumber(book)?.name ?? `Book ${book}`} ${chapter}`;
-          const last = state.activityLog[state.activityLog.length - 1];
-          // Dedupe: don't log the same chapter twice in a row (re-mounts, translation switches).
-          const log = last && last.type === 'read' && last.ref === ref
-            ? state.activityLog
-            : pushActivity(state.activityLog, { type: 'read', ref, at: Date.now() });
-          return { reading: { book, chapter, verse, updatedAt: Date.now() }, activityLog: log };
-        }),
-
-      startReadingPlan: (planId) =>
-        set((state) => ({
-          activeReadingPlanId: planId,
-          readingPlanProgress: state.readingPlanProgress[planId]
-            ? state.readingPlanProgress
-            : { ...state.readingPlanProgress, [planId]: { startedAt: Date.now(), completed: [] } },
-        })),
-
-      toggleReadingDay: (planId, dayIndex) =>
-        set((state) => {
-          const prev = state.readingPlanProgress[planId] ?? { startedAt: Date.now(), completed: [] };
-          const has = prev.completed.includes(dayIndex);
-          const completed = has
-            ? prev.completed.filter((d) => d !== dayIndex)
-            : [...prev.completed, dayIndex].sort((a, b) => a - b);
-          return {
-            activeReadingPlanId: planId,
-            readingPlanProgress: { ...state.readingPlanProgress, [planId]: { ...prev, completed } },
-          };
-        }),
-
-      addApplication: (passageKey, passage, text) =>
-        set((state) => ({
-          applications: {
-            ...state.applications,
-            [passageKey]: { passageKey, passage, text: text.trim(), createdAt: Date.now() },
-          },
-        })),
-
-      revisitApplication: (passageKey, outcome) =>
-        set((state) => {
-          const a = state.applications[passageKey];
-          if (!a) return {};
-          return {
-            applications: {
-              ...state.applications,
-              [passageKey]: { ...a, revisitedAt: Date.now(), outcome: outcome?.trim() || a.outcome },
-            },
-          };
-        }),
-
-      editApplication: (passageKey, text) =>
-        set((state) => {
-          const a = state.applications[passageKey];
-          if (!a) return {};
-          return {
-            applications: {
-              ...state.applications,
-              [passageKey]: { ...a, text: text.trim() },
-            },
-          };
-        }),
-
-      deleteApplication: (passageKey) =>
-        set((state) => {
-          const next = { ...state.applications };
-          delete next[passageKey];
-          return { applications: next };
-        }),
-
-      createCirclePlan: async (code, title, items) => {
-        const s = get();
-        const planId = genLocalId();
-        const optimistic = { planId, title: title.trim(), items, createdBy: s.profile.memberId, createdAt: Date.now() };
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, plans: [optimistic, ...c.plans] }),
-          () => circleApi.createPlan(s.settings.serverUrl, code, s.profile.memberId, title, items, planId),
-        );
-      },
-
-      updateCirclePlan: async (code, planId, title, items) => {
-        const s = get();
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, plans: c.plans.map((p) => p.planId === planId ? { ...p, title: title.trim(), items } : p) }),
-          () => circleApi.updatePlan(s.settings.serverUrl, code, s.profile.memberId, planId, title, items),
-        );
-      },
-
-      shareNote: async (code, text, scope = 'free', ref, noteId) => {
-        const s = get();
-        const id = noteId ?? genLocalId();
-        const optimistic = { noteId: id, by: s.profile.memberId, byName: s.profile.displayName, scope, ref, text: text.trim(), updatedAt: Date.now() };
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, notes: [optimistic, ...c.notes.filter((n) => n.noteId !== id)] }),
-          () => circleApi.saveNote(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, { noteId: id, scope, ref, text: text.trim() }),
-        );
-        // Surface the shared note in the activity feed (shared notes only — private stay private).
-        if (ref) set((state) => ({ activityLog: pushActivity(state.activityLog, { type: 'noted', ref, at: Date.now() }) }));
-      },
-
-      editSharedNote: async (code, noteId, text, scope = 'free', ref) => {
-        const s = get();
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, notes: c.notes.map((n) => n.noteId === noteId ? { ...n, text: text.trim(), scope, ref, updatedAt: Date.now() } : n) }),
-          () => circleApi.saveNote(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, { noteId, scope, ref, text: text.trim() }),
-        );
-      },
-
-      deleteSharedNote: async (code, noteId) => {
-        const s = get();
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, notes: c.notes.filter((n) => n.noteId !== noteId) }),
-          () => circleApi.deleteNote(s.settings.serverUrl, code, s.profile.memberId, noteId),
-        );
-      },
+        set({ reading: { book, chapter, verse, updatedAt: Date.now() } }),
 
       postCircleMessage: async (code, text, context, attachments) => {
         const s = get();
@@ -1104,97 +606,9 @@ export const useStore = create<StoreState>()(
         );
       },
 
-      // ---- Circle daily devotional (the shared "today") ----
-      setCircleDaily: async (code, day, patch) => {
-        const s = get();
-        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
-        await optimisticCircle(set, get, code,
-          (c) => {
-            const daily = { ...(c.daily ?? {}) };
-            const prev = daily[day] ?? { day, doneByIds: [], reflections: [] };
-            const next = { ...prev };
-            for (const [k, v] of Object.entries(patch)) {
-              if (v && String(v).trim()) (next as any)[k] = String(v).trim();
-              else delete (next as any)[k];
-            }
-            next.setBy = me.memberId;
-            next.setByName = me.displayName;
-            next.updatedAt = Date.now();
-            daily[day] = next;
-            return { ...c, daily };
-          },
-          () => circleApi.setDaily(s.settings.serverUrl, code, me, day, patch),
-        );
-      },
-
-      completeCircleDaily: async (code, day) => {
-        const s = get();
-        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
-        await optimisticCircle(set, get, code,
-          (c) => {
-            const daily = { ...(c.daily ?? {}) };
-            const prev = daily[day] ?? { day, doneByIds: [], reflections: [] };
-            const has = (prev.doneByIds ?? []).includes(me.memberId);
-            daily[day] = { ...prev, doneByIds: has ? prev.doneByIds.filter((id) => id !== me.memberId) : [...(prev.doneByIds ?? []), me.memberId] };
-            return { ...c, daily };
-          },
-          () => circleApi.completeDaily(s.settings.serverUrl, code, me, day),
-        );
-      },
-
-      shareCircleReflection: async (code, day, text) => {
-        const s = get();
-        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
-        const trimmed = text.trim();
-        await optimisticCircle(set, get, code,
-          (c) => {
-            const daily = { ...(c.daily ?? {}) };
-            const prev = daily[day] ?? { day, doneByIds: [], reflections: [] };
-            const others = (prev.reflections ?? []).filter((r) => r.by !== me.memberId);
-            const reflections = trimmed
-              ? [{ by: me.memberId, byName: me.displayName, text: trimmed, updatedAt: Date.now() }, ...others]
-              : others;
-            daily[day] = { ...prev, reflections };
-            return { ...c, daily };
-          },
-          () => circleApi.shareReflection(s.settings.serverUrl, code, me, day, trimmed),
-        );
-      },
-
-      setCircleReadingPlan: async (code, readingPlanId) => {
-        const s = get();
-        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
-        const startedAt = Date.now();
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, meta: { ...c.meta, readingPlanId, readingPlanStartedAt: readingPlanId ? startedAt : null } }),
-          () => circleApi.setCircleReadingPlan(s.settings.serverUrl, code, me, readingPlanId, startedAt),
-        );
-      },
-
-      shareDailyItem: async (code, day, kind, value, remove = false) => {
-        const s = get();
-        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
-        const field = kind === 'song' ? 'songs' : 'verses';
-        await optimisticCircle(set, get, code,
-          (c) => {
-            const daily = { ...(c.daily ?? {}) };
-            const prev = daily[day] ?? { day, doneByIds: [], reflections: [], shares: [] };
-            const shares = [...(prev.shares ?? [])];
-            let mine = shares.find((sh) => sh.by === me.memberId);
-            if (!mine) { mine = { by: me.memberId, byName: me.displayName, verses: [], songs: [], updatedAt: Date.now() }; shares.push(mine); }
-            const list = new Set(mine[field] ?? []);
-            if (remove) list.delete(value); else list.add(value);
-            const nextMine = { ...mine, [field]: Array.from(list), updatedAt: Date.now() };
-            daily[day] = { ...prev, shares: shares.map((sh) => (sh.by === me.memberId ? nextMine : sh)).filter((sh) => (sh.verses?.length ?? 0) + (sh.songs?.length ?? 0) > 0) };
-            return { ...c, daily };
-          },
-          () => circleApi.shareToDay(s.settings.serverUrl, code, me, day, kind, value, remove),
-        );
-      },
-
       adoptReflection: (text, byName, ref) => {
         const md = `${text}\n\n— ${byName || 'a partner'}`;
-        const doc = emptyDoc(ref ? 'verse' : 'note', {
+        const doc = emptyDoc('note', {
           title: ref ?? `From ${byName || 'a partner'}`,
           blocks: markdownToBlocks(md),
           anchorRef: ref,
@@ -1205,47 +619,20 @@ export const useStore = create<StoreState>()(
         return doc.id;
       },
 
-      adoptVerse: async (ref, toJournal = false) => {
-        const s = get();
+      adoptVerse: async (ref, toLog = false) => {
         let text = '';
         try { text = (await getVerse(ref, 'kjv')).text; } catch { /* keep going with empty text */ }
         const fetched: FetchedVerse = { reference: ref, text, translation: 'kjv', translationName: translationName('kjv'), offline: false };
         get().addFetchedVerse(fetched);
-        if (toJournal) get().addJournalNote({ ref, text: `Adopted: ${ref}` });
+        if (toLog) get().addLogEntry({ kind: 'verse', ref, title: ref });
       },
 
-      addPrivateNote: (scope, text, ref) =>
-        set((state) => {
-          const noteId = newMemberId().replace('m_', 'n_');
-          return {
-            notes: {
-              ...state.notes,
-              [noteId]: { noteId, scope, ref, text: text.trim(), updatedAt: Date.now() },
-            },
-          };
-        }),
-
-      editPrivateNote: (noteId, text) =>
-        set((state) => {
-          const n = state.notes[noteId];
-          if (!n) return {};
-          return { notes: { ...state.notes, [noteId]: { ...n, text: text.trim(), updatedAt: Date.now() } } };
-        }),
-
-      deletePrivateNote: (noteId) =>
-        set((state) => {
-          const next = { ...state.notes };
-          delete next[noteId];
-          return { notes: next };
-        }),
-
-      createTopic: (title, description) => {
+      createTopic: (title) => {
         const now = Date.now();
         const id = 't_' + now.toString(36) + Math.random().toString(36).slice(2, 8);
         const topic: Topic = {
           id,
           title: title.trim().slice(0, 80) || 'Untitled topic',
-          description: description?.trim() || undefined,
           entries: [],
           createdAt: now,
           updatedAt: now,
@@ -1254,14 +641,14 @@ export const useStore = create<StoreState>()(
         return id;
       },
 
-      updateTopic: (id, title, description) =>
+      updateTopic: (id, title) =>
         set((state) => {
           const t = state.topics[id];
           if (!t) return {};
           return {
             topics: {
               ...state.topics,
-              [id]: { ...t, title: title.trim().slice(0, 80) || t.title, description: description?.trim() || undefined, updatedAt: Date.now() },
+              [id]: { ...t, title: title.trim().slice(0, 80) || t.title, updatedAt: Date.now() },
             },
           };
         }),
@@ -1273,11 +660,11 @@ export const useStore = create<StoreState>()(
           return { topics: next };
         }),
 
-      addToTopic: (id, ref, note) =>
+      addToTopic: (id, ref) =>
         set((state) => {
           const t = state.topics[id];
           if (!t) return {};
-          return { topics: { ...state.topics, [id]: addTopicEntry(t, ref, note, Date.now()) } };
+          return { topics: { ...state.topics, [id]: addTopicEntry(t, ref, Date.now()) } };
         }),
 
       removeFromTopic: (id, ref) =>
@@ -1286,65 +673,6 @@ export const useStore = create<StoreState>()(
           if (!t) return {};
           return { topics: { ...state.topics, [id]: removeTopicEntry(t, ref, Date.now()) } };
         }),
-
-      setTopicEntryNote: (id, ref, note) =>
-        set((state) => {
-          const t = state.topics[id];
-          if (!t) return {};
-          return { topics: { ...state.topics, [id]: updateEntryNote(t, ref, note, Date.now()) } };
-        }),
-
-      addTopicThought: (id, text) =>
-        set((state) => {
-          const t = state.topics[id];
-          if (!t) return {};
-          const rid = 'r_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-          return { topics: { ...state.topics, [id]: addTopicReflection(t, rid, text, Date.now()) } };
-        }),
-
-      editTopicThought: (id, reflectionId, text) =>
-        set((state) => {
-          const t = state.topics[id];
-          if (!t) return {};
-          return { topics: { ...state.topics, [id]: updateTopicReflection(t, reflectionId, text, Date.now()) } };
-        }),
-
-      removeTopicThought: (id, reflectionId) =>
-        set((state) => {
-          const t = state.topics[id];
-          if (!t) return {};
-          return { topics: { ...state.topics, [id]: removeTopicReflection(t, reflectionId, Date.now()) } };
-        }),
-
-      moveTopicThought: (id, reflectionId, dir) =>
-        set((state) => {
-          const t = state.topics[id];
-          if (!t) return {};
-          return { topics: { ...state.topics, [id]: moveTopicReflection(t, reflectionId, dir, Date.now()) } };
-        }),
-
-      // ---- Daily journal (private) ----
-      setJournalReflection: (day, text) =>
-        set((state) => ({
-          journal: patchJournalEntry(state.journal, day, { reflection: text.trim() }, Date.now()),
-          // Writing your reflection is meeting with God — it counts toward the walk.
-          walk: text.trim() ? walkComplete(state.walk, day, 'reflect', Date.now()) : state.walk,
-        })),
-
-      setJournalVerse: (day, ref) =>
-        set((state) => ({ journal: patchJournalEntry(state.journal, day, { verse: ref.trim() }, Date.now()) })),
-
-      setJournalGratitude: (day, text) =>
-        set((state) => ({ journal: patchJournalEntry(state.journal, day, { gratitude: text.trim() }, Date.now()) })),
-
-      addJournalNote: (note, day) =>
-        set((state) => {
-          if (!note.text.trim()) return {};
-          return { journal: addJournalNoteReducer(state.journal, day ?? dayKey(), note, Date.now()) };
-        }),
-
-      removeJournalNote: (day, noteId) =>
-        set((state) => ({ journal: removeJournalNoteReducer(state.journal, day, noteId, Date.now()) })),
 
       // ---- Notes / writing documents ----
       createDoc: (type, opts) => {
@@ -1367,40 +695,6 @@ export const useStore = create<StoreState>()(
           const next = { ...state.documents };
           delete next[id];
           return { documents: next };
-        }),
-
-      journalDocForDay: (day) => {
-        const existing = Object.values(get().documents).find((d) => d.type === 'journal' && d.day === day);
-        if (existing) return existing.id;
-        const d = emptyDoc('journal', { day, title: '' });
-        set((state) => ({ documents: { ...state.documents, [d.id]: d } }));
-        return d.id;
-      },
-
-      createFolder: (name, emoji) => {
-        const id = genBlockId('f');
-        const folder: Folder = { id, name: name.trim() || 'Notebook', emoji, createdAt: Date.now() };
-        set((state) => ({ folders: { ...state.folders, [id]: folder } }));
-        return id;
-      },
-
-      updateFolder: (id, patch) =>
-        set((state) => {
-          const f = state.folders[id];
-          if (!f) return {};
-          return { folders: { ...state.folders, [id]: { ...f, ...patch } } };
-        }),
-
-      deleteFolder: (id) =>
-        set((state) => {
-          const folders = { ...state.folders };
-          delete folders[id];
-          // Unfile any documents that were in this folder.
-          const documents = { ...state.documents };
-          for (const d of Object.values(documents)) {
-            if (d.folderId === id) documents[d.id] = { ...d, folderId: null };
-          }
-          return { folders, documents };
         }),
 
       saveSong: (song, id) => {
@@ -1428,20 +722,29 @@ export const useStore = create<StoreState>()(
           return { songChords };
         }),
 
-      completeWalkMovement: (movement, day) =>
-        set((state) => ({ walk: walkComplete(state.walk, day ?? dayKey(), movement, Date.now()) })),
+      addLogEntry: (entry) => {
+        const day = entry.day ?? dayKey();
+        set((state) => ({ log: addLog(state.log, { ...entry, day }) }));
+      },
 
-      uncompleteWalkMovement: (movement, day) =>
-        set((state) => ({ walk: walkUncomplete(state.walk, day ?? dayKey(), movement, Date.now()) })),
+      removeLogEntry: (id) => set((state) => ({ log: removeLog(state.log, id) })),
+
+      setLogEntryPrivate: (id, isPrivate) =>
+        set((state) => ({ log: setLogPrivate(state.log, id, isPrivate) })),
+
+      setLogEntryText: (id, text) => set((state) => ({ log: setLogText(state.log, id, text) })),
+
+      setPendingChatAttachment: (attachment) => set({ pendingChatAttachment: attachment }),
 
       runNotesMigration: () =>
         set((state) => {
-          // Move private per-verse/free notes into documents (idempotent by
-          // deterministic id), then clear the legacy slice. Applications keep
-          // their study screen for now.
-          if (Object.keys(state.notes).length === 0) return {};
-          const { documents } = migrateDocs(state.documents, state.notes, {});
-          return { documents, notes: {} };
+          // The retired writing silos (journal, per-verse notes, "living it out",
+          // topic reflections) were carried into `documents` on hydration; this
+          // is the idempotent belt-and-braces pass for a restored backup.
+          const legacy = (state as unknown as { __legacyWriting?: object }).__legacyWriting;
+          if (!legacy) return {};
+          const { documents, changed } = migrateDocs(state.documents, legacy);
+          return changed ? { documents } : {};
         }),
 
       addPrayer: async (code, text) => {
@@ -1452,7 +755,6 @@ export const useStore = create<StoreState>()(
           (c) => ({ ...c, prayers: [optimistic, ...c.prayers] }),
           () => circleApi.addPrayer(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, text.trim(), prayerId),
         );
-        set((state) => ({ activityLog: pushActivity(state.activityLog, { type: 'prayed', at: Date.now() }) }));
       },
 
       prayForRequest: async (code, prayerId) => {
@@ -1520,14 +822,6 @@ export const useStore = create<StoreState>()(
         );
       },
 
-      cheerMember: async (code, toMemberId) => {
-        const s = get();
-        await optimisticCircle(set, get, code,
-          (c) => ({ ...c, cheersFor: { ...c.cheersFor, [toMemberId]: (c.cheersFor?.[toMemberId] ?? 0) + 1 } }),
-          () => circleApi.cheer(s.settings.serverUrl, code, s.profile.memberId, toMemberId),
-        );
-      },
-
       markOpened: () => set({ session: { lastOpenedDay: dayKey() } }),
 
       registerPush: async () => {
@@ -1576,7 +870,7 @@ export const useStore = create<StoreState>()(
         const s = get();
         return JSON.stringify({
           app: 'versed',
-          schema: 2,
+          schema: 3,
           exportedAt: Date.now(),
           data: {
             verses: s.verses,
@@ -1584,24 +878,16 @@ export const useStore = create<StoreState>()(
             settings: s.settings,
             profile: s.profile,
             circles: s.circles,
-            circlePrefs: s.circlePrefs,
             studySessions: s.studySessions,
-            applications: s.applications,
-            notes: s.notes,
             topics: s.topics,
-            journal: s.journal,
             documents: s.documents,
-            folders: s.folders,
-            walk: s.walk,
+            log: s.log,
             songs: s.songs,
             songChords: s.songChords,
             favoriteSongs: s.favoriteSongs,
             session: s.session,
             reading: s.reading,
-            readingPlanProgress: s.readingPlanProgress,
-            activeReadingPlanId: s.activeReadingPlanId,
             seenTips: s.seenTips,
-            activityLog: s.activityLog,
           },
         });
       },
@@ -1617,31 +903,33 @@ export const useStore = create<StoreState>()(
         if (!d || typeof d !== 'object' || (!('verses' in d) && !('profile' in d))) {
           return { ok: false, error: 'That doesn’t look like a Versed backup.' };
         }
-        set((state) => ({
-          verses: d.verses ?? state.verses,
-          stats: { ...defaultStats, ...(d.stats ?? {}) },
-          settings: { ...defaultSettings, ...(d.settings ?? {}) },
-          profile: { ...defaultProfile, ...(d.profile ?? {}) },
-          circles: d.circles ?? state.circles,
-          circlePrefs: d.circlePrefs ?? state.circlePrefs,
-          studySessions: d.studySessions ?? state.studySessions,
-          applications: d.applications ?? state.applications,
-          notes: d.notes ?? state.notes,
-          topics: d.topics ?? state.topics,
-          journal: d.journal ?? state.journal,
-          documents: d.documents ?? state.documents,
-          folders: d.folders ?? state.folders,
-          walk: d.walk ?? state.walk,
-          songs: d.songs ?? state.songs,
-          songChords: d.songChords ?? state.songChords,
-          favoriteSongs: Array.isArray(d.favoriteSongs) ? d.favoriteSongs : state.favoriteSongs,
-          session: d.session ?? state.session,
-          reading: d.reading ?? state.reading,
-          readingPlanProgress: d.readingPlanProgress ?? state.readingPlanProgress,
-          activeReadingPlanId: d.activeReadingPlanId ?? state.activeReadingPlanId,
-          seenTips: Array.isArray(d.seenTips) ? d.seenTips : state.seenTips,
-          activityLog: Array.isArray(d.activityLog) ? d.activityLog : state.activityLog,
-        }));
+        set((state) => {
+          // A backup written before the simplification still carries the retired
+          // writing silos — carry them into documents rather than dropping them.
+          const { documents } = migrateDocs(d.documents ?? state.documents, {
+            notes: d.notes,
+            applications: d.applications,
+            journal: d.journal,
+            topics: d.topics,
+          });
+          return {
+            verses: d.verses ?? state.verses,
+            stats: { ...defaultStats, ...(d.stats ?? {}) },
+            settings: { ...defaultSettings, ...(d.settings ?? {}) },
+            profile: { ...defaultProfile, ...(d.profile ?? {}) },
+            circles: d.circles ?? state.circles,
+            studySessions: d.studySessions ?? state.studySessions,
+            topics: normalizeTopics(d.topics) ?? state.topics,
+            documents: normalizeDocs(documents),
+            log: d.log ?? state.log,
+            songs: d.songs ?? state.songs,
+            songChords: d.songChords ?? state.songChords,
+            favoriteSongs: Array.isArray(d.favoriteSongs) ? d.favoriteSongs : state.favoriteSongs,
+            session: d.session ?? state.session,
+            reading: d.reading ?? state.reading,
+            seenTips: Array.isArray(d.seenTips) ? d.seenTips : state.seenTips,
+          };
+        });
         return { ok: true };
       },
 
@@ -1681,45 +969,40 @@ export const useStore = create<StoreState>()(
         settings: state.settings,
         profile: state.profile,
         circles: state.circles,
-        circlePrefs: state.circlePrefs,
         studySessions: state.studySessions,
-        applications: state.applications,
-        notes: state.notes,
         topics: state.topics,
-        journal: state.journal,
         documents: state.documents,
-        folders: state.folders,
-        walk: state.walk,
+        log: state.log,
         songs: state.songs,
         songChords: state.songChords,
         favoriteSongs: state.favoriteSongs,
         session: state.session,
         reading: state.reading,
-        readingPlanProgress: state.readingPlanProgress,
-        activeReadingPlanId: state.activeReadingPlanId,
         seenTips: state.seenTips,
-        activityLog: state.activityLog,
         pushToken: state.pushToken,
         lastCloudBackupAt: state.lastCloudBackupAt,
       }),
-      // Merge persisted data over current defaults so state saved by an older
-      // version (missing newer fields like stats.earnedBadges) is always
-      // backfilled — otherwise those undefined fields crash the UI.
       // Never discard saved state on a version bump — pass it straight to merge,
-      // which backfills any missing fields. (Default zustand behavior can drop
-      // state on version mismatch when no migrate is supplied.)
+      // which backfills any missing fields and carries retired slices forward.
       migrate: (persisted) => persisted as StoreState,
       merge: (persisted, current) => {
         // Hydration must NEVER throw — a corrupt or partial persisted blob
-        // (including one auto-restored from a different app version) would
-        // otherwise crash the app on launch. On any problem, fall back to
-        // defaults rather than crash.
+        // (including one written by a much older version) would otherwise crash
+        // the app on launch. On any problem, fall back to defaults.
         try {
-          const p = (persisted ?? {}) as Partial<StoreState>;
+          const p = (persisted ?? {}) as Partial<StoreState> & Record<string, any>;
           const verses = p.verses && typeof p.verses === 'object' ? p.verses : {};
           // Existing users (they already have a profile or saved verses) should
           // NOT be sent back through first-run onboarding after this update.
           const isReturningUser = !!(p.profile?.memberId || Object.keys(verses).length > 0);
+          // The simplification retired the journal, per-verse notes, topic
+          // reflections and "living it out" as places to write. Nothing written
+          // is lost: each is carried into `documents` here, once, before the
+          // legacy slices are dropped on the next save.
+          const { documents } = migrateDocs(
+            (p.documents ?? {}) as Record<string, Doc>,
+            { notes: p.notes, applications: p.applications, journal: p.journal, topics: p.topics },
+          );
           return {
             ...current,
             ...p,
@@ -1727,39 +1010,23 @@ export const useStore = create<StoreState>()(
             settings: { ...defaultSettings, onboarded: isReturningUser, ...(p.settings ?? {}) },
             profile: { ...defaultProfile, ...(p.profile ?? {}) },
             circles: p.circles ?? {},
-            circlePrefs: p.circlePrefs ?? {},
             studySessions: p.studySessions ?? {},
-            applications: p.applications ?? {},
-            notes: p.notes ?? {},
-            topics: p.topics ?? {},
-            journal: p.journal ?? {},
-            documents: p.documents ?? {},
-            folders: p.folders ?? {},
-            walk: p.walk ?? {},
+            topics: normalizeTopics(p.topics) ?? {},
+            documents: normalizeDocs(documents),
+            log: p.log ?? {},
             songs: p.songs ?? {},
             songChords: p.songChords ?? {},
             favoriteSongs: Array.isArray(p.favoriteSongs) ? p.favoriteSongs : [],
             session: { lastOpenedDay: null, ...(p.session ?? {}) },
             reading: p.reading ?? null,
-            readingPlanProgress: p.readingPlanProgress ?? {},
-            activeReadingPlanId: p.activeReadingPlanId ?? null,
             seenTips: Array.isArray(p.seenTips) ? p.seenTips : [],
-            activityLog: Array.isArray(p.activityLog) ? p.activityLog : [],
             pushToken: p.pushToken ?? null,
             lastCloudBackupAt: p.lastCloudBackupAt ?? null,
+            pendingChatAttachment: null,
             verses,
-          };
+          } as StoreState;
         } catch {
           return current;
-        }
-      },
-      onRehydrateStorage: () => () => {
-        try {
-          useStore.setState({ hydrated: true });
-          // Mint a stable identity on first run (idempotent thereafter).
-          useStore.getState().ensureProfile();
-        } catch {
-          useStore.setState({ hydrated: true });
         }
       },
     },
@@ -1803,11 +1070,6 @@ export function useCircle(code: string | undefined): Circle | undefined {
   return useStore((state) => (code ? state.circles[code] : undefined));
 }
 
-export function useCirclePref(code: string | undefined): CirclePref {
-  return useStore((state) => (code ? state.circlePrefs[code] ?? EMPTY_PREF : EMPTY_PREF));
-}
-const EMPTY_PREF: CirclePref = {};
-
 export function useStudySession(passageKey: string | undefined): StudySession | undefined {
   return useStore((state) => (passageKey ? state.studySessions[passageKey] : undefined));
 }
@@ -1816,43 +1078,15 @@ export function useReadingPosition() {
   return useStore((state) => state.reading);
 }
 
-export function useReadingPlanProgress(planId: string | undefined) {
-  return useStore((state) => (planId ? state.readingPlanProgress[planId] : undefined));
+/** The whole daily log (entry id → entry). */
+export function useLog(): Record<string, LogEntry> {
+  return useStore((state) => state.log);
 }
 
-export function useActiveReadingPlanId() {
-  return useStore((state) => state.activeReadingPlanId);
-}
-
-/** Private notes attached to a given verse reference, newest first. */
-export function useVerseNotes(reference: string | undefined): LocalNote[] {
-  const notes = useStore((state) => state.notes);
-  return useMemo(() => {
-    if (!reference) return [];
-    const key = normalizeKey(reference);
-    return Object.values(notes)
-      .filter((n) => n.ref && normalizeKey(n.ref) === key)
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [notes, reference]);
-}
-
-export function useApplication(passageKey: string | undefined): StudyApplication | undefined {
-  return useStore((state) => (passageKey ? state.applications[passageKey] : undefined));
-}
-
-/** The whole journal map (day → entry). */
-export function useJournal(): Record<string, JournalEntry> {
-  return useStore((state) => state.journal);
-}
-
-/** The daily walk map (day → completed movements). */
-export function useWalk(): Record<string, WalkDay> {
-  return useStore((state) => state.walk);
-}
-
-/** A single day's journal entry (undefined until something is written). */
-export function useJournalEntry(day: string | undefined): JournalEntry | undefined {
-  return useStore((state) => (day ? state.journal[day] : undefined));
+/** One day's log entries, oldest first. */
+export function useLogDay(day: string): LogEntry[] {
+  const log = useLog();
+  return useMemo(() => logEntriesForDay(log, day), [log, day]);
 }
 
 /** A single writing document by id. */
@@ -1860,15 +1094,15 @@ export function useDoc(id: string | undefined): Doc | undefined {
   return useStore((state) => (id ? state.documents[id] : undefined));
 }
 
-/** All documents, most-recently-updated first, optionally filtered by type/folder. */
-export function useDocList(filter?: { type?: DocType; folderId?: string | null }): Doc[] {
+/** All documents, most-recently-updated first, optionally filtered by type. */
+export function useDocList(filter?: { type?: DocType }): Doc[] {
   const documents = useStore((state) => state.documents);
   return useMemo(() => {
-    let list = Object.values(documents);
-    if (filter?.type) list = list.filter((d) => d.type === filter.type);
-    if (filter?.folderId !== undefined) list = list.filter((d) => (d.folderId ?? null) === filter.folderId);
+    const list = filter?.type
+      ? Object.values(documents).filter((d) => d.type === filter.type)
+      : Object.values(documents);
     return list.sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [documents, filter?.type, filter?.folderId]);
+  }, [documents, filter?.type]);
 }
 
 /** Documents that reference a given verse (backlinks — "notes on this verse"). */
@@ -1881,12 +1115,6 @@ export function useDocsForRef(reference: string | undefined): Doc[] {
       .filter((d) => (d.refs ?? []).some((r) => normalizeKey(r) === key))
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }, [documents, reference]);
-}
-
-/** All notebooks/folders. */
-export function useFolders(): Folder[] {
-  const folders = useStore((state) => state.folders);
-  return useMemo(() => Object.values(folders).sort((a, b) => a.createdAt - b.createdAt), [folders]);
 }
 
 /** All custom study topics, most-recently-updated first. */
@@ -1940,10 +1168,3 @@ export function useMemorizedCount(): number {
   return useMemo(() => memorizedCount(verses), [verses]);
 }
 
-export function useRecentBadgeId(): string | null {
-  return useStore((state) => state.recentBadgeId);
-}
-
-export function useRecentCelebration(): CelebrationEvent | null {
-  return useStore((state) => state.recentCelebration);
-}

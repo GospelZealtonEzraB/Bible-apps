@@ -20,14 +20,10 @@ const member: MemberSnapshotInput = {
   memberId: 'm_1',
   displayName: 'Sarah',
   memorizedCount: 3,
-  streak: 2,
   versesDone: [],
   planDone: [],
   memorizedRefs: [],
   learningRefs: [],
-  bestStreak: 2,
-  xp: 0,
-  recentActivity: [],
   lastActiveDay: '2026-08-08',
 };
 

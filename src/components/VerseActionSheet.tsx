@@ -1,18 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, Share, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, Share, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { Chip } from '@/components/ui';
 import { useStore, useTopicsForRef } from '@/store/useStore';
+import { Sheet } from '@/components/Sheet';
+import { AssetActions } from '@/components/AssetActions';
 import { getVerse, verseId, translationName as translationNameOf, type FetchedVerse } from '@/data/bibleApi';
 import { getCrossRefs } from '@/data/crossRefs';
 import { AddToTopicSheet } from '@/components/AddToTopicSheet';
 
 /**
- * Bottom-sheet of actions for a single verse — the "from anywhere to memorized"
- * hub. Now self-contained for the reader: memorize, a quick inline note, inline
- * cross-references you can peek, study, and share — without leaving the chapter.
+ * Bottom-sheet of actions for a single verse — the one hub every verse in the
+ * app opens into. Log it, share it to the chat, memorize it, note it, tag it,
+ * study it, sing it, or peek its cross-references, all without leaving the
+ * chapter you're reading.
  */
 export function VerseActionSheet({
   visible,
@@ -31,14 +34,8 @@ export function VerseActionSheet({
   const router = useRouter();
   const addFetchedVerse = useStore((s) => s.addFetchedVerse);
   const createDoc = useStore((s) => s.createDoc);
-  const addJournalNote = useStore((s) => s.addJournalNote);
   const alreadySaved = useStore((s) => !!s.verses[verseId(reference, translation)]);
 
-  const [noteDraft, setNoteDraft] = useState('');
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [noteTarget, setNoteTarget] = useState<'private' | 'journal'>('private');
-  const [saved, setSaved] = useState(false);
-  const [journaled, setJournaled] = useState(false);
   const [peekRef, setPeekRef] = useState<string | null>(null);
   const [peekText, setPeekText] = useState<string | null>(null);
   const [topicOpen, setTopicOpen] = useState(false);
@@ -49,11 +46,6 @@ export function VerseActionSheet({
   // Reset transient state whenever a new verse opens the sheet.
   useEffect(() => {
     if (visible) {
-      setNoteDraft('');
-      setNoteOpen(false);
-      setNoteTarget('private');
-      setSaved(false);
-      setJournaled(false);
       setPeekRef(null);
       setPeekText(null);
       setTopicOpen(false);
@@ -69,17 +61,8 @@ export function VerseActionSheet({
     router.push(`/verse/${encodeURIComponent(verseId(reference, translation))}`);
   };
 
-  const saveNote = () => {
-    if (!noteDraft.trim()) return;
-    // The inline composer now only feeds today's journal; a full note is a Doc.
-    addJournalNote({ ref: reference, text: noteDraft });
-    setJournaled(true);
-    setNoteDraft('');
-    setNoteOpen(false);
-  };
-
   const writeNote = () => {
-    const id = createDoc('verse', { anchorRef: reference, title: reference });
+    const id = createDoc('note', { anchorRef: reference, title: reference });
     onClose();
     router.push(`/notes/${id}`);
   };
@@ -95,98 +78,58 @@ export function VerseActionSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-        <Pressable style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'flex-end' }} onPress={onClose}>
-          <Pressable
-            style={{ backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.xs }}
-            onPress={() => {}}
-          >
-            <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.lg }}>{reference}</Text>
-            <Text numberOfLines={2} style={{ color: colors.textMuted, fontSize: font.sizes.sm, fontFamily: font.serif, marginBottom: spacing.sm }}>{text}</Text>
+    <Sheet visible={visible} onClose={onClose} title={reference}>
+      <Text
+        numberOfLines={4}
+        style={{ color: colors.textMuted, fontSize: font.sizes.sm, fontFamily: font.serif, lineHeight: 22, marginBottom: spacing.md }}
+      >
+        {text}
+      </Text>
 
-            {/* Inline cross-reference peek */}
-            {peekRef ? (
-              <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>{peekRef}</Text>
-                  <Pressable onPress={() => setPeekRef(null)} hitSlop={8}><Ionicons name="close" size={16} color={colors.textFaint} /></Pressable>
-                </View>
-                {peekText ? <Text style={{ color: colors.text, fontSize: font.sizes.sm, lineHeight: 22, fontFamily: font.serif, marginTop: 4 }}>{peekText}</Text> : <ActivityIndicator color={colors.primary} style={{ marginTop: 6 }} />}
-              </View>
-            ) : null}
+      {/* Log it / talk about it — the two actions every asset carries. */}
+      <View style={{ marginBottom: spacing.md }}>
+        <AssetActions asset={{ kind: 'verse', ref: reference, title: reference, text }} />
+      </View>
 
-            {xrefs.length > 0 ? (
-              <View style={{ marginBottom: spacing.sm, gap: 6 }}>
-                <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>CROSS-REFERENCES</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-                  {xrefs.slice(0, 6).map((r) => <Chip key={r} label={r} active={peekRef === r} onPress={() => peek(r)} />)}
-                </View>
-              </View>
-            ) : null}
+      {/* Inline cross-reference peek */}
+      {peekRef ? (
+        <View style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.sm }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.sm }}>{peekRef}</Text>
+            <Pressable onPress={() => setPeekRef(null)} hitSlop={8}><Ionicons name="close" size={16} color={colors.textFaint} /></Pressable>
+          </View>
+          {peekText ? (
+            <Text style={{ color: colors.text, fontSize: font.sizes.sm, lineHeight: 22, fontFamily: font.serif, marginTop: 4 }}>{peekText}</Text>
+          ) : (
+            <ActivityIndicator color={colors.primary} style={{ marginTop: 6 }} />
+          )}
+        </View>
+      ) : null}
 
-            {/* Quick note */}
-            {noteOpen ? (
-              <View style={{ gap: spacing.sm, marginBottom: spacing.sm }}>
-                <TextInput
-                  value={noteDraft}
-                  onChangeText={setNoteDraft}
-                  placeholder={noteTarget === 'journal' ? "Add to today's journal — what is He showing you?" : 'What are you seeing here?'}
-                  placeholderTextColor={colors.textFaint}
-                  multiline
-                  autoFocus
-                  textAlignVertical="top"
-                  style={{ color: colors.text, fontSize: font.sizes.md, minHeight: 60, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md }}
-                />
-                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                  <Pressable onPress={() => setNoteOpen(false)} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center' }}>
-                    <Text style={{ color: colors.textFaint, fontWeight: '700' }}>Cancel</Text>
-                  </Pressable>
-                  <Pressable onPress={saveNote} style={{ flex: 1, paddingVertical: spacing.sm, alignItems: 'center', backgroundColor: colors.primary, borderRadius: radius.md }}>
-                    <Text style={{ color: colors.onPrimary, fontWeight: '800' }}>Save note</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ) : null}
+      {xrefs.length > 0 ? (
+        <View style={{ marginBottom: spacing.sm, gap: 6 }}>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>CROSS-REFERENCES</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+            {xrefs.slice(0, 6).map((r) => <Chip key={r} label={r} active={peekRef === r} onPress={() => peek(r)} />)}
+          </View>
+        </View>
+      ) : null}
 
-            <ActionRow icon="sparkles-outline" label={alreadySaved ? 'Open in your library' : 'Memorize this verse'} hint={alreadySaved ? 'Already saved' : 'Hide it in your heart'} color={colors.primary} onPress={memorize} />
-            {!noteOpen ? (
-              <ActionRow
-                icon="create-outline"
-                label="Write a note"
-                hint="A full note in your workspace, linked to this verse"
-                color={colors.success}
-                onPress={writeNote}
-              />
-            ) : null}
-            {!noteOpen ? (
-              <ActionRow
-                icon={journaled ? 'checkmark-circle-outline' : 'book-outline'}
-                label={journaled ? 'Added to today’s journal' : 'Journal this today'}
-                hint={journaled ? 'In your daily journal' : 'Capture it in today’s entry'}
-                color={colors.primary}
-                onPress={() => { setJournaled(false); setNoteTarget('journal'); setNoteOpen(true); }}
-              />
-            ) : null}
-            <ActionRow
-              icon="pricetag-outline"
-              label="Add to a topic"
-              hint={topicCount > 0 ? `In ${topicCount} ${topicCount === 1 ? 'topic' : 'topics'}` : 'Collect it into a study thread'}
-              color={colors.warning}
-              onPress={() => setTopicOpen(true)}
-            />
-            <ActionRow icon="book-outline" label="Study this passage" hint="Setting, people, cross-refs" color={colors.accent} onPress={study} />
-            <ActionRow icon="musical-notes-outline" label="Songs from this verse" hint="Hymns it inspired — sing the Word" color={colors.accent} onPress={songs} />
-            <ActionRow icon="share-outline" label="Share" hint="Send to a friend" color={colors.textMuted} onPress={share} />
+      <ActionRow icon="sparkles-outline" label={alreadySaved ? 'Open in your library' : 'Memorize this verse'} hint={alreadySaved ? 'Already saved' : 'Hide it in your heart'} color={colors.primary} onPress={memorize} />
+      <ActionRow icon="create-outline" label="Write a note" hint="A note in your workspace, linked to this verse" color={colors.success} onPress={writeNote} />
+      <ActionRow
+        icon="pricetag-outline"
+        label="Add to a topic"
+        hint={topicCount > 0 ? `In ${topicCount} ${topicCount === 1 ? 'topic' : 'topics'}` : 'Gather it under a theme'}
+        color={colors.warning}
+        onPress={() => setTopicOpen(true)}
+      />
+      <ActionRow icon="book-outline" label="Study this passage" hint="Setting, people, cross-refs" color={colors.accent} onPress={study} />
+      <ActionRow icon="musical-notes-outline" label="Songs from this verse" hint="Hymns it inspired — sing the Word" color={colors.accent} onPress={songs} />
+      <ActionRow icon="share-outline" label="Share outside the app" hint="Send to anyone" color={colors.textMuted} onPress={share} />
 
-            <Pressable onPress={onClose} style={{ paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.xs }}>
-              <Text style={{ color: colors.textFaint, fontWeight: '700', fontSize: font.sizes.md }}>Close</Text>
-            </Pressable>
-          </Pressable>
-        </Pressable>
-      </KeyboardAvoidingView>
       <AddToTopicSheet visible={topicOpen} onClose={() => setTopicOpen(false)} reference={reference} />
-    </Modal>
+    </Sheet>
   );
 }
 

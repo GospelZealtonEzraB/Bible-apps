@@ -50,7 +50,6 @@ export default function DrillScreen() {
   const mode = params.mode as DrillMode;
   const verse = useVerse(id);
   const practiceResult = useStore((s) => s.practiceResult);
-  const xpEarned = useStore((s) => s.recentXp);
 
   const [runKey, setRunKey] = useState(0);
   const [done, setDone] = useState<number | null>(null);
@@ -134,19 +133,6 @@ export default function DrillScreen() {
                   ? "That's hidden deep in your heart now."
                   : 'Repetition is the secret. Run it again.'}
               </Text>
-              {xpEarned ? (
-                <View
-                  style={{
-                    marginTop: 4,
-                    backgroundColor: colors.primarySoft,
-                    paddingVertical: 4,
-                    paddingHorizontal: spacing.md,
-                    borderRadius: radius.pill,
-                  }}
-                >
-                  <Text style={{ color: colors.primary, fontWeight: '800' }}>+{xpEarned} XP</Text>
-                </View>
-              ) : null}
             </View>
             <View style={{ gap: spacing.sm }}>
               <Button

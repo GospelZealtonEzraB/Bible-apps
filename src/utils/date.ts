@@ -52,3 +52,20 @@ export function relativeDueLabel(dueDate: number, now: number = Date.now()): str
   if (days === 1) return 'Due tomorrow';
   return `Due in ${days} days`;
 }
+
+/**
+ * A day key rendered for a human: "Today", "Yesterday", or "Mon 11 Aug".
+ * Used by the log's day headers.
+ */
+export function prettyDay(day: string, today: string = dayKey()): string {
+  if (day === today) return 'Today';
+  const gap = daysBetweenKeys(day, today);
+  if (gap === 1) return 'Yesterday';
+  const [y, m, d] = day.split('-').map(Number);
+  if (!y || !m || !d) return day;
+  const date = new Date(y, m - 1, d);
+  const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+  const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][m - 1];
+  const sameYear = today.slice(0, 4) === day.slice(0, 4);
+  return `${weekday} ${d} ${month}${sameYear ? '' : ` ${y}`}`;
+}

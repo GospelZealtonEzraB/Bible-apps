@@ -10,18 +10,13 @@ export interface MemberSnapshotInput {
   memberId: string;
   displayName: string;
   memorizedCount: number;
-  streak: number;
   versesDone: string[];
   planDone: string[];
   memorizedRefs: string[];
   learningRefs: string[];
-  bestStreak: number;
-  xp: number;
-  recentActivity: { type: string; ref?: string; at: number }[];
   lastActiveDay: string | null;
-  lastActivity?: { type: string; ref?: string; at: number } | null;
   pushToken?: string | null;
-  /** True to silence this circle's push notifications for me. */
+  /** True to silence this partnership's push notifications for me. */
   muted?: boolean;
 }
 

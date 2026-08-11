@@ -9,17 +9,14 @@ import { Chip } from '@/components/ui';
 import { BlockEditor } from '@/components/BlockEditor';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useDoc, useStore } from '@/store/useStore';
-import { docToMarkdown } from '@/utils/blocks';
+import { docToMarkdown, docPreview } from '@/utils/blocks';
+import { AssetActions } from '@/components/AssetActions';
 import type { Block, DocType } from '@/types';
 
 const TYPE_META: Record<DocType, { label: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  journal: { label: 'Journal', icon: 'book-outline' },
-  study: { label: 'Study', icon: 'sparkles-outline' },
-  verse: { label: 'Verse note', icon: 'bookmark-outline' },
-  topic: { label: 'Topic', icon: 'pricetag-outline' },
-  sermon: { label: 'Sermon', icon: 'mic-outline' },
-  article: { label: 'Article', icon: 'newspaper-outline' },
   note: { label: 'Note', icon: 'document-text-outline' },
+  study: { label: 'Study', icon: 'sparkles-outline' },
+  sermon: { label: 'Teaching', icon: 'mic-outline' },
 };
 
 export default function DocScreen() {
@@ -84,15 +81,21 @@ export default function DocScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.xxl * 2 }} keyboardShouldPersistTaps="handled">
-        {/* type + share status */}
+        {/* type + who can see it — your partner can, unless you say otherwise */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: spacing.sm }}>
           <Ionicons name={meta.icon} size={14} color={colors.textFaint} />
-          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>{meta.label}{doc.day ? ` · ${doc.day}` : ''}</Text>
+          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>{meta.label}</Text>
           <View style={{ flex: 1 }} />
-          <Pressable onPress={() => updateDoc(doc.id, { shared: !doc.shared })} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            <Ionicons name={doc.shared ? 'people' : 'lock-closed-outline'} size={14} color={doc.shared ? colors.primary : colors.textFaint} />
-            <Text style={{ color: doc.shared ? colors.primary : colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>{doc.shared ? 'Shared' : 'Private'}</Text>
+          <Pressable onPress={() => updateDoc(doc.id, { private: !doc.private })} hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Ionicons name={doc.private ? 'lock-closed' : 'people-outline'} size={14} color={doc.private ? colors.textFaint : colors.primary} />
+            <Text style={{ color: doc.private ? colors.textFaint : colors.primary, fontSize: font.sizes.xs, fontWeight: '700' }}>
+              {doc.private ? 'Private' : 'Partner can see'}
+            </Text>
           </Pressable>
+        </View>
+
+        <View style={{ marginBottom: spacing.md }}>
+          <AssetActions asset={{ kind: 'note', assetId: doc.id, title: doc.title || 'Note', text: docPreview(doc) }} />
         </View>
 
         {/* title */}

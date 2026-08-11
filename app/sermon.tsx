@@ -26,9 +26,7 @@ export default function SermonScreen() {
   const router = useRouter();
   const serverUrl = useStore((s) => s.settings.serverUrl);
   const createDoc = useStore((s) => s.createDoc);
-  const shareNote = useStore((s) => s.shareNote);
-  const completeWalkMovement = useStore((s) => s.completeWalkMovement);
-  const circleCodes = useStore((s) => Object.keys(s.circles));
+  const addLogEntry = useStore((s) => s.addLogEntry);
 
   const [transcript, setTranscript] = useState('');
   const [teaching, setTeaching] = useState<Teaching | null>(null);
@@ -60,7 +58,6 @@ export default function SermonScreen() {
       if (r.error && teachingIsEmpty(r.teaching)) { setError(r.error); return; }
       setSourceUrl(isUrl ? trimmed : null);
       setTeaching(r.teaching);
-      completeWalkMovement('teaching');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not summarize.');
     } finally {
@@ -75,27 +72,16 @@ export default function SermonScreen() {
 
   const saveToNotes = () => {
     if (!teaching) return;
+    const title = teachingTitle(teaching);
     const id = createDoc('sermon', {
-      title: teachingTitle(teaching),
+      title,
       blocks: teachingToBlocks(teaching, { source: sourceUrl ?? undefined }),
       tags: ['teaching'],
     });
+    // Sitting under a message is part of the day — record it.
+    addLogEntry({ kind: 'teaching', assetId: id, title });
     setSaved(true);
     router.push(`/notes/${id}`);
-  };
-
-  const shareToPartner = () => {
-    if (!teaching || circleCodes.length === 0) return;
-    const text = [
-      teachingTitle(teaching),
-      teaching.summary,
-      teaching.keyPoints.length ? teaching.keyPoints.map((k) => `• ${k}`).join('\n') : '',
-      teaching.references.length ? teaching.references.join(' · ') : '',
-    ]
-      .filter(Boolean)
-      .join('\n\n');
-    void shareNote(circleCodes[0], text, 'free');
-    Alert.alert('Sent to your partner 💛', 'They’ll find it in your shared notes.');
   };
 
   const reset = () => { setTeaching(null); setTranscript(''); setSaved(false); setSourceUrl(null); };
@@ -229,14 +215,6 @@ export default function SermonScreen() {
               disabled={saved}
               onPress={saveToNotes}
             />
-            {circleCodes.length > 0 ? (
-              <Button
-                title="Share with your partner"
-                variant="secondary"
-                icon={<Ionicons name="people-outline" size={18} color={colors.text} />}
-                onPress={shareToPartner}
-              />
-            ) : null}
             <Button title="New teaching" variant="ghost" onPress={reset} />
           </View>
         </>

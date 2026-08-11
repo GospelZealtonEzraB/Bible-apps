@@ -169,7 +169,7 @@ function MyVersesPicker({ query, onPick }: { query: string; onPick: (a: MessageA
   );
 }
 
-/** Your notes/journal/study docs — share one as a card (title + preview). */
+/** Your notes — share one as a card (title + preview). */
 function NotesPicker({ query, onPick }: { query: string; onPick: (a: MessageAttachment) => void }) {
   const docs = useDocList();
   const q = query.trim().toLowerCase();

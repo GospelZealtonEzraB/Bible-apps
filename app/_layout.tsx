@@ -7,7 +7,6 @@ import { View, AppState } from 'react-native';
 
 import { useTheme } from '@/theme';
 import { configureNotificationHandler } from '@/notifications';
-import { Celebration } from '@/components/Celebration';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { VersePeekProvider } from '@/components/PeekableRef';
 import { useStore, useSettings } from '@/store/useStore';
@@ -87,7 +86,6 @@ function AppShell() {
           />
         </Stack>
       </VersePeekProvider>
-      <Celebration />
     </View>
   );
 }

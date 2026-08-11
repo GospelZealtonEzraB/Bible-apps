@@ -10,7 +10,7 @@ import { PeekableRef } from '@/components/PeekableRef';
 import { Ember } from '@/components/Ember';
 import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useStudySession, useApplication, useStore } from '@/store/useStore';
+import { useStudySession, useStore } from '@/store/useStore';
 import { fetchStudyBrief, fetchStudyContext, askStudy } from '@/data/studyClient';
 import { getChapterVerses, normalizeKey, isLatinTranslation, type ChapterVerse } from '@/data/bibleApi';
 import { validateReferences } from '@/data/books';
@@ -87,7 +87,6 @@ export default function StudyBriefScreen() {
 
       {brief ? <AskPanel passage={passage} serverUrl={serverUrl} /> : null}
 
-      {brief ? <ApplicationCard passageKey={passageKey} passage={passage} /> : null}
     </Screen>
   );
 }
@@ -392,75 +391,3 @@ function AskPanel({ passage, serverUrl }: { passage: string; serverUrl: string |
   );
 }
 
-function ApplicationCard({ passageKey, passage }: { passageKey: string; passage: string }) {
-  const { colors } = useTheme();
-  const application = useApplication(passageKey);
-  const addApplication = useStore((s) => s.addApplication);
-  const editApplication = useStore((s) => s.editApplication);
-  const deleteApplication = useStore((s) => s.deleteApplication);
-  const [text, setText] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
-
-  const inputStyle = { color: colors.text, fontSize: font.sizes.md, minHeight: 70, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md } as const;
-
-  const confirmDelete = () =>
-    Alert.alert('Delete this commitment?', 'You can always add a new one.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteApplication(passageKey) },
-    ]);
-
-  if (application && !editing) {
-    return (
-      <Card>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <SectionTitle style={{ marginBottom: 0, flex: 1 }}>Living it out</SectionTitle>
-          <Pressable onPress={() => { setDraft(application.text); setEditing(true); }} hitSlop={8} style={{ paddingHorizontal: 4 }}>
-            <Ionicons name="pencil" size={15} color={colors.textFaint} />
-          </Pressable>
-          <Pressable onPress={confirmDelete} hitSlop={8} style={{ paddingHorizontal: 4 }}>
-            <Ionicons name="trash-outline" size={16} color={colors.textFaint} />
-          </Pressable>
-        </View>
-        <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24, marginTop: spacing.sm }}>✅ {application.text}</Text>
-        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: 4 }}>
-          We’ll check back with you on this.
-        </Text>
-      </Card>
-    );
-  }
-
-  if (application && editing) {
-    return (
-      <Card>
-        <SectionTitle>Edit your commitment</SectionTitle>
-        <TextInput value={draft} onChangeText={setDraft} placeholder="This week I will…" placeholderTextColor={colors.textFaint} multiline textAlignVertical="top" style={inputStyle} />
-        <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md }}>
-          <Button title="Cancel" variant="ghost" small style={{ flex: 1 }} onPress={() => setEditing(false)} />
-          <Button title="Save" small style={{ flex: 1 }} disabled={!draft.trim()} onPress={() => { editApplication(passageKey, draft); setEditing(false); }} />
-        </View>
-      </Card>
-    );
-  }
-
-  return (
-    <Card>
-      <SectionTitle>One thing I’ll live out</SectionTitle>
-      <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>
-        Turn study into growth — name one way you’ll live this passage out this week.
-      </Text>
-      <TextInput
-        value={text}
-        onChangeText={setText}
-        placeholder="This week I will…"
-        placeholderTextColor={colors.textFaint}
-        multiline
-        textAlignVertical="top"
-        style={inputStyle}
-      />
-      <View style={{ marginTop: spacing.md }}>
-        <Button title="Save my commitment" onPress={() => text.trim() && addApplication(passageKey, passage, text)} disabled={!text.trim()} />
-      </View>
-    </Card>
-  );
-}

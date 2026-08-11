@@ -70,18 +70,6 @@ export default function SettingsScreen() {
     <Screen>
       <Header title="Settings" />
 
-      {/* Personal Space */}
-      <Card onPress={() => router.push('/personal')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
-          <Ionicons name="lock-closed-outline" size={20} color={colors.text} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>Personal Space</Text>
-          <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>Your private notes, reflections, topics &amp; commitments</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
-      </Card>
-
       {/* Help & guides */}
       <Card onPress={() => router.push('/help')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
         <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>

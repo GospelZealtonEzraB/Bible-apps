@@ -11,7 +11,7 @@ import type { Topic } from '@/types';
  * Reusable "＋ Add to topic" picker. Opened from anywhere Scripture appears
  * (reader, search, sermon, study). Works for a single verse or a whole
  * multi-verse selection: toggles the verse(s) in/out of a topic, lets you spin
- * up a new topic on the spot, and captures an optional "why this fits" note.
+ * up a new topic on the spot. A topic is simply a tag over verses.
  */
 export function AddToTopicSheet({
   visible,
@@ -37,13 +37,11 @@ export function AddToTopicSheet({
   const removeFromTopic = useStore((s) => s.removeFromTopic);
   const createTopic = useStore((s) => s.createTopic);
 
-  const [note, setNote] = useState('');
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
 
   useEffect(() => {
     if (visible) {
-      setNote('');
       setCreating(false);
       setNewTitle('');
     }
@@ -60,7 +58,7 @@ export function AddToTopicSheet({
     if (inCount === refs.length) {
       refs.forEach((r) => removeFromTopic(t.id, r)); // all in → remove all
     } else {
-      refs.forEach((r) => addToTopic(t.id, r, note)); // add the missing ones (add is a dedupe no-op for present ones)
+      refs.forEach((r) => addToTopic(t.id, r)); // add the missing ones (adding is a dedupe no-op)
     }
   };
 
@@ -68,7 +66,7 @@ export function AddToTopicSheet({
     const title = newTitle.trim();
     if (!title) return;
     const id = createTopic(title);
-    refs.forEach((r) => addToTopic(id, r, note));
+    refs.forEach((r) => addToTopic(id, r));
     setCreating(false);
     setNewTitle('');
   };
@@ -86,15 +84,6 @@ export function AddToTopicSheet({
           >
             <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.lg }}>{heading}</Text>
             <Text numberOfLines={1} style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginTop: 2 }}>{sub}</Text>
-
-            {/* Optional "why this fits" note (applies to the verses you add). */}
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="Why these verses fit (optional)…"
-              placeholderTextColor={colors.textFaint}
-              style={{ color: colors.text, fontSize: font.sizes.sm, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md }}
-            />
 
             <ScrollView style={{ marginTop: spacing.md }} keyboardShouldPersistTaps="handled">
               {topics.length === 0 && !creating ? (
