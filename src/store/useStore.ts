@@ -32,7 +32,7 @@ import {
 } from '@/utils/log';
 import { emptyDoc, extractRefs, markdownToBlocks, normalizeDocType } from '@/utils/blocks';
 import { migrateDocs } from '@/utils/notesMigration';
-import { toUserSong, newSongId, isMine, toggleFavorite, type Hymn, type HymnStanza, type SongbookState } from '@/data/songbook';
+import { toUserSong, newSongId, isMine, toggleFavorite, getSong as getSongFromBook, type Hymn, type HymnStanza, type SongbookState } from '@/data/songbook';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
 import * as circleApi from '@/data/circleClient';
@@ -121,6 +121,8 @@ interface StoreState {
   refreshCircle: (code: string) => Promise<void>;
   /** Push my progress + pull the board for a circle. */
   syncCircle: (code: string) => Promise<void>;
+  /** Publish my public log + shelf so my partner can look through them. */
+  publishToPartner: (code: string) => Promise<void>;
   /** Rename a circle. */
   setCircleName: (code: string, name: string) => Promise<void>;
   /** Assign a memorization/study challenge to a partner. */
@@ -367,6 +369,15 @@ function normalizeTopics(topics: Record<string, Topic> | undefined): Record<stri
   return out;
 }
 
+/** Resolve a favourited song id to the little record a partner's shelf shows. */
+function getSongForShelf(
+  id: string,
+  state: Pick<StoreState, 'songs' | 'songChords' | 'favoriteSongs'>,
+): { id: string; title: string; author?: string } | null {
+  const song = getSongFromBook(id, state);
+  return song ? { id: song.id, title: song.title, author: song.author } : null;
+}
+
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
@@ -521,9 +532,47 @@ export const useStore = create<StoreState>()(
         const s = get();
         const circle = s.circles[code];
         const sharedRefs = (circle?.sharedVerses ?? []).map((v) => v.reference);
-        const planRefs = (circle?.plans ?? []).flatMap((p) => p.items);
-        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs, planRefs));
+        const snap = await circleApi.syncCircle(s.settings.serverUrl, code, myMemberSnapshot(s, sharedRefs, []));
         set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        // Publishing is best-effort and must never fail a sync.
+        void get().publishToPartner(code).catch(() => {});
+      },
+
+      /**
+       * Share my walk with my partner: the public entries of my log, and the
+       * shelf they can look through. Private entries and private notes are
+       * filtered out *here*, before anything leaves the device.
+       */
+      publishToPartner: async (code) => {
+        const s = get();
+        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
+        if (!me.memberId) return;
+
+        // Only the last two weeks of log — enough to see each other's walk.
+        const cutoff = dayKey(Date.now() - 14 * 86_400_000);
+        const entries: Record<string, LogEntry> = {};
+        for (const e of Object.values(s.log)) {
+          if (e.private || e.day < cutoff) continue;
+          entries[e.id] = e;
+        }
+
+        const notes = Object.values(s.documents)
+          .filter((d) => !d.private)
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .slice(0, 100);
+        const songs = (s.favoriteSongs ?? [])
+          .map((id) => getSongForShelf(id, s))
+          .filter((x): x is { id: string; title: string; author?: string } => !!x);
+        const topics = Object.values(s.topics).map((t) => ({
+          id: t.id,
+          title: t.title,
+          refs: t.entries.map((e) => e.ref).slice(0, 60),
+        }));
+
+        const snap = await circleApi.pushLog(s.settings.serverUrl, code, me, entries);
+        set((state) => ({ circles: withSnapshot(state.circles, snap) }));
+        const snap2 = await circleApi.pushShelf(s.settings.serverUrl, code, me, { notes, songs, topics });
+        set((state) => ({ circles: withSnapshot(state.circles, snap2) }));
       },
 
       setCircleName: async (code, name) => {

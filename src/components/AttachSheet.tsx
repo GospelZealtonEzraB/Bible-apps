@@ -29,10 +29,16 @@ export function AttachSheet({
   visible,
   onClose,
   onAttach,
+  onPrayer,
+  onChallenge,
 }: {
   visible: boolean;
   onClose: () => void;
   onAttach: (a: MessageAttachment) => void;
+  /** Post a prayer request as a card in the thread. */
+  onPrayer?: () => void;
+  /** Send your partner a memorization challenge. */
+  onChallenge?: () => void;
 }) {
   const { colors } = useTheme();
   const [tab, setTab] = useState<Tab>('bible');
@@ -48,6 +54,30 @@ export function AttachSheet({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={{ flex: 1, backgroundColor: colors.overlay }} onPress={onClose} />
       <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg, paddingBottom: spacing.xl, maxHeight: '75%', minHeight: 380 }}>
+        {/* Things that become a card in the thread, not an attachment. */}
+        {onPrayer || onChallenge ? (
+          <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
+            {onPrayer ? (
+              <Pressable
+                onPress={onPrayer}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceAlt }}
+              >
+                <Text style={{ fontSize: 15 }}>🙏</Text>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.sm }}>Ask for prayer</Text>
+              </Pressable>
+            ) : null}
+            {onChallenge ? (
+              <Pressable
+                onPress={onChallenge}
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: spacing.md, borderRadius: radius.md, backgroundColor: colors.surfaceAlt }}
+              >
+                <Text style={{ fontSize: 15 }}>🎯</Text>
+                <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.sm }}>Challenge</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
         {/* Tabs */}
         <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
           {TABS.map((t) => (
@@ -74,7 +104,6 @@ export function AttachSheet({
               tab === 'notes' ? 'Filter your notes…' : 'Find a song…'
             }
             placeholderTextColor={colors.textFaint}
-            autoFocus
             style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, paddingVertical: spacing.sm }}
           />
           {query ? <Pressable onPress={() => setQuery('')} hitSlop={8}><Ionicons name="close-circle" size={16} color={colors.textFaint} /></Pressable> : null}

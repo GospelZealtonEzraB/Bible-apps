@@ -811,7 +811,7 @@ async function kvDeletePrefix(kv: KVNamespaceLike, prefix: string): Promise<void
 
 // Bumped whenever /circle gains actions the client depends on. Returned in every
 // snapshot so the app can warn when a deployed Worker is out of date.
-const API_VERSION = 10;
+const API_VERSION = 11;
 
 // Invite codes: 6 chars, unambiguous base32 (no O/0/I/1).
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -927,67 +927,40 @@ async function memberPushToken(kv: KVNamespaceLike, code: string, id: string): P
 }
 
 /**
- * Assemble the circle's recent "daily" records (the shared devotional-of-the-day).
- * Keys under `circle:{code}:daily:`:
- *   - `…:{day}`                    the day's record (song/reading/prayer/verse/note)
- *   - `…:{day}:done:{memberId}`    a member's "I did today" completion mark
- *   - `…:{day}:reflect:{memberId}` a member's shared reflection for that day
- * The viewer's own timezone decides which day is "today", so we return a map keyed
- * by day and let the client pick — no server-timezone coupling. Capped to the most
- * recent ~21 days (for the circle journal timeline).
+ * Each member's recent daily-log entries. A member only ever writes their own
+ * key — `circle:{code}:log:{memberId}` — so there is no write contention, and
+ * the client filters private entries out before it ever pushes.
  */
-async function buildDaily(kv: KVNamespaceLike, code: string): Promise<Record<string, any>> {
-  const keys = await kvListKeys(kv, `circle:${code}:daily:`);
-  const prefix = `circle:${code}:daily:`;
-  const byDay: Record<string, any> = {};
-  const ensure = (day: string) => (byDay[day] ??= { day, doneByIds: [] as string[], reflections: [] as any[], shares: [] as any[] });
-
-  // First pass: classify keys by kind (cheap — done marks need no value fetch).
-  const recordKeys: { day: string; key: string }[] = [];
-  const reflectKeys: { day: string; mem: string; key: string }[] = [];
-  const shareKeys: { day: string; mem: string; key: string }[] = [];
+async function buildLogs(kv: KVNamespaceLike, code: string): Promise<Record<string, any>> {
+  const prefix = `circle:${code}:log:`;
+  const keys = await kvListKeys(kv, prefix);
+  const out: Record<string, any> = {};
   for (const key of keys) {
-    const rest = key.substring(prefix.length); // {day}[:done:{m} | :reflect:{m} | :share:{m}]
-    const parts = rest.split(':');
-    const day = parts[0];
-    if (!day) continue;
-    if (parts.length === 1) recordKeys.push({ day, key });
-    else if (parts[1] === 'done' && parts[2]) ensure(day).doneByIds.push(parts[2]);
-    else if (parts[1] === 'reflect' && parts[2]) reflectKeys.push({ day, mem: parts[2], key });
-    else if (parts[1] === 'share' && parts[2]) shareKeys.push({ day, mem: parts[2], key });
-  }
-
-  // Keep only the most recent ~21 days to bound value reads.
-  const days = Array.from(new Set([...recordKeys.map((r) => r.day), ...Object.keys(byDay), ...reflectKeys.map((r) => r.day), ...shareKeys.map((r) => r.day)]))
-    .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
-    .slice(0, 21);
-  const keep = new Set(days);
-
-  for (const { day, key } of recordKeys) {
-    if (!keep.has(day)) continue;
+    const memberId = key.substring(prefix.length);
+    if (!memberId || memberId.includes(':')) continue;
     const rec = await kvGetJson<any>(kv, key);
-    if (rec) Object.assign(ensure(day), rec);
+    if (rec && rec.entries && typeof rec.entries === 'object') out[memberId] = rec.entries;
   }
-  for (const { day, mem, key } of reflectKeys) {
-    if (!keep.has(day)) continue;
-    const r = await kvGetJson<any>(kv, key);
-    if (r?.text) ensure(day).reflections.push({ by: mem, byName: str(r.byName, 40), text: String(r.text), updatedAt: Number(r.updatedAt ?? 0) || 0 });
-  }
-  for (const { day, mem, key } of shareKeys) {
-    if (!keep.has(day)) continue;
-    const s = await kvGetJson<any>(kv, key);
-    if (!s) continue;
-    const verses = Array.isArray(s.verses) ? s.verses.filter((x: any) => typeof x === 'string').slice(0, 20) : [];
-    const songs = Array.isArray(s.songs) ? s.songs.filter((x: any) => typeof x === 'string').slice(0, 20) : [];
-    if (verses.length || songs.length) ensure(day).shares.push({ by: mem, byName: str(s.byName, 40), verses, songs, updatedAt: Number(s.updatedAt ?? 0) || 0 });
-  }
-  // Drop days outside the window (e.g. done-only days beyond the cap).
-  for (const day of Object.keys(byDay)) if (!keep.has(day)) delete byDay[day];
-  for (const day of Object.keys(byDay)) byDay[day].reflections.sort((a: any, b: any) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
-  return byDay;
+  return out;
 }
 
-/** Assemble the full circle snapshot returned to clients. */
+/**
+ * Each member's published shelf — the notes, songs and topics they're happy for
+ * their partner to look through. Same single-writer-per-key rule.
+ */
+async function buildShelves(kv: KVNamespaceLike, code: string): Promise<Record<string, any>> {
+  const prefix = `circle:${code}:shelf:`;
+  const keys = await kvListKeys(kv, prefix);
+  const out: Record<string, any> = {};
+  for (const key of keys) {
+    const memberId = key.substring(prefix.length);
+    if (!memberId || memberId.includes(':')) continue;
+    const shelf = await kvGetJson<any>(kv, key);
+    if (shelf) out[memberId] = shelf;
+  }
+  return out;
+}
+
 async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | null> {
   const meta = await kvGetJson<any>(kv, `circle:${code}:meta`);
   if (!meta) return null;
@@ -1021,16 +994,10 @@ async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | n
     if (!cm) continue;
     const submission = await kvGetJson<any>(kv, `${chalPrefix}${id}:submission`);
     const review = await kvGetJson<any>(kv, `${chalPrefix}${id}:review`);
-    // Duel results (per-member scores) live under `...:duel:{memberId}`.
-    const duelKeys = await kvListKeys(kv, `${chalPrefix}${id}:duel:`);
-    const duel: any[] = [];
-    for (const dk of duelKeys) { const d = await kvGetJson<any>(kv, dk); if (d) duel.push(d); }
-    duel.sort((a, b) => (b.accuracy ?? 0) - (a.accuracy ?? 0));
     challenges.push({
       ...cm,
       submission: submission ?? undefined,
       review: review ?? undefined,
-      duel: duel.length ? duel : undefined,
       status: review ? 'reviewed' : submission ? 'submitted' : 'pending',
     });
   }
@@ -1101,9 +1068,25 @@ async function buildSnapshot(kv: KVNamespaceLike, code: string): Promise<any | n
     (reactions[k] ??= []).push({ emoji: String(r.emoji), by: mem, byName: String(r.byName ?? '') });
   }
 
-  const daily = await buildDaily(kv, code);
 
-  return { apiVersion: API_VERSION, meta, members, sharedVerses, plans, notes, prayers, challenges, cheersFor, messages: messages.slice(-200), reactions, daily };
+  const logs = await buildLogs(kv, code);
+  const shelves = await buildShelves(kv, code);
+
+  return {
+    apiVersion: API_VERSION,
+    meta,
+    members,
+    sharedVerses,
+    plans,
+    notes,
+    prayers,
+    challenges,
+    cheersFor,
+    messages: messages.slice(-200),
+    reactions,
+    logs,
+    shelves,
+  };
 }
 
 async function handleCircle(req: Request, env: Env): Promise<Response> {
@@ -1157,40 +1140,6 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
         await kvPutJson(kv, `circle:${code}:meta`, snapshot.meta);
       }
       return json({ snapshot });
-    }
-
-    case 'addVerse': {
-      const code = normCode(body.code);
-      const meta = await kvGetJson(kv, `circle:${code}:meta`);
-      if (!meta) return json({ error: 'No circle with that code.' }, 404);
-      const reference = str(body.reference, 60).trim();
-      if (!reference) return json({ error: 'Missing reference.' }, 400);
-      const rec = {
-        reference,
-        addedBy: memberId,
-        addedByName: str(body.displayName, 40),
-        addedAt: Date.now(),
-        forMemberId: body.forMemberId ? String(body.forMemberId) : undefined,
-      };
-      await kvPutJson(kv, `circle:${code}:verse:${normRef(reference)}`, rec);
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
-    case 'setGoal': {
-      const code = normCode(body.code);
-      const meta = await kvGetJson<any>(kv, `circle:${code}:meta`);
-      if (!meta) return json({ error: 'No circle with that code.' }, 404);
-      const goal = body.goal ?? null;
-      meta.goal = goal
-        ? {
-            kind: String(goal.kind ?? 'memorizeCount'),
-            target: Math.max(0, Math.min(9999, Number(goal.target ?? 0) || 0)),
-            label: goal.label ? str(goal.label, 60) : undefined,
-          }
-        : null;
-      meta.version = (meta.version ?? 1) + 1;
-      await kvPutJson(kv, `circle:${code}:meta`, meta);
-      return json({ snapshot: await buildSnapshot(kv, code) });
     }
 
     case 'get': {
@@ -1272,63 +1221,6 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 
-    case 'createPlan': {
-      const code = normCode(body.code);
-      const meta = await kvGetJson(kv, `circle:${code}:meta`);
-      if (!meta) return json({ error: 'No circle with that code.' }, 404);
-      const title = str(body.title, 80).trim();
-      const items = Array.isArray(body.items)
-        ? body.items.filter((x: any) => typeof x === 'string').map((x: string) => str(x, 60).trim()).slice(0, 200)
-        : [];
-      if (!title || items.length === 0) return json({ error: 'Missing plan title or items.' }, 400);
-      const planId = str(body.planId, 40).trim() || genId();
-      await kvPutJson(kv, `circle:${code}:plan:${planId}`, {
-        planId, title, items, createdBy: memberId, createdAt: Date.now(),
-      });
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
-    case 'updatePlan': {
-      const code = normCode(body.code);
-      const planId = String(body.planId ?? '');
-      const existing = await kvGetJson<any>(kv, `circle:${code}:plan:${planId}`);
-      if (!existing) return json({ error: 'Plan not found.' }, 404);
-      const title = str(body.title, 80).trim();
-      const items = Array.isArray(body.items)
-        ? body.items.filter((x: any) => typeof x === 'string').map((x: string) => str(x, 60).trim()).slice(0, 200)
-        : [];
-      if (!title || items.length === 0) return json({ error: 'Missing plan title or items.' }, 400);
-      await kvPutJson(kv, `circle:${code}:plan:${planId}`, {
-        ...existing, title, items,
-      });
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
-    case 'saveNote': {
-      const code = normCode(body.code);
-      const meta = await kvGetJson(kv, `circle:${code}:meta`);
-      if (!meta) return json({ error: 'No circle with that code.' }, 404);
-      const noteId = String(body.noteId ?? genId());
-      const rec = {
-        noteId,
-        by: memberId,
-        byName: str(body.displayName, 40),
-        scope: String(body.scope ?? 'free'),
-        ref: body.ref ? str(body.ref, 60) : undefined,
-        text: str(body.text, 2000),
-        updatedAt: Date.now(),
-      };
-      await kvPutJson(kv, `circle:${code}:note:${memberId}:${noteId}`, rec);
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
-    case 'deleteNote': {
-      const code = normCode(body.code);
-      const noteId = String(body.noteId ?? '');
-      if (memberId && noteId) await kv.delete(`circle:${code}:note:${memberId}:${noteId}`);
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
     case 'postMessage': {
       const code = normCode(body.code);
       const meta = await kvGetJson(kv, `circle:${code}:meta`);
@@ -1366,18 +1258,6 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 
-    case 'submitDuel': {
-      const code = normCode(body.code);
-      const chalId = str(body.chalId, 40);
-      const chal = await kvGetJson(kv, `circle:${code}:chal:${chalId}`);
-      if (!chal) return json({ error: 'No such challenge.' }, 404);
-      const accuracy = Math.max(0, Math.min(100, Math.round(Number(body.accuracy) || 0)));
-      await kvPutJson(kv, `circle:${code}:chal:${chalId}:duel:${memberId}`, {
-        by: memberId, byName: str(body.displayName, 40), accuracy, at: Date.now(),
-      });
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
     case 'addPrayer': {
       const code = normCode(body.code);
       const meta = await kvGetJson(kv, `circle:${code}:meta`);
@@ -1406,90 +1286,6 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
     }
 
     // ---- Daily devotional (the shared "today") ----
-    case 'setDaily': {
-      // Open: anyone in the circle can set/patch a given day's devotional.
-      const code = normCode(body.code);
-      const meta = await kvGetJson(kv, `circle:${code}:meta`);
-      if (!meta) return json({ error: 'No circle with that code.' }, 404);
-      const day = str(body.day, 10).trim();
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: 'Invalid day.' }, 400);
-      const key = `circle:${code}:daily:${day}`;
-      const existing = (await kvGetJson<any>(kv, key)) ?? {};
-      const patch = body.patch ?? {};
-      const next = { ...existing };
-      // Field-wise merge; an empty string clears the field.
-      for (const f of ['song', 'reading', 'prayer', 'verse', 'note'] as const) {
-        if (f in patch) {
-          const v = str(patch[f], f === 'prayer' || f === 'note' ? 1000 : 80).trim();
-          if (v) next[f] = v; else delete next[f];
-        }
-      }
-      next.setBy = memberId;
-      next.setByName = str(body.displayName, 40);
-      next.updatedAt = Date.now();
-      await kvPutJson(kv, key, next);
-      // Notify the circle that today is ready (once, when a fresh day is first set).
-      if (!existing.updatedAt) {
-        const tokens = await otherMemberTokens(kv, code, memberId);
-        await sendPush(tokens, 'Today, together 🌅', `${next.setByName || 'Someone'} set your circle's devotional for the day.`);
-      }
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
-    case 'completeDaily': {
-      // Toggle my "I did today" mark (each member writes only their own key).
-      const code = normCode(body.code);
-      const day = str(body.day, 10).trim();
-      if (!memberId || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: 'Invalid request.' }, 400);
-      const key = `circle:${code}:daily:${day}:done:${memberId}`;
-      if (await kvGetJson(kv, key)) await kv.delete(key);
-      else await kvPutJson(kv, key, { id: memberId, name: str(body.displayName, 40), at: Date.now() });
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
-    case 'shareReflection': {
-      // Share (or clear) my reflection for a day. Shared-first by the client;
-      // an empty text unshares it.
-      const code = normCode(body.code);
-      const day = str(body.day, 10).trim();
-      if (!memberId || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: 'Invalid request.' }, 400);
-      const key = `circle:${code}:daily:${day}:reflect:${memberId}`;
-      const text = str(body.text, 2000).trim();
-      if (text) await kvPutJson(kv, key, { by: memberId, byName: str(body.displayName, 40), text, updatedAt: Date.now() });
-      else await kv.delete(key);
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
-    case 'shareToDay': {
-      // Broadcast a verse or song into today's window (each member writes only
-      // their own share key; toggled with remove).
-      const code = normCode(body.code);
-      const day = str(body.day, 10).trim();
-      const kind = body.kind === 'song' ? 'songs' : 'verses';
-      const value = str(body.value, 80).trim();
-      if (!memberId || !/^\d{4}-\d{2}-\d{2}$/.test(day) || !value) return json({ error: 'Invalid request.' }, 400);
-      const key = `circle:${code}:daily:${day}:share:${memberId}`;
-      const existing = (await kvGetJson<any>(kv, key)) ?? { verses: [], songs: [] };
-      const list: string[] = Array.isArray(existing[kind]) ? existing[kind] : [];
-      const next = body.remove ? list.filter((x) => x !== value) : Array.from(new Set([...list, value])).slice(0, 20);
-      const rec = { verses: kind === 'verses' ? next : (existing.verses ?? []), songs: kind === 'songs' ? next : (existing.songs ?? []), byName: str(body.displayName, 40), updatedAt: Date.now() };
-      if ((rec.verses?.length ?? 0) === 0 && (rec.songs?.length ?? 0) === 0) await kv.delete(key);
-      else await kvPutJson(kv, key, rec);
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
-    case 'setCircleReadingPlan': {
-      const code = normCode(body.code);
-      const meta = await kvGetJson<any>(kv, `circle:${code}:meta`);
-      if (!meta) return json({ error: 'No circle with that code.' }, 404);
-      const planId = body.readingPlanId ? str(body.readingPlanId, 60) : null;
-      meta.readingPlanId = planId;
-      meta.readingPlanStartedAt = planId ? (Number(body.startedAt) || Date.now()) : null;
-      meta.version = (meta.version ?? 1) + 1;
-      await kvPutJson(kv, `circle:${code}:meta`, meta);
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
     case 'answerPrayer': {
       const code = normCode(body.code);
       const prayerId = String(body.prayerId ?? '');
@@ -1558,20 +1354,6 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 
-    case 'cheer': {
-      const code = normCode(body.code);
-      const to = String(body.toMemberId ?? '');
-      if (!memberId || !to) return json({ error: 'Missing member.' }, 400);
-      const key = `circle:${code}:cheer:${memberId}:${to}`;
-      const prev = await kvGetJson<any>(kv, key);
-      await kvPutJson(kv, key, {
-        count: (Number(prev?.count ?? 0) || 0) + 1,
-        lastAt: Date.now(),
-        kind: str(body.kind, 20) || 'cheer',
-      });
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
     case 'react': {
       const code = normCode(body.code);
       const type = str(body.targetType, 12).replace(/[^a-z]/g, '');
@@ -1598,20 +1380,6 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 
-    case 'removeVerse': {
-      const code = normCode(body.code);
-      const reference = str(body.reference, 60).trim();
-      if (reference) await kv.delete(`circle:${code}:verse:${normRef(reference)}`);
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
-    case 'deletePlan': {
-      const code = normCode(body.code);
-      const planId = String(body.planId ?? '');
-      if (planId) await kv.delete(`circle:${code}:plan:${planId}`);
-      return json({ snapshot: await buildSnapshot(kv, code) });
-    }
-
     case 'leave': {
       const code = normCode(body.code);
       if (memberId) await kv.delete(`circle:${code}:member:${memberId}`);
@@ -1621,6 +1389,52 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
     // --- Full-account backup, keyed by the device/transfer id -----------------
     // Stores an opaque client-exported blob so a new phone with the same
     // transfer code can restore the whole library + progress automatically.
+    /**
+     * Publish my daily log for my partner to read. The client sends only the
+     * entries it is willing to share (private ones never leave the device), and
+     * writes solely to its own key — so two devices can never clobber
+     * each other.
+     */
+    case 'pushLog': {
+      const entries = body.entries && typeof body.entries === 'object' ? body.entries : {};
+      // Cap what a single member can publish so one device can't bloat the circle.
+      const capped: Record<string, any> = {};
+      let n = 0;
+      for (const [id, e] of Object.entries<any>(entries)) {
+        if (n >= 400 || !e || typeof e !== 'object') continue;
+        capped[id] = {
+          id: String(e.id ?? id).slice(0, 60),
+          day: String(e.day ?? '').slice(0, 10),
+          kind: String(e.kind ?? 'text').slice(0, 16),
+          ref: e.ref ? String(e.ref).slice(0, 80) : undefined,
+          assetId: e.assetId ? String(e.assetId).slice(0, 60) : undefined,
+          title: e.title ? String(e.title).slice(0, 160) : undefined,
+          text: e.text ? String(e.text).slice(0, 1000) : undefined,
+          createdAt: Number(e.createdAt) || Date.now(),
+        };
+        n++;
+      }
+      await kvPutJson(kv, `circle:${code}:log:${memberId}`, { entries: capped, updatedAt: Date.now() });
+      return json(await buildSnapshot(kv, code));
+    }
+
+    /** Publish my shelf: the notes, songs and topics my partner may look through. */
+    case 'pushShelf': {
+      const shelf = body.shelf && typeof body.shelf === 'object' ? body.shelf : {};
+      const notes = Array.isArray(shelf.notes) ? shelf.notes.slice(0, 100) : [];
+      const songs = Array.isArray(shelf.songs) ? shelf.songs.slice(0, 100) : [];
+      const topics = Array.isArray(shelf.topics) ? shelf.topics.slice(0, 60) : [];
+      await kvPutJson(kv, `circle:${code}:shelf:${memberId}`, {
+        memberId,
+        displayName: String(member.displayName ?? '').slice(0, 60),
+        notes,
+        songs,
+        topics,
+        updatedAt: Date.now(),
+      });
+      return json(await buildSnapshot(kv, code));
+    }
+
     case 'backupPush': {
       const id = String(body.memberId ?? '');
       const blob = typeof body.blob === 'string' ? body.blob : '';

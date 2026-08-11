@@ -37,7 +37,42 @@ async function circleCall(
 }
 
 /** The API version this app build expects from the Worker. */
-export const EXPECTED_API_VERSION = 10;
+export const EXPECTED_API_VERSION = 11;
+
+/**
+ * Publish my daily log for my partner. Only the entries passed in are sent —
+ * the store filters private ones out first, so they never reach the server.
+ */
+export function pushLog(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  entries: Record<string, unknown>,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, {
+    action: 'pushLog',
+    code,
+    memberId: member.memberId,
+    displayName: member.displayName,
+    entries,
+  });
+}
+
+/** Publish my shelf: the notes, songs and topics my partner may look through. */
+export function pushShelf(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  shelf: { notes: unknown[]; songs: unknown[]; topics: unknown[] },
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, {
+    action: 'pushShelf',
+    code,
+    memberId: member.memberId,
+    displayName: member.displayName,
+    shelf,
+  });
+}
 
 /** Upload an opaque backup blob keyed by the device/transfer id. Best-effort. */
 export async function pushBackup(serverUrl: string | null, memberId: string, blob: string): Promise<void> {
@@ -90,31 +125,7 @@ export function getCircle(serverUrl: string | null, code: string): Promise<Circl
   return circleCall(serverUrl, { action: 'get', code });
 }
 
-export function addSharedVerse(
-  serverUrl: string | null,
-  code: string,
-  member: { memberId: string; displayName: string },
-  reference: string,
-  forMemberId?: string,
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, {
-    action: 'addVerse',
-    code,
-    memberId: member.memberId,
-    displayName: member.displayName,
-    reference,
-    forMemberId,
-  });
-}
 
-export function setGoal(
-  serverUrl: string | null,
-  code: string,
-  memberId: string,
-  goal: CircleGoal | null,
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'setGoal', code, memberId, goal });
-}
 
 export function setCovenant(
   serverUrl: string | null,
@@ -160,15 +171,6 @@ export function submitChallenge(
   return circleCall(serverUrl, { action: 'submitChallenge', code, memberId, chalId, text, accuracy });
 }
 
-export function submitDuel(
-  serverUrl: string | null,
-  code: string,
-  member: { memberId: string; displayName: string },
-  chalId: string,
-  accuracy: number,
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'submitDuel', code, memberId: member.memberId, displayName: member.displayName, chalId, accuracy });
-}
 
 export function reviewChallenge(
   serverUrl: string | null,
@@ -188,47 +190,9 @@ export function reviewChallenge(
   });
 }
 
-export function createPlan(
-  serverUrl: string | null,
-  code: string,
-  memberId: string,
-  title: string,
-  items: string[],
-  planId?: string,
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'createPlan', code, memberId, title, items, planId });
-}
 
-/** Edit an existing plan's title and/or items. */
-export function updatePlan(
-  serverUrl: string | null,
-  code: string,
-  memberId: string,
-  planId: string,
-  title: string,
-  items: string[],
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'updatePlan', code, memberId, planId, title, items });
-}
 
-export function saveNote(
-  serverUrl: string | null,
-  code: string,
-  member: { memberId: string; displayName: string },
-  note: { noteId?: string; scope: string; ref?: string; text: string },
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, {
-    action: 'saveNote',
-    code,
-    memberId: member.memberId,
-    displayName: member.displayName,
-    ...note,
-  });
-}
 
-export function deleteNote(serverUrl: string | null, code: string, memberId: string, noteId: string): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'deleteNote', code, memberId, noteId });
-}
 
 export function postMessage(
   serverUrl: string | null,
@@ -265,57 +229,9 @@ export function addPrayer(
   return circleCall(serverUrl, { action: 'addPrayer', code, memberId: member.memberId, displayName: member.displayName, text, prayerId });
 }
 
-// ---- Daily devotional (the shared "today") ----
-export function setDaily(
-  serverUrl: string | null,
-  code: string,
-  member: { memberId: string; displayName: string },
-  day: string,
-  patch: Partial<Pick<CircleDaily, 'song' | 'reading' | 'prayer' | 'verse' | 'note'>>,
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'setDaily', code, memberId: member.memberId, displayName: member.displayName, day, patch });
-}
 
-export function completeDaily(
-  serverUrl: string | null,
-  code: string,
-  member: { memberId: string; displayName: string },
-  day: string,
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'completeDaily', code, memberId: member.memberId, displayName: member.displayName, day });
-}
 
-export function shareReflection(
-  serverUrl: string | null,
-  code: string,
-  member: { memberId: string; displayName: string },
-  day: string,
-  text: string,
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'shareReflection', code, memberId: member.memberId, displayName: member.displayName, day, text });
-}
 
-export function shareToDay(
-  serverUrl: string | null,
-  code: string,
-  member: { memberId: string; displayName: string },
-  day: string,
-  kind: 'verse' | 'song',
-  value: string,
-  remove = false,
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'shareToDay', code, memberId: member.memberId, displayName: member.displayName, day, kind, value, remove });
-}
-
-export function setCircleReadingPlan(
-  serverUrl: string | null,
-  code: string,
-  member: { memberId: string; displayName: string },
-  readingPlanId: string | null,
-  startedAt?: number,
-): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'setCircleReadingPlan', code, memberId: member.memberId, displayName: member.displayName, readingPlanId, startedAt });
-}
 
 export function prayFor(
   serverUrl: string | null,
@@ -355,9 +271,6 @@ export function deleteChallenge(serverUrl: string | null, code: string, memberId
   return circleCall(serverUrl, { action: 'deleteChallenge', code, memberId, chalId });
 }
 
-export function cheer(serverUrl: string | null, code: string, memberId: string, toMemberId: string, kind = 'cheer'): Promise<CircleSnapshot> {
-  return circleCall(serverUrl, { action: 'cheer', code, memberId, toMemberId, kind });
-}
 
 export function renameCircle(serverUrl: string | null, code: string, memberId: string, name: string): Promise<CircleSnapshot> {
   return circleCall(serverUrl, { action: 'renameCircle', code, memberId, name });

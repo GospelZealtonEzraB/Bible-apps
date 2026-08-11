@@ -12,12 +12,8 @@ import type { ChallengeKind } from '@/types';
 
 const PROMPTS: Record<ChallengeKind, { title: string; placeholder: string; scored: boolean }> = {
   recite: { title: 'Recite it from memory', placeholder: 'Type the verse from memory…', scored: true },
-  type: { title: 'Type it from memory', placeholder: 'Type the verse from memory…', scored: true },
-  fill: { title: 'Write it out', placeholder: 'Type the verse…', scored: true },
-  reflection: { title: 'Reflect', placeholder: 'What does this passage mean to you?', scored: false },
-  application: { title: 'Apply it', placeholder: 'How will you live this out this week?', scored: false },
+  meaning: { title: 'What it means', placeholder: 'Say it in your own words…', scored: false },
   study: { title: 'Study insight', placeholder: 'Share one insight from studying this passage.', scored: false },
-  duel: { title: 'Duel — recite it', placeholder: 'Type the verse from memory…', scored: true },
 };
 
 export default function ChallengeScreen() {
@@ -34,8 +30,7 @@ export default function ChallengeScreen() {
   const serverUrl = useStore((s) => s.settings.serverUrl);
 
   const challenge = (circle?.challenges ?? []).find((c) => c.chalId === chalId);
-  const prompt = challenge ? PROMPTS[challenge.kind] : PROMPTS.type;
-  const isDuel = challenge?.kind === 'duel';
+  const prompt = challenge ? PROMPTS[challenge.kind] ?? PROMPTS.recite : PROMPTS.recite;
 
   const [expected, setExpected] = useState<string | null>(null);
   const [loadingVerse, setLoadingVerse] = useState(false);
@@ -82,9 +77,6 @@ export default function ChallengeScreen() {
     }
   };
 
-  const duel = challenge?.duel ?? [];
-  const iPlayed = duel.some((d) => d.by === myId);
-
   return (
     <Screen>
       <Header title={prompt.title} subtitle={`${challenge.reference} · from ${challenge.fromName}`} back />
@@ -109,23 +101,7 @@ export default function ChallengeScreen() {
         ) : null}
       </Card>
 
-      {isDuel && duel.length > 0 ? (
-        <Card style={{ gap: spacing.sm }}>
-          <SectionTitle>Duel standings</SectionTitle>
-          {duel.map((d, i) => (
-            <View key={d.by} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-              <Text style={{ width: 22, textAlign: 'center' }}>{i === 0 ? '🏆' : `${i + 1}`}</Text>
-              <Text style={{ flex: 1, color: colors.text, fontWeight: '700' }}>{d.by === myId ? 'You' : d.byName}</Text>
-              <Text style={{ color: colors.primary, fontWeight: '800' }}>{d.accuracy}%</Text>
-            </View>
-          ))}
-        </Card>
-      ) : null}
-
-      <Card>
-        {isDuel && iPlayed ? (
-          <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, marginBottom: spacing.sm }}>You've already played — recite again to update your score.</Text>
-        ) : null}
+            <Card>
         <TextInput
           value={answer}
           onChangeText={setAnswer}
@@ -144,7 +120,7 @@ export default function ChallengeScreen() {
           }}
         />
         <View style={{ marginTop: spacing.md }}>
-          <Button title={submitting ? 'Sending…' : isDuel ? 'Submit my score' : 'Send to partner'} onPress={onSubmit} loading={submitting} disabled={!answer.trim()} />
+          <Button title={submitting ? 'Sending…' : 'Send to partner'} onPress={onSubmit} loading={submitting} disabled={!answer.trim()} />
         </View>
       </Card>
     </Screen>
