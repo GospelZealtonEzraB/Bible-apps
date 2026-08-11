@@ -8,7 +8,8 @@ import { Card, Chip, StatusBadge, EmptyState, Button } from '@/components/ui';
 import { ProgressRing } from '@/components/ProgressRing';
 import { JourneyMap } from '@/components/JourneyMap';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useVerseList, useStore } from '@/store/useStore';
+import { useVerseList, useStore, useSongbook, useDocList } from '@/store/useStore';
+import { allSongs } from '@/data/songbook';
 import { EmberTip } from '@/components/EmberGuide';
 import { usePaged, PageMore } from '@/components/Paginated';
 import { isDue } from '@/srs/sm2';
@@ -32,6 +33,9 @@ export default function LibraryScreen() {
   const verses = useVerseList();
   const removeVerse = useStore((s) => s.removeVerse);
   const [filter, setFilter] = useState<Filter>('all');
+  const songbook = useSongbook();
+  const songCount = useMemo(() => allSongs(songbook).length, [songbook]);
+  const teachings = useDocList({ type: 'sermon' });
   const [view, setView] = useState<ViewMode>('list');
 
   const openVerse = (id: string) => router.push(`/verse/${encodeURIComponent(id)}`);
@@ -86,6 +90,24 @@ export default function LibraryScreen() {
       />
 
       <EmberTip topic="memorize" />
+
+      {/* Worship & teaching — the shelf beside the memory work. */}
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        <ShelfCard
+          icon="musical-notes"
+          color={colors.accent}
+          title="Songbook"
+          subtitle={`${songCount} songs · lyrics & chords`}
+          onPress={() => router.push('/songbook')}
+        />
+        <ShelfCard
+          icon="mic"
+          color={colors.primary}
+          title="Teachings"
+          subtitle={teachings.length ? `${teachings.length} saved` : 'Notes from a message'}
+          onPress={() => (teachings.length ? router.push('/notes?type=sermon') : router.push('/sermon'))}
+        />
+      </View>
 
       {/* List / Journey toggle */}
       <View
@@ -198,5 +220,40 @@ export default function LibraryScreen() {
         </>
       )}
     </Screen>
+  );
+}
+
+/** A shelf tile — worship and teaching, side by side above the verse list. */
+function ShelfCard({
+  icon,
+  color,
+  title,
+  subtitle,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        backgroundColor: pressed ? colors.surfaceAlt : colors.surface,
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: spacing.md,
+        gap: 4,
+      })}
+    >
+      <Ionicons name={icon} size={20} color={color} />
+      <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>{title}</Text>
+      <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }} numberOfLines={1}>{subtitle}</Text>
+    </Pressable>
   );
 }

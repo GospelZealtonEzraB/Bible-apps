@@ -85,7 +85,7 @@ export function VerseActionSheet({
   };
 
   const study = () => { onClose(); router.push(`/study/${encodeURIComponent(reference)}`); };
-  const songs = () => { onClose(); router.push(`/hymns/verse/${encodeURIComponent(reference)}`); };
+  const songs = () => { onClose(); router.push(`/songbook/verse/${encodeURIComponent(reference)}`); };
   const share = async () => { onClose(); try { await Share.share({ message: `"${text}"\n— ${reference}` }); } catch {} };
 
   const peek = (r: string) => {

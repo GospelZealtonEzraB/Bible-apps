@@ -177,11 +177,40 @@ const CHORDS_SYSTEM =
 
 const SERMON_SYSTEM =
   'You summarize a sermon or message transcript for a Bible-study app. Given the ' +
-  'transcript, return JSON ONLY: {"summary": string, "references": string[]}. ' +
-  'The summary is 4–8 sentences of ORIGINAL prose in your own words (do NOT quote ' +
-  'or reproduce any Scripture text). references is every Scripture reference the ' +
-  'message cites, as strings like "John 3:16" or "Romans 12:1-2". No verse text, ' +
-  'no preamble — JSON only.';
+  'transcript, return JSON ONLY: {"title": string, "summary": string, ' +
+  '"outline": [{"heading": string, "points": string[]}], "keyPoints": string[], ' +
+  '"application": string, "references": string[]}. ' +
+  '"title" is a short title for the message (6 words max). "summary" is 3–5 sentences ' +
+  'of ORIGINAL prose in your own words. "outline" follows the message\'s actual movement ' +
+  '(2–6 sections, each with 1–4 short points). "keyPoints" is the 3–6 truths worth ' +
+  'remembering. "application" is 1–3 sentences on living it out. "references" is every ' +
+  'Scripture reference cited, as strings like "John 3:16" or "Romans 12:1-2". ' +
+  'NEVER quote or reproduce Scripture text or the speaker\'s words — everything is in ' +
+  'your own words. No preamble — JSON only.';
+
+/**
+ * MAP step for a long transcript: notes on ONE PART of the message. Deliberately
+ * cheap and factual — the reduce step does the shaping.
+ */
+const SERMON_CHUNK_SYSTEM =
+  'You are taking notes on ONE SECTION of a sermon transcript (it may start or end ' +
+  'mid-sentence — that is expected). Return JSON ONLY: ' +
+  '{"points": string[], "references": string[]}. "points" is 2–6 short ORIGINAL ' +
+  'statements capturing what this section actually says, in order. "references" is ' +
+  'every Scripture reference this section cites. Never quote Scripture or the speaker. ' +
+  'No preamble — JSON only.';
+
+/** REDUCE step: the per-section notes become one structured teaching. */
+const SERMON_REDUCE_SYSTEM =
+  'You are given ordered notes taken across a whole sermon, section by section. ' +
+  'Produce the finished teaching notes as JSON ONLY: {"title": string, ' +
+  '"summary": string, "outline": [{"heading": string, "points": string[]}], ' +
+  '"keyPoints": string[], "application": string, "references": string[]}. ' +
+  '"title" is a short title (6 words max). "summary" is 3–5 sentences of original prose. ' +
+  '"outline" follows the message\'s movement (2–6 sections, each 1–4 short points) — ' +
+  'merge duplicated notes, keep the order. "keyPoints" is the 3–6 truths worth ' +
+  'remembering. "application" is 1–3 sentences on living it out. "references" is every ' +
+  'Scripture reference mentioned in the notes. Never quote Scripture. JSON only.';
 
 const SONGS_FOR_VERSE_SYSTEM =
   'You connect a Bible verse to the hymns and worship songs it inspired or that quote/paraphrase it. ' +
@@ -323,21 +352,103 @@ async function extractFromUrl(url: string): Promise<string> {
   return stripHtml(html).slice(0, 16000);
 }
 
-function parseSermon(raw: string): { summary: string; references: string[] } {
+interface SermonNotes {
+  title: string;
+  summary: string;
+  outline: { heading: string; points: string[] }[];
+  keyPoints: string[];
+  application: string;
+  references: string[];
+}
+
+const strList = (v: unknown, max: number, len = 300): string[] =>
+  Array.isArray(v)
+    ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.slice(0, len)).slice(0, max)
+    : [];
+
+/**
+ * Coerce the model's JSON into the teaching shape. `summary` + `references` are
+ * always present, so a client built before the richer pipeline still works.
+ */
+function parseSermon(raw: string): SermonNotes {
   const match = raw.match(/\{[\s\S]*\}/);
   if (match) {
     try {
       const o = JSON.parse(match[0]);
       return {
-        summary: typeof o.summary === 'string' ? o.summary : '',
-        references: Array.isArray(o.references) ? o.references.filter((x: unknown) => typeof x === 'string').slice(0, 60) : [],
+        title: typeof o.title === 'string' ? o.title.slice(0, 120) : '',
+        summary: typeof o.summary === 'string' ? o.summary.slice(0, 2500) : '',
+        outline: Array.isArray(o.outline)
+          ? o.outline
+              .filter((sec: any) => sec && typeof sec === 'object')
+              .map((sec: any) => ({
+                heading: String(sec.heading ?? '').slice(0, 160),
+                points: strList(sec.points, 8),
+              }))
+              .filter((sec: any) => sec.heading || sec.points.length)
+              .slice(0, 8)
+          : [],
+        keyPoints: strList(o.keyPoints, 8),
+        application: typeof o.application === 'string' ? o.application.slice(0, 1200) : '',
+        references: strList(o.references, 60, 60),
       };
     } catch {
       // fall through
     }
   }
-  return { summary: raw.slice(0, 1200), references: [] };
+  return { title: '', summary: raw.slice(0, 1200), outline: [], keyPoints: [], application: '', references: [] };
 }
+
+/** Per-section notes from the MAP step. */
+function parseSermonChunk(raw: string): { points: string[]; references: string[] } {
+  const m = raw.match(/\{[\s\S]*\}/);
+  if (!m) return { points: [], references: [] };
+  try {
+    const o = JSON.parse(m[0]);
+    return { points: strList(o.points, 8), references: strList(o.references, 30, 60) };
+  } catch {
+    return { points: [], references: [] };
+  }
+}
+
+/**
+ * Split a long transcript into chunks on sentence boundaries, with a little
+ * overlap so a thought that straddles a cut isn't lost. A 40-minute sermon is
+ * ~35k characters — far past what one call can hold, which is why the old
+ * single-shot pipeline silently truncated most of the message.
+ */
+function chunkTranscript(text: string, overlap = 400): string[] {
+  if (text.length <= SERMON_CHUNK_MIN) return [text];
+  // Size the chunks so the WHOLE transcript fits inside the chunk budget —
+  // never silently drop the end of a message.
+  const size = Math.max(
+    SERMON_CHUNK_MIN,
+    Math.ceil((text.length + overlap * (SERMON_MAX_CHUNKS - 1)) / SERMON_MAX_CHUNKS),
+  );
+  const chunks: string[] = [];
+  let i = 0;
+  while (i < text.length && chunks.length < SERMON_MAX_CHUNKS) {
+    let end = Math.min(i + size, text.length);
+    if (end < text.length) {
+      // Prefer to cut at a sentence end within the last 15% of the window.
+      const window = text.slice(end - Math.floor(size * 0.15), end);
+      const dot = Math.max(window.lastIndexOf('. '), window.lastIndexOf('? '), window.lastIndexOf('! '));
+      if (dot > 0) end = end - window.length + dot + 1;
+    }
+    const last = chunks.length === SERMON_MAX_CHUNKS - 1;
+    // Sentence-boundary trimming pulls each cut slightly earlier, so on the
+    // final chunk take everything that's left rather than losing the ending.
+    if (last) end = text.length;
+    chunks.push(text.slice(i, end).trim());
+    if (end >= text.length) break;
+    i = Math.max(end - overlap, i + 1);
+  }
+  return chunks.filter(Boolean);
+}
+
+const SERMON_MAX_CHARS = 36000;   // ~a 40-minute message
+const SERMON_MAX_CHUNKS = 4;      // map calls per run
+const SERMON_CHUNK_MIN = 9000;    // below this, one call reads the whole thing
 
 async function handleAi(req: Request, env: Env): Promise<Response> {
   const body: any = await req.json().catch(() => ({}));
@@ -382,12 +493,38 @@ async function handleAi(req: Request, env: Env): Promise<Response> {
     if (transcript.trim().length < 40 && /^https?:\/\//i.test(url)) {
       transcript = await extractFromUrl(url).catch(() => '');
     }
-    transcript = transcript.slice(0, 14000);
+    transcript = transcript.slice(0, SERMON_MAX_CHARS);
     if (transcript.trim().length < 40) {
       return json({ summary: '', references: [], error: url ? 'Could not read that link (no captions/text found). Paste the transcript or text instead.' : 'Not enough text to summarize.' });
     }
-    const out = await callLLM(env, SERMON_SYSTEM, transcript, 800);
-    return json(parseSermon(out));
+
+    const chunks = chunkTranscript(transcript);
+    if (chunks.length === 1) {
+      const out = await callLLM(env, SERMON_SYSTEM, transcript, 1000);
+      return json(parseSermon(out));
+    }
+
+    // MAP: notes per section (in parallel — these are independent).
+    const sections = await Promise.all(
+      chunks.map((c, i) =>
+        callLLM(env, SERMON_CHUNK_SYSTEM, `Section ${i + 1} of ${chunks.length}:\n\n${c}`, 400)
+          .then(parseSermonChunk)
+          .catch(() => ({ points: [], references: [] })),
+      ),
+    );
+    const notes = sections
+      .map((sec, i) => `Section ${i + 1}:\n${sec.points.map((p) => `- ${p}`).join('\n')}\nReferences: ${sec.references.join(', ') || 'none'}`)
+      .join('\n\n');
+    if (!notes.replace(/Section \d+:|References: none/g, '').trim()) {
+      return json({ summary: '', references: [], error: 'Could not make sense of that transcript. Try pasting a cleaner version.' });
+    }
+
+    // REDUCE: one structured teaching from all the section notes.
+    const out = await callLLM(env, SERMON_REDUCE_SYSTEM, notes, 1100);
+    const parsed = parseSermon(out);
+    // Never lose a reference the sections found, even if the reduce step drops it.
+    const allRefs = new Set([...parsed.references, ...sections.flatMap((sec) => sec.references)]);
+    return json({ ...parsed, references: Array.from(allRefs).slice(0, 60) });
   }
   return json({ error: 'Unknown task. Use hook | explain | pack | chords | sermon | songsForVerse | versesForSong.' }, 400);
 }

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, FlatList } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -38,7 +38,13 @@ export default function NotesScreen() {
   const all = useDocList();
   const createDoc = useStore((s) => s.createDoc);
 
-  const [filter, setFilter] = useState<DocType | 'all'>('all');
+  // A `?type=` deep link opens the workspace already filtered (e.g. Library →
+  // Teachings lands on the saved sermon notes).
+  const params = useLocalSearchParams<{ type?: string }>();
+  const initialFilter = FILTERS.some((f) => f.key === params.type)
+    ? (params.type as DocType)
+    : 'all';
+  const [filter, setFilter] = useState<DocType | 'all'>(initialFilter);
   const [query, setQuery] = useState('');
 
   const docs = useMemo(() => {

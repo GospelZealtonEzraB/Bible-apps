@@ -12,8 +12,8 @@ import { AttachSheet } from '@/components/AttachSheet';
 import { EmberTip } from '@/components/EmberGuide';
 import { ReactionBar } from '@/components/ReactionBar';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useCircle, useStore } from '@/store/useStore';
-import { matchHymnByTitle } from '@/data/hymns';
+import { useCircle, useStore, useSongbook } from '@/store/useStore';
+import { matchSongByTitle } from '@/data/songbook';
 import type { Message, MessageAttachment } from '@/types';
 
 /**
@@ -29,6 +29,7 @@ export default function DiscussionScreen() {
   const code = typeof params.code === 'string' ? params.code : '';
   const context = typeof params.context === 'string' && params.context ? decodeURIComponent(params.context) : null;
   const circle = useCircle(code);
+  const songbook = useSongbook();
   const myId = useStore((s) => s.profile.memberId);
   const refreshCircle = useStore((s) => s.refreshCircle);
   const postCircleMessage = useStore((s) => s.postCircleMessage);
@@ -80,9 +81,9 @@ export default function DiscussionScreen() {
     Alert.alert('Saved to your notes 💛');
   };
   const openSong = (title: string) => {
-    const h = matchHymnByTitle(title);
-    if (h) router.push(`/hymns/${h.id}`);
-    else router.push(`/songs?q=${encodeURIComponent(title)}`);
+    const h = matchSongByTitle(title, songbook);
+    if (h) router.push(`/songbook/${h.id}`);
+    else router.push(`/songbook?q=${encodeURIComponent(title)}`);
   };
 
   const renderItem = ({ item: m }: { item: Message }) => {

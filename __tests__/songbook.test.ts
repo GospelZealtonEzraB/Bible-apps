@@ -1,7 +1,16 @@
-// @ts-nocheck — the parser is plain JS shared with the build script.
-import { parseSongbook, slugify } from '../scripts/songbook.mjs';
+// The songbook text format has two parsers: the build-time one (plain JS, used
+// by scripts/build-songs.mjs) and the in-app TypeScript one. They must behave
+// identically, so every case below runs through BOTH.
+// @ts-nocheck — the build-time parser is plain JS shared with the script.
+import { parseSongbook as parseJs, slugify as slugifyJs } from '../scripts/songbook.mjs';
+import { parseSongbook as parseTs, slugify as slugifyTs, songToText } from '../src/utils/songbookParse';
 
-describe('parseSongbook', () => {
+const IMPLS: [string, typeof parseTs][] = [
+  ['build script (mjs)', parseJs],
+  ['in-app (ts)', parseTs],
+];
+
+describe.each(IMPLS)('parseSongbook — %s', (_name, parseSongbook) => {
   test('parses title, metadata, verses and chorus with inline chords', () => {
     const doc = `# Amazing Grace
 @author: John Newton
@@ -78,8 +87,70 @@ b`;
     expect(s.lyricsUrl).toBe('https://example.com/lyrics');
   });
 
-  test('slugify handles Tamil + punctuation', () => {
-    expect(slugify('Amazing Grace!')).toBe('amazing-grace');
-    expect(slugify('  ')).toBe('song');
+  test('a song with no lyrics and no link is dropped', () => {
+    expect(parseSongbook('# Just a title\n@author: Someone')).toHaveLength(0);
+  });
+
+  test('junk input never throws', () => {
+    expect(parseSongbook('')).toEqual([]);
+    expect(parseSongbook('no title line at all\n[verse]\nx')).toEqual([]);
+  });
+});
+
+describe('the two parsers agree', () => {
+  const DOC = `# Amazing Grace
+@author: John Newton
+@key: G
+@source: pd
+@ref: Ephesians 2:8
+
+[verse]
+A-[G]mazing grace
+[chorus]
+Praise Him
+
+# ஆராதனை
+@source: personal
+
+[pallavi]
+ஆராதனை ஆராதனை
+`;
+
+  test('identical output for the same document', () => {
+    expect(parseTs(DOC)).toEqual(parseJs(DOC));
+  });
+
+  test('identical slugs', () => {
+    for (const t of ['Amazing Grace!', '  ', 'ஆராதனை', 'A—very…long/title']) {
+      expect(slugifyTs(t)).toBe(slugifyJs(t));
+    }
+  });
+});
+
+describe('slugify', () => {
+  test('handles Tamil + punctuation', () => {
+    expect(slugifyTs('Amazing Grace!')).toBe('amazing-grace');
+    expect(slugifyTs('  ')).toBe('song');
+  });
+});
+
+describe('songToText', () => {
+  test('round-trips a song back through the parser', () => {
+    const doc = `# It Is Well
+@author: Horatio Spafford
+@year: 1873
+@key: C
+@source: pd
+@ref: Isaiah 26:3
+
+[verse]
+When [C]peace like a river
+[chorus]
+It is well with my soul
+`;
+    const [original] = parseTs(doc);
+    const [round] = parseTs(songToText(original));
+    // The id is index-derived, so compare everything else.
+    expect({ ...round, id: original.id }).toEqual(original);
   });
 });

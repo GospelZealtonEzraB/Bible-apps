@@ -63,18 +63,26 @@ export const HELP: Record<string, HelpEntry> = {
   },
   hymns: {
     title: 'Sing the Word',
-    tip: 'Public-domain hymns with lyrics, chords, and transpose — and the Scripture behind each one.',
-    what: 'The hymnal is classic, public-domain songs. Tap a hymn for lyrics + chords you can transpose, and the verses that inspired it.',
+    tip: 'One songbook: classic hymns, the songs your family sings, and the web — with chords, transpose, and the Scripture behind each one.',
+    what: 'Hundreds of public-domain hymns come bundled. Add your own songs (Tamil too) and they are searchable, singable, and shareable like any other.',
     example: '“It Is Well” links to Isaiah 26:3 — tap the reference to peek at it without leaving the song.',
-    tips: ['Use –/+ to transpose to your key.', 'From a verse, try “Songs from this verse” to find hymns it inspired.'],
+    tips: [
+      'Use –/+ to transpose to your key.',
+      'No chords on a hymn? Write your own — the original is always one tap away.',
+      '“Sing this today” ticks your walk and shares the song with your partner.',
+    ],
     mood: 'love',
   },
   sermon: {
     title: 'Turn a message into study',
-    tip: 'Paste a YouTube/article link or a transcript — I’ll summarize it and pull out every verse it cites.',
-    what: 'Sermon notes gives an original summary and extracts the Scripture references, so you can study or memorize what the message covered.',
-    example: 'Paste a sermon link → get a summary + chips like “Romans 12:1” you can tap to study or memorize.',
-    tips: ['Articles read best; YouTube needs captions — if it can’t read a video, paste the transcript.', 'The summary is Ember’s words, never a copy of the message.'],
+    tip: 'Paste a YouTube/article link or a transcript — I’ll take notes on the whole message and pull out every verse it cites.',
+    what: 'Teaching notes gives you the message’s outline, the points worth remembering, every Scripture reference, and one way to live it out. Save it to Notes and it’s yours to edit and keep.',
+    example: 'Paste a sermon link → an outline, key points, chips like “Romans 12:1”, and a “Living it out” line → Save to Notes.',
+    tips: [
+      'A long message is read in sections, so a full sermon isn’t cut short.',
+      'Articles read best; YouTube needs captions — if it can’t read a video, paste the transcript.',
+      'The notes are Ember’s words, never a copy of the message.',
+    ],
     mood: 'thinking',
   },
   quiz: {

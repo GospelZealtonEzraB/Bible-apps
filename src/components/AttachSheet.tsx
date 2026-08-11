@@ -3,9 +3,9 @@ import { Modal, View, Text, TextInput, Pressable, FlatList } from 'react-native'
 import { Ionicons } from '@expo/vector-icons';
 
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useStore, useDocList, useVerseList } from '@/store/useStore';
+import { useStore, useDocList, useVerseList, useSongbook } from '@/store/useStore';
 import { searchLocalKjv, hydrateReference } from '@/data/localSearch';
-import { searchHymns, HYMNS } from '@/data/hymns';
+import { allSongs, searchAll } from '@/data/songbook';
 import { parsePassage } from '@/data/books';
 import { docPreview } from '@/utils/blocks';
 import type { MessageAttachment } from '@/types';
@@ -197,7 +197,11 @@ function NotesPicker({ query, onPick }: { query: string; onPick: (a: MessageAtta
 
 /** Your songbook — send a song; it opens with lyrics & chords on their side. */
 function SongsPicker({ query, onPick }: { query: string; onPick: (a: MessageAttachment) => void }) {
-  const list = useMemo(() => (query.trim().length >= 2 ? searchHymns(query) : HYMNS.slice(0, 25)), [query]);
+  const songbook = useSongbook();
+  const list = useMemo(
+    () => (query.trim().length >= 2 ? searchAll(query, songbook) : allSongs(songbook).slice(0, 25)),
+    [query, songbook],
+  );
   if (list.length === 0) return <Hint text="No songs matched — try another title or line." />;
   return (
     <FlatList

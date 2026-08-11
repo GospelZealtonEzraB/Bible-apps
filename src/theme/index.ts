@@ -1,4 +1,4 @@
-import { useColorScheme } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 import { useSettings } from '@/store/useStore';
 
 export interface Palette {
@@ -76,6 +76,8 @@ export const font = {
   sizes: { xs: 12, sm: 14, md: 16, lg: 20, xl: 26, xxl: 34, display: 44 },
   serif:
     'Georgia, "Iowan Old Style", "Palatino Linotype", "Times New Roman", serif',
+  /** Fixed-width — for chord sheets, where column alignment carries meaning. */
+  mono: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }) as string,
 };
 
 export interface Theme {

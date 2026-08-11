@@ -153,7 +153,20 @@ partners / small groups hold each other accountable). Warm, playful, reverent to
   reader "Journal this today"); and a **circle "Today, together"** shared devotional
   (`DailyTogetherCard`, API v9, auto-advancing shared reading plan `planPortionForDate`) with a
   **circle journal timeline** (the "Our journal" drill-in).
-- **Product refinement (deep pillars — latest):** the sprawl is being consolidated per the approved
+- **Worship & Teaching (P5 — latest):** **one Songbook** (`/songbook`; `/hymns`, `/hymns/[id]`,
+  `/hymns/verse/[ref]`, `/songs` are now redirects) merging three tiers via `src/data/songbook.ts` —
+  bundled `HYMNS` + the family's **own songs** (`songs` slice) + **chord overlays** (`songChords`) on
+  lyrics-only hymns; **in-app song editor** (`/songbook/new`, `src/utils/songbookParse.ts` — the TS twin
+  of `scripts/songbook.mjs`, kept in lockstep by a shared test suite) so Tamil/family songs no longer
+  need a repo checkout; ★ favourites; **deep-link playback** (Spotify · YT Music · YouTube — never
+  hosted audio); **"Sing this today"** credits the walk's `worship` movement + shares to the day.
+  **Sermons deepened:** the Worker `/ai` `sermon` task is now **map-reduce over ≤4 chunks** (cap 14k →
+  36k chars; the final chunk always runs to the end) returning `{title, summary, outline, keyPoints,
+  application, references}`; `src/utils/teaching.ts` coerces it (tolerates the old `{summary,
+  references}` shape) and composes a **`sermon` Doc** — saved teachings are just Notes filtered by type
+  (`/notes?type=sermon`). Library gained a **Worship & Teaching** shelf; Abide's `worship`/`teaching`
+  movements now surface favourites and saved teachings.
+- **Product refinement (deep pillars — earlier):** the sprawl is being consolidated per the approved
   plan (owner decisions: private/family · passwordless accounts later · devotion+journaling anchor ·
   1:1 covenant partner · "two walks, one window" devotion model, reflections shared-first).
   Shipped: **Notes pillar** (block editor `BlockEditor`/`RichText`, `documents`+`folders` slices,
@@ -169,8 +182,10 @@ partners / small groups hold each other accountable). Warm, playful, reverent to
   **API v10** + `/esv` + deep-study actions; the songs Vectorize binding is commented out so deploy
   succeeds) and one **`eas update`**; **set `ESV_API_KEY`** for ESV. Tamil is online-only (resolver
   self-heals across getbible/bolls). Remaining pillars: P0 accounts (needs D1 + email provisioning),
-  P5 songbook/sermon deepening, full partner-space collapse. All tests green (230), tsc clean,
-  exports bundle, worker bundles.
+  full partner-space collapse, the 5-tab IA merge. **A bundled PD devotional is deferred** — this
+  sandbox can only reach GitHub by exact URL (repo search is blocked), so no dataset can be sourced;
+  it needs a source URL or an open-network session. All tests green (272), tsc clean, exports bundle,
+  worker bundles.
 
 ## Likely next work (roadmap)
 - Screenshots for the Play listing; wire the `eas submit` service account.

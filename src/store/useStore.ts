@@ -47,6 +47,7 @@ import {
 import { emptyDoc, extractRefs, genId as genBlockId, markdownToBlocks } from '@/utils/blocks';
 import { migrateDocs } from '@/utils/notesMigration';
 import { completeMovement as walkComplete, uncompleteMovement as walkUncomplete, type WalkDay } from '@/utils/dailyWalk';
+import { toUserSong, newSongId, isMine, toggleFavorite, type Hymn, type HymnStanza, type SongbookState } from '@/data/songbook';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
 import * as circleApi from '@/data/circleClient';
@@ -101,6 +102,12 @@ interface StoreState {
   folders: Record<string, Folder>;
   /** The daily walk — movements/acts done with God per day; feeds the ONE streak. */
   walk: Record<string, WalkDay>;
+  /** Songs the family added in-app (Tamil included), by id. Full lyrics + chords. */
+  songs: Record<string, Hymn>;
+  /** Chords written onto a bundled (lyrics-only) song, by that song's id. */
+  songChords: Record<string, HymnStanza[]>;
+  /** Favourite song ids, in the order they were starred. */
+  favoriteSongs: string[];
   /** Session memory for the welcome-back recap. */
   session: { lastOpenedDay: string | null };
   /** Where the Bible reader left off (null until they've read something). */
@@ -256,6 +263,16 @@ interface StoreState {
   deleteFolder: (id: string) => void;
   /** One-time move of legacy private notes into documents (idempotent). */
   runNotesMigration: () => void;
+
+  // The songbook
+  /** Add or replace one of the family's own songs; returns its id. */
+  saveSong: (song: Hymn, id?: string) => string;
+  /** Remove one of the family's own songs (bundled songs can't be deleted). */
+  deleteSong: (id: string) => void;
+  /** Star / unstar any song. */
+  toggleFavoriteSong: (id: string) => void;
+  /** Write chords onto a bundled song (pass null to drop back to the original). */
+  setSongChords: (id: string, stanzas: HymnStanza[] | null) => void;
 
   // The daily walk (the one habit engine)
   /** Check off a movement/act for today (or a given day). */
@@ -609,6 +626,9 @@ export const useStore = create<StoreState>()(
       documents: {},
       folders: {},
       walk: {},
+      songs: {},
+      songChords: {},
+      favoriteSongs: [],
       session: { lastOpenedDay: null },
       reading: null,
       readingPlanProgress: {},
@@ -1383,6 +1403,31 @@ export const useStore = create<StoreState>()(
           return { folders, documents };
         }),
 
+      saveSong: (song, id) => {
+        const stored = toUserSong(song, id && isMine(id) ? id : newSongId());
+        set((state) => ({ songs: { ...state.songs, [stored.id]: stored } }));
+        return stored.id;
+      },
+
+      deleteSong: (id) =>
+        set((state) => {
+          if (!isMine(id)) return {};
+          const songs = { ...state.songs };
+          delete songs[id];
+          return { songs, favoriteSongs: state.favoriteSongs.filter((f) => f !== id) };
+        }),
+
+      toggleFavoriteSong: (id) =>
+        set((state) => ({ favoriteSongs: toggleFavorite(state.favoriteSongs, id) })),
+
+      setSongChords: (id, stanzas) =>
+        set((state) => {
+          const songChords = { ...state.songChords };
+          if (stanzas && stanzas.length) songChords[id] = stanzas;
+          else delete songChords[id];
+          return { songChords };
+        }),
+
       completeWalkMovement: (movement, day) =>
         set((state) => ({ walk: walkComplete(state.walk, day ?? dayKey(), movement, Date.now()) })),
 
@@ -1548,6 +1593,9 @@ export const useStore = create<StoreState>()(
             documents: s.documents,
             folders: s.folders,
             walk: s.walk,
+            songs: s.songs,
+            songChords: s.songChords,
+            favoriteSongs: s.favoriteSongs,
             session: s.session,
             reading: s.reading,
             readingPlanProgress: s.readingPlanProgress,
@@ -1584,6 +1632,9 @@ export const useStore = create<StoreState>()(
           documents: d.documents ?? state.documents,
           folders: d.folders ?? state.folders,
           walk: d.walk ?? state.walk,
+          songs: d.songs ?? state.songs,
+          songChords: d.songChords ?? state.songChords,
+          favoriteSongs: Array.isArray(d.favoriteSongs) ? d.favoriteSongs : state.favoriteSongs,
           session: d.session ?? state.session,
           reading: d.reading ?? state.reading,
           readingPlanProgress: d.readingPlanProgress ?? state.readingPlanProgress,
@@ -1639,6 +1690,9 @@ export const useStore = create<StoreState>()(
         documents: state.documents,
         folders: state.folders,
         walk: state.walk,
+        songs: state.songs,
+        songChords: state.songChords,
+        favoriteSongs: state.favoriteSongs,
         session: state.session,
         reading: state.reading,
         readingPlanProgress: state.readingPlanProgress,
@@ -1682,6 +1736,9 @@ export const useStore = create<StoreState>()(
             documents: p.documents ?? {},
             folders: p.folders ?? {},
             walk: p.walk ?? {},
+            songs: p.songs ?? {},
+            songChords: p.songChords ?? {},
+            favoriteSongs: Array.isArray(p.favoriteSongs) ? p.favoriteSongs : [],
             session: { lastOpenedDay: null, ...(p.session ?? {}) },
             reading: p.reading ?? null,
             readingPlanProgress: p.readingPlanProgress ?? {},
@@ -1721,6 +1778,17 @@ export function useStats(): Stats {
 
 export function useProfile(): Profile {
   return useStore((state) => state.profile);
+}
+
+/**
+ * The songbook slices, as one object for `src/data/songbook.ts`'s pure helpers.
+ * Memoized so the identity is stable while nothing about the songbook changes.
+ */
+export function useSongbook(): SongbookState {
+  const songs = useStore((state) => state.songs);
+  const songChords = useStore((state) => state.songChords);
+  const favoriteSongs = useStore((state) => state.favoriteSongs);
+  return useMemo(() => ({ songs, songChords, favoriteSongs }), [songs, songChords, favoriteSongs]);
 }
 
 export function useCircleList(): Circle[] {

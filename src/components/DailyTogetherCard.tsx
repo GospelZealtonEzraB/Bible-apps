@@ -7,11 +7,11 @@ import { Card, Button, SectionTitle } from '@/components/ui';
 import { RefText } from '@/components/RefText';
 import { PeekableRef } from '@/components/PeekableRef';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useCircle, useProfile, useStore } from '@/store/useStore';
+import { useCircle, useProfile, useStore, useSongbook } from '@/store/useStore';
 import { dayKey } from '@/utils/date';
 import { parsePassage } from '@/data/books';
 import { planPortionForDate } from '@/data/readingPlans';
-import { matchHymnByTitle } from '@/data/hymns';
+import { matchSongByTitle } from '@/data/songbook';
 import type { CircleMember, CircleDaily } from '@/types';
 
 /**
@@ -24,6 +24,7 @@ import type { CircleMember, CircleDaily } from '@/types';
 export function DailyTogetherCard({ code, accent, members, myId }: { code: string; accent: string; members: CircleMember[]; myId: string }) {
   const { colors } = useTheme();
   const router = useRouter();
+  const songbook = useSongbook();
   const circle = useCircle(code);
   const profile = useProfile();
   const completeCircleDaily = useStore((s) => s.completeCircleDaily);
@@ -60,9 +61,9 @@ export function DailyTogetherCard({ code, accent, members, myId }: { code: strin
     if (p) router.push(`/read/${p.bookNumber}/${p.chapter}`);
   };
   const openSong = (title: string) => {
-    const hymn = matchHymnByTitle(title);
-    if (hymn) router.push(`/hymns/${hymn.id}`);
-    else router.push(`/songs?q=${encodeURIComponent(title)}`);
+    const hymn = matchSongByTitle(title, songbook);
+    if (hymn) router.push(`/songbook/${hymn.id}`);
+    else router.push(`/songbook?q=${encodeURIComponent(title)}`);
   };
 
   return (

@@ -8,7 +8,8 @@ import { Card, Button, Chip, SectionTitle, SpeechBubble } from '@/components/ui'
 import { Ember } from '@/components/Ember';
 import { EmberTip } from '@/components/EmberGuide';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useVerseList, useActiveReadingPlanId, useReadingPlanProgress, useSettings, useStore, useWalk } from '@/store/useStore';
+import { useVerseList, useActiveReadingPlanId, useReadingPlanProgress, useSettings, useStore, useWalk, useSongbook, useDocList } from '@/store/useStore';
+import { favoriteSongs } from '@/data/songbook';
 import { getReadingPlan } from '@/data/readingPlans';
 import { parsePassage } from '@/data/books';
 import { isDue } from '@/srs/sm2';
@@ -85,6 +86,9 @@ export default function AbideScreen() {
     doneSet.has(key) ? uncompleteWalkMovement(key, today) : completeWalkMovement(key, today);
 
   const due = verses.filter((v) => isDue(v.srs)).length;
+  const songbook = useSongbook();
+  const favSongs = favoriteSongs(songbook);
+  const teachings = useDocList({ type: 'sermon' });
   const prompt = PRESENCE_PROMPTS[new Date().getDate() % PRESENCE_PROMPTS.length];
 
   let todaysPassages: string[] = [];
@@ -115,7 +119,19 @@ export default function AbideScreen() {
       case 'come':
         return <Text style={{ color: colors.text, fontSize: font.sizes.md, fontFamily: font.serif, fontStyle: 'italic', lineHeight: 26 }}>"{prompt}"</Text>;
       case 'worship':
-        return <Button title="Sing a hymn" variant="secondary" small icon={<Ionicons name="musical-notes" size={16} color={colors.text} />} onPress={() => router.push('/hymns')} />;
+        // Your starred songs are one tap away; the whole songbook is behind them.
+        return (
+          <>
+            {favSongs.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                {favSongs.slice(0, 3).map((sg) => (
+                  <Chip key={sg.id} label={sg.title} onPress={() => router.push(`/songbook/${sg.id}`)} />
+                ))}
+              </View>
+            ) : null}
+            <Button title="Open the songbook" variant="secondary" small icon={<Ionicons name="musical-notes" size={16} color={colors.text} />} onPress={() => router.push('/songbook')} />
+          </>
+        );
       case 'word':
         return todaysPassages.length > 0 ? (
           <>
@@ -130,7 +146,18 @@ export default function AbideScreen() {
       case 'deeper':
         return <Button title="Study the passage" variant="secondary" small icon={<Ionicons name="sparkles" size={16} color={colors.text} />} onPress={() => router.push('/study')} />;
       case 'teaching':
-        return <Button title="A message or devotional" variant="secondary" small icon={<Ionicons name="mic" size={16} color={colors.text} />} onPress={() => router.push('/sermon')} />;
+        return (
+          <>
+            {teachings.length > 0 ? (
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                {teachings.slice(0, 2).map((d) => (
+                  <Chip key={d.id} label={d.title || 'Teaching notes'} onPress={() => router.push(`/notes/${d.id}`)} />
+                ))}
+              </View>
+            ) : null}
+            <Button title="Take notes on a message" variant="secondary" small icon={<Ionicons name="mic" size={16} color={colors.text} />} onPress={() => router.push('/sermon')} />
+          </>
+        );
       case 'respond':
         return due > 0 ? (
           <Button title={`Review ${due} verse${due === 1 ? '' : 's'}`} small icon={<Ionicons name="play" size={16} color={colors.onPrimary} />} onPress={() => router.push('/review')} />

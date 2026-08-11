@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
@@ -9,20 +10,33 @@ import { VerseActionSheet } from '@/components/VerseActionSheet';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { useStore } from '@/store/useStore';
 import { fetchSermon } from '@/data/aiClient';
-import { parseReference, formatReference } from '@/data/books';
 import { hydrateReference } from '@/data/localSearch';
 import { isYoutubeUrl, fetchYoutubeTranscript } from '@/data/youtube';
+import { teachingToBlocks, teachingTitle, teachingIsEmpty, type Teaching } from '@/utils/teaching';
 import { HelpButton, EmberTip } from '@/components/EmberGuide';
 
+/**
+ * Teaching notes from a sermon — paste a link or the transcript and get the
+ * message's outline, the truths worth keeping, every verse it cited, and how to
+ * live it. It doesn't evaporate: save it to Notes, memorize its verses, or send
+ * it to your partner.
+ */
 export default function SermonScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const serverUrl = useStore((s) => s.settings.serverUrl);
+  const createDoc = useStore((s) => s.createDoc);
+  const shareNote = useStore((s) => s.shareNote);
+  const completeWalkMovement = useStore((s) => s.completeWalkMovement);
+  const circleCodes = useStore((s) => Object.keys(s.circles));
+
   const [transcript, setTranscript] = useState('');
-  const [summary, setSummary] = useState<string | null>(null);
-  const [refs, setRefs] = useState<string[]>([]);
+  const [teaching, setTeaching] = useState<Teaching | null>(null);
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ reference: string; text: string } | null>(null);
+  const [saved, setSaved] = useState(false);
 
   const trimmed = transcript.trim();
   const isUrl = /^https?:\/\//i.test(trimmed);
@@ -31,7 +45,8 @@ export default function SermonScreen() {
     if (!isUrl && trimmed.length < 40) return;
     setLoading(true);
     setError(null);
-    setSummary(null);
+    setTeaching(null);
+    setSaved(false);
     try {
       // For a YouTube link, try fetching captions ON THE DEVICE first (residential
       // IP → far more reliable than the Worker's datacenter IP). Fall back to the
@@ -42,11 +57,10 @@ export default function SermonScreen() {
         if (captions.trim().length > 40) input = { transcript: captions };
       }
       const r = await fetchSermon(serverUrl, input);
-      if (r.error && !r.summary) { setError(r.error); return; }
-      setSummary(r.summary);
-      // Validate references against the canonical book table (drop hallucinated/bad ones).
-      const valid = Array.from(new Set(r.references.map((x) => { const p = parseReference(x); return p ? formatReference(p) : null; }).filter((x): x is string => !!x)));
-      setRefs(valid);
+      if (r.error && teachingIsEmpty(r.teaching)) { setError(r.error); return; }
+      setSourceUrl(isUrl ? trimmed : null);
+      setTeaching(r.teaching);
+      completeWalkMovement('teaching');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not summarize.');
     } finally {
@@ -59,11 +73,38 @@ export default function SermonScreen() {
     setSelected({ reference, text: hit?.text ?? '' });
   };
 
+  const saveToNotes = () => {
+    if (!teaching) return;
+    const id = createDoc('sermon', {
+      title: teachingTitle(teaching),
+      blocks: teachingToBlocks(teaching, { source: sourceUrl ?? undefined }),
+      tags: ['teaching'],
+    });
+    setSaved(true);
+    router.push(`/notes/${id}`);
+  };
+
+  const shareToPartner = () => {
+    if (!teaching || circleCodes.length === 0) return;
+    const text = [
+      teachingTitle(teaching),
+      teaching.summary,
+      teaching.keyPoints.length ? teaching.keyPoints.map((k) => `• ${k}`).join('\n') : '',
+      teaching.references.length ? teaching.references.join(' · ') : '',
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+    void shareNote(circleCodes[0], text, 'free');
+    Alert.alert('Sent to your partner 💛', 'They’ll find it in your shared notes.');
+  };
+
+  const reset = () => { setTeaching(null); setTranscript(''); setSaved(false); setSourceUrl(null); };
+
   return (
     <Screen>
-      <Header title="Sermon notes" subtitle="Summary + every verse it cites" back right={<HelpButton topic="sermon" />} />
+      <Header title="Teaching notes" subtitle="Outline · key points · every verse" back right={<HelpButton topic="sermon" />} />
 
-      {summary === null ? (
+      {teaching === null ? (
         <>
           <EmberTip topic="sermon" />
           <Card style={{ gap: spacing.sm }}>
@@ -85,32 +126,119 @@ export default function SermonScreen() {
             ) : null}
           </Card>
           <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
-            The AI writes an original summary and pulls out the Scripture references — it never copies the message text.
+            A full-length message is read in sections, so nothing is cut off. The AI writes original
+            notes and pulls out the Scripture — it never copies the message text.
           </Text>
-          <Button title={isUrl ? 'Read link & summarize' : 'Summarize & find verses'} icon={<Ionicons name="sparkles" size={18} color={colors.onPrimary} />} loading={loading} disabled={(!isUrl && trimmed.length < 40) || loading} onPress={run} />
+          <Button
+            title={isUrl ? 'Read link & take notes' : 'Take notes & find verses'}
+            icon={<Ionicons name="sparkles" size={18} color={colors.onPrimary} />}
+            loading={loading}
+            disabled={(!isUrl && trimmed.length < 40) || loading}
+            onPress={run}
+          />
+          {loading ? (
+            <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, textAlign: 'center' }}>
+              Listening through the whole message…
+            </Text>
+          ) : null}
           {error ? <Text style={{ color: colors.warning, fontSize: font.sizes.sm }}>{error}</Text> : null}
         </>
       ) : (
         <>
-          <Card style={{ gap: spacing.sm }}>
-            <SectionTitle>Summary</SectionTitle>
-            <RefText text={summary || 'No summary returned.'} />
-            <Text style={{ color: colors.textFaint, fontSize: 10, marginTop: 4 }}>AI summary — weigh it against the message and the Word.</Text>
-          </Card>
+          {teaching.title ? (
+            <Text style={{ color: colors.text, fontSize: font.sizes.xl, fontWeight: '800', lineHeight: 32 }}>
+              {teaching.title}
+            </Text>
+          ) : null}
 
-          {refs.length > 0 ? (
+          {teaching.summary ? (
+            <Card style={{ gap: spacing.sm }}>
+              <SectionTitle>In short</SectionTitle>
+              <RefText text={teaching.summary} />
+            </Card>
+          ) : null}
+
+          {teaching.outline.length > 0 ? (
             <View>
-              <SectionTitle>Verses referenced ({refs.length})</SectionTitle>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
-                {refs.map((r) => <Chip key={r} label={r} onPress={() => openRef(r)} />)}
+              <SectionTitle>How it went</SectionTitle>
+              <View style={{ gap: spacing.sm }}>
+                {teaching.outline.map((sec, i) => (
+                  <Card key={i} style={{ gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+                      <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 11 }}>{i + 1}</Text>
+                      </View>
+                      <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.md, flex: 1 }}>{sec.heading}</Text>
+                    </View>
+                    {sec.points.map((p, j) => (
+                      <View key={j} style={{ flexDirection: 'row', gap: spacing.sm, paddingLeft: 30 }}>
+                        <Text style={{ color: colors.textFaint }}>•</Text>
+                        <RefText text={p} style={{ color: colors.textMuted, fontSize: font.sizes.sm, lineHeight: 21, flex: 1 }} />
+                      </View>
+                    ))}
+                  </Card>
+                ))}
               </View>
-              <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>Tap a verse to read, memorize, or study it.</Text>
+            </View>
+          ) : null}
+
+          {teaching.keyPoints.length > 0 ? (
+            <View>
+              <SectionTitle>Worth remembering</SectionTitle>
+              <Card style={{ gap: spacing.sm }}>
+                {teaching.keyPoints.map((k, i) => (
+                  <View key={i} style={{ flexDirection: 'row', gap: spacing.sm }}>
+                    <Ionicons name="ellipse" size={7} color={colors.accent} style={{ marginTop: 7 }} />
+                    <RefText text={k} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 23, flex: 1 }} />
+                  </View>
+                ))}
+              </Card>
+            </View>
+          ) : null}
+
+          {teaching.references.length > 0 ? (
+            <View>
+              <SectionTitle>Verses referenced ({teaching.references.length})</SectionTitle>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+                {teaching.references.map((r) => <Chip key={r} label={r} onPress={() => openRef(r)} />)}
+              </View>
+              <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, marginTop: spacing.sm }}>
+                Tap any verse to read it, memorize it, or study it.
+              </Text>
             </View>
           ) : (
             <EmptyState emoji="📖" title="No verses detected" subtitle="The message may not have cited specific references." />
           )}
 
-          <Button title="New sermon" variant="secondary" onPress={() => { setSummary(null); setRefs([]); setTranscript(''); }} />
+          {teaching.application ? (
+            <Card style={{ gap: 6, borderLeftWidth: 3, borderLeftColor: colors.success }}>
+              <SectionTitle>Living it out</SectionTitle>
+              <RefText text={teaching.application} style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 24, fontStyle: 'italic' }} />
+            </Card>
+          ) : null}
+
+          <Text style={{ color: colors.textFaint, fontSize: 10 }}>
+            AI-written notes — weigh them against the message and the Word.
+          </Text>
+
+          {/* Where it goes next — the notes don't evaporate. */}
+          <View style={{ gap: spacing.sm }}>
+            <Button
+              title={saved ? 'Saved to Notes ✓' : 'Save to Notes'}
+              icon={<Ionicons name="bookmark-outline" size={18} color={colors.onPrimary} />}
+              disabled={saved}
+              onPress={saveToNotes}
+            />
+            {circleCodes.length > 0 ? (
+              <Button
+                title="Share with your partner"
+                variant="secondary"
+                icon={<Ionicons name="people-outline" size={18} color={colors.text} />}
+                onPress={shareToPartner}
+              />
+            ) : null}
+            <Button title="New teaching" variant="ghost" onPress={reset} />
+          </View>
         </>
       )}
 

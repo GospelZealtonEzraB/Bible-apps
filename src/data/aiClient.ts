@@ -5,6 +5,7 @@
  */
 import type { Verse } from '@/types';
 import { postServer, NoServerError } from './serverClient';
+import { coerceTeaching, type Teaching } from '@/utils/teaching';
 
 export { NoServerError };
 
@@ -42,18 +43,20 @@ export async function fetchChords(serverUrl: string | null, title: string, artis
 }
 
 /**
- * Summarize a sermon from a pasted transcript OR a URL (YouTube captions best-
- * effort, or an article page) → original-prose summary + extracted references.
+ * Turn a sermon into structured teaching notes, from a pasted transcript OR a
+ * URL (YouTube captions best-effort, or an article page). A long transcript is
+ * chunked and reduced server-side, so a full-length message survives intact.
+ * `coerceTeaching` tolerates an older Worker that only returns {summary, references}.
  */
 export async function fetchSermon(
   serverUrl: string | null,
   input: { transcript?: string; url?: string },
-): Promise<{ summary: string; references: string[]; error?: string }> {
-  const data = await postServer<{ summary?: string; references?: string[]; error?: string }>(serverUrl, '/ai', {
+): Promise<{ teaching: Teaching; error?: string }> {
+  const data = await postServer<Record<string, unknown> & { error?: string }>(serverUrl, '/ai', {
     task: 'sermon',
     ...input,
   });
-  return { summary: data.summary ?? '', references: Array.isArray(data.references) ? data.references : [], error: data.error };
+  return { teaching: coerceTeaching(data), error: data.error };
 }
 
 /** An AI-suggested song related to a verse (metadata + why — never lyrics). */

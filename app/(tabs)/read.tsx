@@ -74,7 +74,7 @@ export default function ReadScreen() {
         <Ionicons name="chevron-forward" size={20} color={colors.textFaint} />
       </Card>
 
-      <Card onPress={() => router.push('/hymns')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+      <Card onPress={() => router.push('/songbook')} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
         <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name="musical-notes-outline" size={22} color={colors.accent} />
         </View>

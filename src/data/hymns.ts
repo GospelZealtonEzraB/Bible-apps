@@ -229,8 +229,8 @@ export function hymnHasChords(h: Hymn): boolean {
   return h.stanzas.some((s) => s.lines.some((l) => l.includes('[')));
 }
 
-export function getHymn(id: string | undefined): Hymn | undefined {
-  return id ? HYMNS.find((h) => h.id === id) : undefined;
+export function getHymn(id: string | undefined, list: Hymn[] = HYMNS): Hymn | undefined {
+  return id ? list.find((h) => h.id === id) : undefined;
 }
 
 /** Plain lyric text of a hymn (chords stripped) — for searching. */
@@ -242,11 +242,15 @@ function hymnText(h: Hymn): string {
     .toLowerCase();
 }
 
-/** Search hymns by title, author, or a line of lyrics (all query words must match). */
-export function searchHymns(query: string): Hymn[] {
+/**
+ * Search hymns by title, author, or a line of lyrics (all query words must match).
+ * `list` defaults to the bundled library; the songbook passes the merged list
+ * (bundled + the family's own songs) so one search covers everything.
+ */
+export function searchHymns(query: string, list: Hymn[] = HYMNS): Hymn[] {
   const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return HYMNS;
-  return HYMNS.filter((h) => {
+  if (tokens.length === 0) return list;
+  return list.filter((h) => {
     const hay = `${h.title} ${h.author ?? ''} ${hymnText(h)}`.toLowerCase();
     return tokens.every((t) => hay.includes(t));
   });
@@ -277,11 +281,11 @@ export interface HymnRefMatch {
  * declared `scriptureRefs` include this reference (exact) or its chapter. These
  * are real, in-app, and tappable — no AI, no guessing. Exact matches first.
  */
-export function hymnsForRef(reference: string): HymnRefMatch[] {
+export function hymnsForRef(reference: string, list: Hymn[] = HYMNS): HymnRefMatch[] {
   const target = normRef(reference);
   const targetChapter = chapterOf(reference);
   const out: HymnRefMatch[] = [];
-  for (const h of HYMNS) {
+  for (const h of list) {
     let precision: 'exact' | 'chapter' | null = null;
     for (const r of h.scriptureRefs ?? []) {
       const nr = normRef(r);
@@ -308,12 +312,12 @@ function titleKey(title: string): string {
  * library actually contains opens in-app instead of a web search. Exact-ish
  * title match only (no fuzzy false-positives).
  */
-export function matchHymnByTitle(title: string): Hymn | undefined {
+export function matchHymnByTitle(title: string, list: Hymn[] = HYMNS): Hymn | undefined {
   const key = titleKey(title);
   if (!key) return undefined;
   return (
-    HYMNS.find((h) => titleKey(h.title) === key) ??
-    HYMNS.find((h) => {
+    list.find((h) => titleKey(h.title) === key) ??
+    list.find((h) => {
       const hk = titleKey(h.title);
       return hk.length > 6 && (hk.includes(key) || key.includes(hk));
     })
