@@ -8,10 +8,12 @@ import { Card, Button, Chip, SectionTitle, SpeechBubble } from '@/components/ui'
 import { Ember } from '@/components/Ember';
 import { EmberTip } from '@/components/EmberGuide';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useVerseList, useActiveReadingPlanId, useReadingPlanProgress, useSettings, useStore } from '@/store/useStore';
+import { useVerseList, useActiveReadingPlanId, useReadingPlanProgress, useSettings, useStore, useWalk } from '@/store/useStore';
 import { getReadingPlan } from '@/data/readingPlans';
 import { parsePassage } from '@/data/books';
 import { isDue } from '@/srs/sm2';
+import { dayKey } from '@/utils/date';
+import { rhythmProgress, walkStreak } from '@/utils/dailyWalk';
 
 // Gentle, unattributed prompts to still the heart before the Word.
 const PRESENCE_PROMPTS = [
@@ -41,15 +43,19 @@ const MOVEMENTS: MovementDef[] = [
 const DEFAULT_RHYTHM = ['come', 'worship', 'word', 'deeper', 'respond', 'close'];
 const movementOf = (key: string) => MOVEMENTS.find((m) => m.key === key);
 
-function Shell({ icon, color, title, children }: { icon: keyof typeof Ionicons.glyphMap; color: string; title: string; children: React.ReactNode }) {
+function Shell({ icon, color, title, done, onToggle, children }: { icon: keyof typeof Ionicons.glyphMap; color: string; title: string; done: boolean; onToggle: () => void; children: React.ReactNode }) {
   const { colors } = useTheme();
   return (
-    <Card style={{ gap: spacing.sm }}>
+    <Card style={{ gap: spacing.sm, opacity: done ? 0.75 : 1, borderColor: done ? colors.success : colors.border }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
         <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: colors.surfaceAlt, alignItems: 'center', justifyContent: 'center' }}>
           <Ionicons name={icon} size={18} color={color} />
         </View>
-        <SectionTitle style={{ marginBottom: 0 }}>{title}</SectionTitle>
+        <SectionTitle style={{ marginBottom: 0, flex: 1 }}>{title}</SectionTitle>
+        {/* The tracked loop: tap to record the movement — it feeds the one streak. */}
+        <Pressable onPress={onToggle} hitSlop={10}>
+          <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={26} color={done ? colors.success : colors.textFaint} />
+        </Pressable>
       </View>
       {children}
     </Card>
@@ -65,7 +71,18 @@ export default function AbideScreen() {
   const plan = getReadingPlan(activeId);
   const rhythm = useSettings((s) => s.abideRhythm) ?? DEFAULT_RHYTHM;
   const setSettings = useStore((s) => s.setSettings);
+  const completeWalkMovement = useStore((s) => s.completeWalkMovement);
+  const uncompleteWalkMovement = useStore((s) => s.uncompleteWalkMovement);
+  const walk = useWalk();
   const [editing, setEditing] = useState(false);
+
+  const today = dayKey();
+  const progressToday = rhythmProgress(walk, today, rhythm);
+  const streak = walkStreak(walk, today);
+  const doneSet = new Set(progressToday.doneKeys);
+  const allDone = progressToday.total > 0 && progressToday.done === progressToday.total;
+  const toggleDone = (key: string) =>
+    doneSet.has(key) ? uncompleteWalkMovement(key, today) : completeWalkMovement(key, today);
 
   const due = verses.filter((v) => isDue(v.srs)).length;
   const prompt = PRESENCE_PROMPTS[new Date().getDate() % PRESENCE_PROMPTS.length];
@@ -144,8 +161,30 @@ export default function AbideScreen() {
       />
 
       <Card style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-        <Ember mood="praying" size={64} />
-        <SpeechBubble>Unhurried is the pace. Linger where He leads — skip what you need to.</SpeechBubble>
+        <Ember mood={allDone ? 'celebrating' : 'praying'} size={64} />
+        <SpeechBubble>
+          {allDone
+            ? 'You met with Him today. Carry it with you. 🌟'
+            : 'Unhurried is the pace. Linger where He leads — skip what you need to.'}
+        </SpeechBubble>
+      </Card>
+
+      {/* Today's walk — the tracked loop feeding the one streak */}
+      <Card style={{ gap: spacing.sm }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={{ flex: 1, color: colors.text, fontWeight: '800', fontSize: font.sizes.md }}>
+            Today’s walk · {progressToday.done}/{progressToday.total}
+          </Text>
+          {streak > 0 ? (
+            <Text style={{ color: colors.textMuted, fontSize: font.sizes.sm, fontWeight: '700' }}>🔥 {streak} day{streak === 1 ? '' : 's'} with God</Text>
+          ) : null}
+        </View>
+        <View style={{ height: 8, borderRadius: 4, backgroundColor: colors.surfaceAlt, overflow: 'hidden' }}>
+          <View style={{ width: `${progressToday.total ? Math.round((progressToday.done / progressToday.total) * 100) : 0}%`, height: 8, backgroundColor: allDone ? colors.success : colors.primary }} />
+        </View>
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+          Check off each movement as you go — any one of them makes today count.
+        </Text>
       </Card>
 
       <EmberTip topic="today" id="abide" />
@@ -185,12 +224,16 @@ export default function AbideScreen() {
             const mv = movementOf(key);
             if (!mv) return null;
             return (
-              <Shell key={key} icon={mv.icon} color={iconColor(key)} title={mv.title}>
+              <Shell key={key} icon={mv.icon} color={iconColor(key)} title={mv.title} done={doneSet.has(key)} onToggle={() => toggleDone(key)}>
                 {body(key)}
               </Shell>
             );
           })}
-          <Button title="Amen — done for now" variant="secondary" onPress={() => router.back()} />
+          <Button
+            title={allDone ? 'Amen — you met with Him today 🌟' : 'Amen — done for now'}
+            variant={allDone ? 'primary' : 'secondary'}
+            onPress={() => router.back()}
+          />
         </>
       )}
     </Screen>

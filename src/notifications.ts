@@ -93,8 +93,8 @@ export async function scheduleDailyReminder(time: string): Promise<boolean> {
   await N.scheduleNotificationAsync({
     identifier: REMINDER_ID,
     content: {
-      title: 'Time to hide the Word in your heart 📖',
-      body: 'A few verses are ready for review. Keep your streak alive!',
+      title: 'Time with Him 🌅',
+      body: 'Your walk is waiting — read, reflect, and hide the Word in your heart.',
     },
     trigger: {
       type: N.SchedulableTriggerInputTypes.DAILY,

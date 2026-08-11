@@ -10,13 +10,13 @@ import { Ember, type EmberMood } from '@/components/Ember';
 import { HelpButton, EmberTip } from '@/components/EmberGuide';
 import { pickEmberLine } from '@/data/emberLines';
 import { useTheme, spacing, font, radius } from '@/theme';
-import { useStats, useVerseList, useStore, useJournal, todaysDaily, useActiveReadingPlanId, useReadingPlanProgress } from '@/store/useStore';
+import { useStats, useVerseList, useStore, useJournal, useWalk, useActiveReadingPlanId, useReadingPlanProgress } from '@/store/useStore';
 import { getReadingPlan } from '@/data/readingPlans';
 import { journalStreak } from '@/utils/journal';
+import { walkStreak, weekStrip } from '@/utils/dailyWalk';
 import { parsePassage } from '@/data/books';
 import { isDue } from '@/srs/sm2';
-import { levelInfo, BADGES } from '@/gamification';
-import { DAILY_QUESTS, questCount, questDone, questsCompletedCount } from '@/quests';
+import { levelInfo } from '@/gamification';
 import { dayKey } from '@/utils/date';
 import { WEB_FIXTURES } from '@/data/fixtures';
 import { normalizeKey } from '@/data/bibleApi';
@@ -113,6 +113,48 @@ function StatTile({
         {value}
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs }}>{label}</Text>
+    </Card>
+  );
+}
+
+/** The ONE streak — "days with God" from the daily walk — with a week strip and
+ *  the memorization goal folded in (replaces three tiles + quests + badges). */
+function WalkHeroCard({ memorized, goalPct, reviewsToday, dailyGoal }: { memorized: number; goalPct: number; reviewsToday: number; dailyGoal: number }) {
+  const { colors } = useTheme();
+  const walk = useWalk();
+  const today = dayKey();
+  const streak = useMemo(() => walkStreak(walk, today), [walk, today]);
+  const strip = useMemo(() => weekStrip(walk, today), [walk, today]);
+  const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+  return (
+    <Card style={{ gap: spacing.md }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: colors.text, fontWeight: '800', fontSize: font.sizes.xl }}>
+            {streak > 0 ? `🔥 ${streak} day${streak === 1 ? '' : 's'} with God` : 'Meet with Him today'}
+          </Text>
+          <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, marginTop: 2 }}>
+            Reading, journaling, reviewing, or any movement of your walk counts.
+          </Text>
+        </View>
+        <ProgressRing progress={goalPct} size={50} stroke={6} color={colors.success} label={`${reviewsToday}/${dailyGoal}`} />
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {strip.map((d) => {
+          const letter = DAY_LETTERS[new Date(d.day + 'T12:00:00').getDay()];
+          const isToday = d.day === today;
+          return (
+            <View key={d.day} style={{ alignItems: 'center', gap: 4 }}>
+              <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: d.met ? colors.success : colors.surfaceAlt, borderWidth: isToday && !d.met ? 1.5 : 0, borderColor: colors.primary }}>
+                {d.met ? <Ionicons name="checkmark" size={16} color={colors.onPrimary} /> : <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>{letter}</Text>}
+              </View>
+              {isToday ? <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.primary }} /> : <View style={{ height: 4 }} />}
+            </View>
+          );
+        })}
+      </View>
+      <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>🏆 {memorized} memorized</Text>
     </Card>
   );
 }
@@ -226,8 +268,6 @@ export default function TodayScreen() {
 
   const activeToday = stats.lastActiveDay === dayKey();
   const level = levelInfo(stats.xp);
-  const daily = todaysDaily(stats);
-  const questsDoneCount = questsCompletedCount(daily);
   let mood: EmberMood = 'content';
   if (verseCount > 0 && stats.streak > 0 && !activeToday) mood = 'worried';
   else if (activeToday) mood = 'celebrating';
@@ -292,82 +332,9 @@ export default function TodayScreen() {
       {/* Today's reading (active plan) */}
       <TodaysReadingCard />
 
-      {/* Stats */}
-      <View style={{ flexDirection: 'row', gap: spacing.md }}>
-        <StatTile emoji="🔥" value={String(stats.streak)} label="day streak" />
-        <StatTile emoji="🏆" value={String(memorized)} label="memorized" />
-        <Card style={{ flex: 1, alignItems: 'center', paddingVertical: spacing.md }}>
-          <ProgressRing
-            progress={goalPct}
-            size={54}
-            stroke={6}
-            color={colors.success}
-            label={`${stats.reviewsToday}/${stats.dailyGoal}`}
-          />
-          <Text style={{ color: colors.textMuted, fontSize: font.sizes.xs, marginTop: 4 }}>
-            today's goal
-          </Text>
-        </Card>
-      </View>
-
-      {/* Daily quests */}
-      {verseCount > 0 ? (
-        <View>
-          <SectionTitle>
-            Daily quests · {questsDoneCount}/{DAILY_QUESTS.length}
-          </SectionTitle>
-          <Card style={{ gap: spacing.md }}>
-            {DAILY_QUESTS.map((q) => {
-              const count = questCount(q, daily);
-              const done = questDone(q, daily);
-              return (
-                <View key={q.id} style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.md }}>
-                  <Text style={{ fontSize: 22, opacity: done ? 1 : 0.9 }}>{q.emoji}</Text>
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                      <Text
-                        style={{
-                          color: done ? colors.textMuted : colors.text,
-                          fontWeight: '600',
-                          textDecorationLine: done ? 'line-through' : 'none',
-                        }}
-                      >
-                        {q.name}
-                      </Text>
-                      <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
-                        {count}/{q.goal}
-                      </Text>
-                    </View>
-                    <View
-                      style={{
-                        height: 6,
-                        backgroundColor: colors.surfaceAlt,
-                        borderRadius: 3,
-                        marginTop: 5,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      <View
-                        style={{
-                          width: `${(count / q.goal) * 100}%`,
-                          height: 6,
-                          backgroundColor: done ? colors.success : colors.primary,
-                          borderRadius: 3,
-                        }}
-                      />
-                    </View>
-                  </View>
-                  {done ? (
-                    <Ionicons name="checkmark-circle" size={22} color={colors.success} />
-                  ) : (
-                    <Ionicons name="ellipse-outline" size={22} color={colors.textFaint} />
-                  )}
-                </View>
-              );
-            })}
-          </Card>
-        </View>
-      ) : null}
+      {/* The one streak — days with God (walk + week strip), replacing the
+          stat-tile trio and the quests card (de-gimmick: one habit, one number). */}
+      <WalkHeroCard memorized={memorized} goalPct={goalPct} reviewsToday={stats.reviewsToday} dailyGoal={stats.dailyGoal} />
 
       {/* Review CTA */}
       {verseCount === 0 ? (
@@ -434,33 +401,6 @@ export default function TodayScreen() {
             >
               {votdRef}
             </Text>
-          </Card>
-        </View>
-      ) : null}
-
-      {/* Achievements */}
-      {verseCount > 0 ? (
-        <View>
-          <SectionTitle>
-            Achievements · {(stats.earnedBadges ?? []).length}/{BADGES.length}
-          </SectionTitle>
-          <Card>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }}>
-              {BADGES.map((b) => {
-                const earned = (stats.earnedBadges ?? []).includes(b.id);
-                return (
-                  <View key={b.id} style={{ alignItems: 'center', width: 84, opacity: earned ? 1 : 0.35 }}>
-                    <Text style={{ fontSize: 28 }}>{earned ? b.emoji : '🔒'}</Text>
-                    <Text
-                      numberOfLines={1}
-                      style={{ color: colors.textMuted, fontSize: font.sizes.xs, marginTop: 2 }}
-                    >
-                      {b.name}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
           </Card>
         </View>
       ) : null}

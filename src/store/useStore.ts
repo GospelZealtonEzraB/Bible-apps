@@ -46,6 +46,7 @@ import {
 } from '@/utils/journal';
 import { emptyDoc, extractRefs, genId as genBlockId, markdownToBlocks } from '@/utils/blocks';
 import { migrateDocs } from '@/utils/notesMigration';
+import { completeMovement as walkComplete, uncompleteMovement as walkUncomplete, type WalkDay } from '@/utils/dailyWalk';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
 import * as circleApi from '@/data/circleClient';
@@ -98,6 +99,8 @@ interface StoreState {
   documents: Record<string, Doc>;
   /** Notebooks/folders that group documents. */
   folders: Record<string, Folder>;
+  /** The daily walk — movements/acts done with God per day; feeds the ONE streak. */
+  walk: Record<string, WalkDay>;
   /** Session memory for the welcome-back recap. */
   session: { lastOpenedDay: string | null };
   /** Where the Bible reader left off (null until they've read something). */
@@ -253,6 +256,12 @@ interface StoreState {
   deleteFolder: (id: string) => void;
   /** One-time move of legacy private notes into documents (idempotent). */
   runNotesMigration: () => void;
+
+  // The daily walk (the one habit engine)
+  /** Check off a movement/act for today (or a given day). */
+  completeWalkMovement: (movement: string, day?: string) => void;
+  /** Un-check a movement. */
+  uncompleteWalkMovement: (movement: string, day?: string) => void;
   /** Post a message to a circle's discussion (optionally anchored to a reference, with rich attachments). */
   postCircleMessage: (code: string, text: string, context?: string, attachments?: MessageAttachment[]) => Promise<void>;
   /** Delete one of my own circle messages. */
@@ -599,6 +608,7 @@ export const useStore = create<StoreState>()(
       journal: {},
       documents: {},
       folders: {},
+      walk: {},
       session: { lastOpenedDay: null },
       reading: null,
       readingPlanProgress: {},
@@ -751,6 +761,8 @@ export const useStore = create<StoreState>()(
             recentQuestComplete: d.questJustCompleted,
             recentCelebration: celebration ?? state.recentCelebration,
             stats: { ...progress.stats, daily: d.daily, xp: progress.stats.xp + d.xpBonus },
+            // Reviewing His Word counts toward today's walk (the one streak).
+            walk: walkComplete(state.walk, dayKey(now), 'respond', now),
             activityLog: pushActivity(
               state.activityLog,
               becameMemorized
@@ -1293,7 +1305,11 @@ export const useStore = create<StoreState>()(
 
       // ---- Daily journal (private) ----
       setJournalReflection: (day, text) =>
-        set((state) => ({ journal: patchJournalEntry(state.journal, day, { reflection: text.trim() }, Date.now()) })),
+        set((state) => ({
+          journal: patchJournalEntry(state.journal, day, { reflection: text.trim() }, Date.now()),
+          // Writing your reflection is meeting with God — it counts toward the walk.
+          walk: text.trim() ? walkComplete(state.walk, day, 'reflect', Date.now()) : state.walk,
+        })),
 
       setJournalVerse: (day, ref) =>
         set((state) => ({ journal: patchJournalEntry(state.journal, day, { verse: ref.trim() }, Date.now()) })),
@@ -1366,6 +1382,12 @@ export const useStore = create<StoreState>()(
           }
           return { folders, documents };
         }),
+
+      completeWalkMovement: (movement, day) =>
+        set((state) => ({ walk: walkComplete(state.walk, day ?? dayKey(), movement, Date.now()) })),
+
+      uncompleteWalkMovement: (movement, day) =>
+        set((state) => ({ walk: walkUncomplete(state.walk, day ?? dayKey(), movement, Date.now()) })),
 
       runNotesMigration: () =>
         set((state) => {
@@ -1525,6 +1547,7 @@ export const useStore = create<StoreState>()(
             journal: s.journal,
             documents: s.documents,
             folders: s.folders,
+            walk: s.walk,
             session: s.session,
             reading: s.reading,
             readingPlanProgress: s.readingPlanProgress,
@@ -1560,6 +1583,7 @@ export const useStore = create<StoreState>()(
           journal: d.journal ?? state.journal,
           documents: d.documents ?? state.documents,
           folders: d.folders ?? state.folders,
+          walk: d.walk ?? state.walk,
           session: d.session ?? state.session,
           reading: d.reading ?? state.reading,
           readingPlanProgress: d.readingPlanProgress ?? state.readingPlanProgress,
@@ -1614,6 +1638,7 @@ export const useStore = create<StoreState>()(
         journal: state.journal,
         documents: state.documents,
         folders: state.folders,
+        walk: state.walk,
         session: state.session,
         reading: state.reading,
         readingPlanProgress: state.readingPlanProgress,
@@ -1656,6 +1681,7 @@ export const useStore = create<StoreState>()(
             journal: p.journal ?? {},
             documents: p.documents ?? {},
             folders: p.folders ?? {},
+            walk: p.walk ?? {},
             session: { lastOpenedDay: null, ...(p.session ?? {}) },
             reading: p.reading ?? null,
             readingPlanProgress: p.readingPlanProgress ?? {},
@@ -1749,6 +1775,11 @@ export function useApplication(passageKey: string | undefined): StudyApplication
 /** The whole journal map (day → entry). */
 export function useJournal(): Record<string, JournalEntry> {
   return useStore((state) => state.journal);
+}
+
+/** The daily walk map (day → completed movements). */
+export function useWalk(): Record<string, WalkDay> {
+  return useStore((state) => state.walk);
 }
 
 /** A single day's journal entry (undefined until something is written). */
