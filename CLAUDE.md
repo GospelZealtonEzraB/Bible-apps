@@ -91,8 +91,9 @@ partners / small groups hold each other accountable). Warm, playful, reverent to
   "nothing happened until I navigated back" before optimistic updates. Don't rely on read‑after‑write.
 - **API versioning.** `server/src/worker.ts` `API_VERSION` must equal client `EXPECTED_API_VERSION`
   (`circleClient.ts`). Bump both when `/circle` gains actions the client depends on; the hub shows a
-  "server out of date" banner until the owner redeploys. **Currently `9`** (v9 adds the shared daily
-  devotional: `setDaily`/`completeDaily`/`shareReflection`/`setCircleReadingPlan`).
+  "server out of date" banner until the owner redeploys. **Currently `10`** (v9 added the shared daily
+  devotional: `setDaily`/`completeDaily`/`shareReflection`/`setCircleReadingPlan`; v10 adds
+  `shareToDay` per-member daily shares + rich `attachments` on `postMessage`).
 - **Scripture copyright:** the LLM only ever gets references; verse text comes solely from Bible
   providers. `STUDY_BRIEF_SYSTEM` forbids quoting.
 
@@ -152,10 +153,23 @@ partners / small groups hold each other accountable). Warm, playful, reverent to
   reader "Journal this today"); and a **circle "Today, together"** shared devotional
   (`DailyTogetherCard`, API v9, auto-advancing shared reading plan `planPortionForDate`) with a
   **circle journal timeline** (the "Our journal" drill-in).
+- **Product refinement (deep pillars — latest):** the sprawl is being consolidated per the approved
+  plan (owner decisions: private/family · passwordless accounts later · devotion+journaling anchor ·
+  1:1 covenant partner · "two walks, one window" devotion model, reflections shared-first).
+  Shipped: **Notes pillar** (block editor `BlockEditor`/`RichText`, `documents`+`folders` slices,
+  `app/notes/*`, legacy note silos migrated via `notesMigration`); **Deep Study** (`/study` `context`
+  = real Wikipedia summaries cited, `ask` = grounded Q&A → save to Notes; `validateReferences` guard);
+  **parallel translations** in the reader ("Compare"); **Tamil multi-source resolver**
+  (`TAMIL_CANDIDATES`); **"Our devotions" window** (per-member daily shares, adopt→Doc/library,
+  anchored discuss); **Bible-lover chat** (`AttachSheet` tray: Bible/my-verses/notes/songs → rich
+  message cards, 15s polling); **daily walk engine** (`dailyWalk.ts`, `walk` slice, ONE "days with
+  God" streak, tracked Abide checkmarks, Today de-gimmicked — quests/badges/stat-tiles → WalkHero;
+  all 6 drills on the verse screen).
 - **Pending on the user:** **redeploy the Worker** (`cd server && npx wrangler deploy` — activates
-  **API v9** = the shared daily/journal, *and* the `/esv` route) and one **`eas update`** to ship the
-  app changes; **set `ESV_API_KEY`** (`npx wrangler secret put ESV_API_KEY`) for ESV; each circle picks
-  its shared reading plan in circle Settings. Tamil is online-only. All tests green (195), tsc clean,
+  **API v10** + `/esv` + deep-study actions; the songs Vectorize binding is commented out so deploy
+  succeeds) and one **`eas update`**; **set `ESV_API_KEY`** for ESV. Tamil is online-only (resolver
+  self-heals across getbible/bolls). Remaining pillars: P0 accounts (needs D1 + email provisioning),
+  P5 songbook/sermon deepening, full partner-space collapse. All tests green (230), tsc clean,
   exports bundle, worker bundles.
 
 ## Likely next work (roadmap)
