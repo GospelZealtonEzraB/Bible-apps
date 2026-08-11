@@ -26,6 +26,7 @@ import type {
   Doc,
   DocType,
   Folder,
+  MessageAttachment,
   Verse,
   VerseStatus,
 } from '@/types';
@@ -252,8 +253,8 @@ interface StoreState {
   deleteFolder: (id: string) => void;
   /** One-time move of legacy private notes into documents (idempotent). */
   runNotesMigration: () => void;
-  /** Post a message to a circle's discussion (optionally anchored to a reference). */
-  postCircleMessage: (code: string, text: string, context?: string) => Promise<void>;
+  /** Post a message to a circle's discussion (optionally anchored to a reference, with rich attachments). */
+  postCircleMessage: (code: string, text: string, context?: string, attachments?: MessageAttachment[]) => Promise<void>;
   /** Delete one of my own circle messages. */
   deleteCircleMessage: (code: string, msgId: string) => Promise<void>;
   /** Toggle a reaction on a prayer/note/message (same emoji clears it). */
@@ -1034,13 +1035,14 @@ export const useStore = create<StoreState>()(
         );
       },
 
-      postCircleMessage: async (code, text, context) => {
+      postCircleMessage: async (code, text, context, attachments) => {
         const s = get();
         const msgId = genLocalId();
-        const optimistic = { msgId, by: s.profile.memberId, byName: s.profile.displayName, text: text.trim(), context, at: Date.now() };
+        const atts = attachments?.length ? attachments.slice(0, 5) : undefined;
+        const optimistic = { msgId, by: s.profile.memberId, byName: s.profile.displayName, text: text.trim(), context, attachments: atts, at: Date.now() };
         await optimisticCircle(set, get, code,
           (c) => ({ ...c, messages: [...(c.messages ?? []), optimistic] }),
-          () => circleApi.postMessage(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, { msgId, text: text.trim(), context }),
+          () => circleApi.postMessage(s.settings.serverUrl, code, { memberId: s.profile.memberId, displayName: s.profile.displayName }, { msgId, text: text.trim(), context, attachments: atts }),
         );
       },
 

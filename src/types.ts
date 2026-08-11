@@ -331,6 +331,21 @@ export interface StudyApplication {
 }
 
 /** A discussion message in a circle. */
+/**
+ * A rich attachment on a chat message — the "Bible-study palette": a verse (with
+ * its text snapshot), one of my notes (title + preview), or a song. Rendered as
+ * a card in the bubble; a partner can peek/adopt it.
+ */
+export interface MessageAttachment {
+  kind: 'verse' | 'note' | 'song';
+  /** verse: the reference. note: an anchor ref if the note has one. */
+  ref?: string;
+  /** note/song: the title. */
+  title?: string;
+  /** verse: the verse text; note: a short preview. Capped server-side. */
+  text?: string;
+}
+
 export interface Message {
   msgId: string;
   by: string;
@@ -338,6 +353,8 @@ export interface Message {
   text: string;
   /** Optional anchor (a verse/passage reference), or undefined for the general board. */
   context?: string;
+  /** Rich attachments (verses, notes, songs) sent with the message. */
+  attachments?: MessageAttachment[];
   at: number;
 }
 

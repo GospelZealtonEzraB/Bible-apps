@@ -1197,12 +1197,28 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       const meta = await kvGetJson(kv, `circle:${code}:meta`);
       if (!meta) return json({ error: 'No circle with that code.' }, 404);
       const text = str(body.text, 2000).trim();
-      if (!text) return json({ error: 'Empty message.' }, 400);
+      // Sanitize rich attachments (the Bible-study palette): max 5, capped fields.
+      const kinds = new Set(['verse', 'note', 'song']);
+      const attachments = (Array.isArray(body.attachments) ? body.attachments : [])
+        .filter((a: any) => a && kinds.has(String(a.kind)))
+        .map((a: any) => ({
+          kind: String(a.kind),
+          ref: a.ref ? str(a.ref, 60) : undefined,
+          title: a.title ? str(a.title, 120) : undefined,
+          text: a.text ? str(a.text, 600) : undefined,
+        }))
+        .slice(0, 5);
+      if (!text && attachments.length === 0) return json({ error: 'Empty message.' }, 400);
       const msgId = str(body.msgId, 40).trim() || genId();
       const byName = str(body.displayName, 40);
       const context = body.context ? str(body.context, 60) : undefined;
-      await kvPutJson(kv, `circle:${code}:msg:${memberId}:${msgId}`, { msgId, by: memberId, byName, text, context, at: Date.now() });
-      await sendPush(await otherMemberTokens(kv, code, memberId), 'New message 💬', `${byName || 'Someone'}: ${text.slice(0, 60)}`);
+      await kvPutJson(kv, `circle:${code}:msg:${memberId}:${msgId}`, {
+        msgId, by: memberId, byName, text, context,
+        attachments: attachments.length ? attachments : undefined,
+        at: Date.now(),
+      });
+      const preview = text ? text.slice(0, 60) : attachments[0]?.ref || attachments[0]?.title || 'an attachment';
+      await sendPush(await otherMemberTokens(kv, code, memberId), 'New message 💬', `${byName || 'Someone'}: ${preview}`);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

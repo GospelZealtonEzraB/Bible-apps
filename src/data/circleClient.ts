@@ -3,7 +3,7 @@
  * an `action` and returns the updated `snapshot` (except `leave`).
  */
 import { postServer } from './serverClient';
-import type { ChallengeKind, CircleGoal, CircleSnapshot, CircleDaily } from '@/types';
+import type { ChallengeKind, CircleGoal, CircleSnapshot, CircleDaily, MessageAttachment } from '@/types';
 
 /** The progress snapshot a device pushes up about itself. */
 export interface MemberSnapshotInput {
@@ -239,7 +239,7 @@ export function postMessage(
   serverUrl: string | null,
   code: string,
   member: { memberId: string; displayName: string },
-  msg: { msgId?: string; text: string; context?: string },
+  msg: { msgId?: string; text: string; context?: string; attachments?: MessageAttachment[] },
 ): Promise<CircleSnapshot> {
   return circleCall(serverUrl, { action: 'postMessage', code, memberId: member.memberId, displayName: member.displayName, ...msg });
 }
