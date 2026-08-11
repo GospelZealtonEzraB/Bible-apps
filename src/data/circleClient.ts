@@ -42,7 +42,7 @@ async function circleCall(
 }
 
 /** The API version this app build expects from the Worker. */
-export const EXPECTED_API_VERSION = 9;
+export const EXPECTED_API_VERSION = 10;
 
 /** Upload an opaque backup blob keyed by the device/transfer id. Best-effort. */
 export async function pushBackup(serverUrl: string | null, memberId: string, blob: string): Promise<void> {
@@ -298,6 +298,18 @@ export function shareReflection(
   text: string,
 ): Promise<CircleSnapshot> {
   return circleCall(serverUrl, { action: 'shareReflection', code, memberId: member.memberId, displayName: member.displayName, day, text });
+}
+
+export function shareToDay(
+  serverUrl: string | null,
+  code: string,
+  member: { memberId: string; displayName: string },
+  day: string,
+  kind: 'verse' | 'song',
+  value: string,
+  remove = false,
+): Promise<CircleSnapshot> {
+  return circleCall(serverUrl, { action: 'shareToDay', code, memberId: member.memberId, displayName: member.displayName, day, kind, value, remove });
 }
 
 export function setCircleReadingPlan(

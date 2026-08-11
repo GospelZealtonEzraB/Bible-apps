@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, Pressable } from 'react-native';
+import { View, Text, TextInput, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -27,9 +27,19 @@ export function DailyTogetherCard({ code, accent, members, myId }: { code: strin
   const circle = useCircle(code);
   const profile = useProfile();
   const completeCircleDaily = useStore((s) => s.completeCircleDaily);
+  const adoptReflection = useStore((s) => s.adoptReflection);
+  const adoptVerse = useStore((s) => s.adoptVerse);
 
   const today = dayKey();
   const day = circle?.daily?.[today];
+  const discuss = (anchor: string) => router.push(`/circle/${code}/discussion?context=${encodeURIComponent(anchor)}`);
+  const onAdoptReflection = (text: string, byName: string) => {
+    adoptReflection(text, byName);
+    Alert.alert('Saved to your notes 💛', `${byName || 'Your partner'}’s reflection is now a note in your workspace.`);
+  };
+  const onAdoptVerse = (ref: string) => {
+    adoptVerse(ref).then(() => Alert.alert('Added to your library', `${ref} is now in your verses to memorize.`)).catch(() => {});
+  };
   const [editing, setEditing] = useState(false);
   const [reflecting, setReflecting] = useState(false);
 
@@ -144,20 +154,169 @@ export function DailyTogetherCard({ code, accent, members, myId }: { code: strin
               {reflecting ? (
                 <ReflectionComposer code={code} day={today} mine={reflections.find((r) => r.by === myId)?.text ?? ''} onDone={() => setReflecting(false)} />
               ) : null}
-              {reflections.map((r) => (
-                <View key={r.by} style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm, gap: 2 }}>
-                  <Text style={{ color: accent, fontWeight: '800', fontSize: font.sizes.xs }}>{r.by === myId ? 'You' : r.byName || 'A partner'}</Text>
-                  <RefText text={r.text} style={{ color: colors.text, fontSize: font.sizes.sm, lineHeight: 21, fontFamily: font.serif }} />
-                </View>
-              ))}
+              {reflections.map((r) => {
+                const mine = r.by === myId;
+                return (
+                  <View key={r.by} style={{ backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm, gap: 4 }}>
+                    <Text style={{ color: accent, fontWeight: '800', fontSize: font.sizes.xs }}>{mine ? 'You' : r.byName || 'A partner'}</Text>
+                    <RefText text={r.text} style={{ color: colors.text, fontSize: font.sizes.sm, lineHeight: 21, fontFamily: font.serif }} />
+                    <View style={{ flexDirection: 'row', gap: spacing.lg, marginTop: 2 }}>
+                      {!mine ? (
+                        <Pressable onPress={() => onAdoptReflection(r.text, r.byName)} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Ionicons name="add-circle-outline" size={14} color={colors.success} />
+                          <Text style={{ color: colors.success, fontSize: font.sizes.xs, fontWeight: '700' }}>Add to my notes</Text>
+                        </Pressable>
+                      ) : null}
+                      <Pressable onPress={() => discuss(`${(mine ? profile.displayName : r.byName) || 'partner'}'s reflection · ${today}`)} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name="chatbubble-ellipses-outline" size={13} color={colors.primary} />
+                        <Text style={{ color: colors.primary, fontSize: font.sizes.xs, fontWeight: '700' }}>Discuss</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              })}
               {reflections.length === 0 && !reflecting ? (
                 <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>Be the first to share what He showed you today.</Text>
               ) : null}
             </View>
           ) : null}
+
+          {/* Our devotions — what each of you brought today (verses & songs) */}
+          <SharesWindow
+            code={code}
+            day={today}
+            shares={day?.shares ?? []}
+            myId={myId}
+            accent={accent}
+            onAdoptVerse={onAdoptVerse}
+            onDiscuss={discuss}
+            onOpenSong={openSong}
+          />
         </View>
       ) : null}
     </Card>
+  );
+}
+
+/**
+ * The "two walks, one window" strip: each member's broadcast verses/songs for
+ * the day, attributed, with Adopt (→ my library) + Discuss on a partner's, and
+ * one-tap "bring a verse/song" for me.
+ */
+function SharesWindow({
+  code,
+  day,
+  shares,
+  myId,
+  accent,
+  onAdoptVerse,
+  onDiscuss,
+  onOpenSong,
+}: {
+  code: string;
+  day: string;
+  shares: { by: string; byName: string; verses: string[]; songs: string[] }[];
+  myId: string;
+  accent: string;
+  onAdoptVerse: (ref: string) => void;
+  onDiscuss: (anchor: string) => void;
+  onOpenSong: (title: string) => void;
+}) {
+  const { colors } = useTheme();
+  const shareDailyItem = useStore((s) => s.shareDailyItem);
+  const [adding, setAdding] = useState<null | 'verse' | 'song'>(null);
+  const [draft, setDraft] = useState('');
+
+  const submit = () => {
+    const v = draft.trim();
+    if (!v || !adding) return;
+    shareDailyItem(code, day, adding, v).catch(() => {});
+    setDraft('');
+    setAdding(null);
+  };
+
+  const others = shares.filter((s) => s.by !== myId);
+  const mine = shares.find((s) => s.by === myId);
+
+  return (
+    <View style={{ gap: spacing.sm, marginTop: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <Text style={{ flex: 1, color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>FROM EACH OTHER’S WALK</Text>
+        <Pressable onPress={() => setAdding(adding === 'verse' ? null : 'verse')} hitSlop={8} style={{ marginRight: spacing.md }}>
+          <Text style={{ color: accent, fontWeight: '800', fontSize: font.sizes.xs }}>+ Verse</Text>
+        </Pressable>
+        <Pressable onPress={() => setAdding(adding === 'song' ? null : 'song')} hitSlop={8}>
+          <Text style={{ color: accent, fontWeight: '800', fontSize: font.sizes.xs }}>+ Song</Text>
+        </Pressable>
+      </View>
+
+      {adding ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder={adding === 'verse' ? 'e.g. Isaiah 40:31 — a verse that fed you today' : 'A song title you sang today'}
+            placeholderTextColor={colors.textFaint}
+            autoFocus
+            onSubmitEditing={submit}
+            returnKeyType="send"
+            style={{ flex: 1, color: colors.text, fontSize: font.sizes.sm, backgroundColor: colors.surfaceAlt, borderRadius: radius.md, padding: spacing.sm }}
+          />
+          <Pressable onPress={submit} disabled={!draft.trim()} hitSlop={6} style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: draft.trim() ? accent : colors.surfaceAlt }}>
+            <Ionicons name="arrow-up" size={17} color={draft.trim() ? colors.onPrimary : colors.textFaint} />
+          </Pressable>
+        </View>
+      ) : null}
+
+      {shares.length === 0 && !adding ? (
+        <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs }}>
+          Bring a verse or song from your own devotion — your partner can take it into theirs.
+        </Text>
+      ) : null}
+
+      {[...others, ...(mine ? [mine] : [])].map((s) => {
+        const isMe = s.by === myId;
+        return (
+          <View key={s.by} style={{ gap: 4 }}>
+            <Text style={{ color: colors.textFaint, fontSize: 10, fontWeight: '800' }}>{isMe ? 'YOU BROUGHT' : `${(s.byName || 'A PARTNER').toUpperCase()} BROUGHT`}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
+              {s.verses.map((ref) => (
+                <View key={ref} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingLeft: spacing.sm, paddingRight: 6, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt }}>
+                  <PeekableRef reference={ref} tone="plain" />
+                  {!isMe ? (
+                    <Pressable onPress={() => onAdoptVerse(ref)} hitSlop={6}>
+                      <Ionicons name="add-circle" size={16} color={colors.success} />
+                    </Pressable>
+                  ) : (
+                    <Pressable onPress={() => shareDailyItem(code, day, 'verse', ref, true).catch(() => {})} hitSlop={6}>
+                      <Ionicons name="close-circle" size={15} color={colors.textFaint} />
+                    </Pressable>
+                  )}
+                </View>
+              ))}
+              {s.songs.map((title) => (
+                <View key={title} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingLeft: spacing.sm, paddingRight: 6, borderRadius: radius.pill, backgroundColor: colors.surfaceAlt }}>
+                  <Pressable onPress={() => onOpenSong(title)}>
+                    <Text style={{ color: colors.accent, fontWeight: '700', fontSize: font.sizes.xs }}>🎵 {title}</Text>
+                  </Pressable>
+                  {isMe ? (
+                    <Pressable onPress={() => shareDailyItem(code, day, 'song', title, true).catch(() => {})} hitSlop={6}>
+                      <Ionicons name="close-circle" size={15} color={colors.textFaint} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+            {!isMe && (s.verses.length + s.songs.length) > 0 ? (
+              <Pressable onPress={() => onDiscuss(`${s.byName || 'partner'}'s devotion · ${day}`)} hitSlop={6} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Ionicons name="chatbubble-ellipses-outline" size={12} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '700' }}>Talk about it</Text>
+              </Pressable>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
   );
 }
 

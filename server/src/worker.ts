@@ -674,7 +674,7 @@ async function kvDeletePrefix(kv: KVNamespaceLike, prefix: string): Promise<void
 
 // Bumped whenever /circle gains actions the client depends on. Returned in every
 // snapshot so the app can warn when a deployed Worker is out of date.
-const API_VERSION = 9;
+const API_VERSION = 10;
 
 // Invite codes: 6 chars, unambiguous base32 (no O/0/I/1).
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -803,23 +803,25 @@ async function buildDaily(kv: KVNamespaceLike, code: string): Promise<Record<str
   const keys = await kvListKeys(kv, `circle:${code}:daily:`);
   const prefix = `circle:${code}:daily:`;
   const byDay: Record<string, any> = {};
-  const ensure = (day: string) => (byDay[day] ??= { day, doneByIds: [] as string[], reflections: [] as any[] });
+  const ensure = (day: string) => (byDay[day] ??= { day, doneByIds: [] as string[], reflections: [] as any[], shares: [] as any[] });
 
   // First pass: classify keys by kind (cheap — done marks need no value fetch).
   const recordKeys: { day: string; key: string }[] = [];
   const reflectKeys: { day: string; mem: string; key: string }[] = [];
+  const shareKeys: { day: string; mem: string; key: string }[] = [];
   for (const key of keys) {
-    const rest = key.substring(prefix.length); // {day}[:done:{m} | :reflect:{m}]
+    const rest = key.substring(prefix.length); // {day}[:done:{m} | :reflect:{m} | :share:{m}]
     const parts = rest.split(':');
     const day = parts[0];
     if (!day) continue;
     if (parts.length === 1) recordKeys.push({ day, key });
     else if (parts[1] === 'done' && parts[2]) ensure(day).doneByIds.push(parts[2]);
     else if (parts[1] === 'reflect' && parts[2]) reflectKeys.push({ day, mem: parts[2], key });
+    else if (parts[1] === 'share' && parts[2]) shareKeys.push({ day, mem: parts[2], key });
   }
 
   // Keep only the most recent ~21 days to bound value reads.
-  const days = Array.from(new Set([...recordKeys.map((r) => r.day), ...Object.keys(byDay), ...reflectKeys.map((r) => r.day)]))
+  const days = Array.from(new Set([...recordKeys.map((r) => r.day), ...Object.keys(byDay), ...reflectKeys.map((r) => r.day), ...shareKeys.map((r) => r.day)]))
     .sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
     .slice(0, 21);
   const keep = new Set(days);
@@ -833,6 +835,14 @@ async function buildDaily(kv: KVNamespaceLike, code: string): Promise<Record<str
     if (!keep.has(day)) continue;
     const r = await kvGetJson<any>(kv, key);
     if (r?.text) ensure(day).reflections.push({ by: mem, byName: str(r.byName, 40), text: String(r.text), updatedAt: Number(r.updatedAt ?? 0) || 0 });
+  }
+  for (const { day, mem, key } of shareKeys) {
+    if (!keep.has(day)) continue;
+    const s = await kvGetJson<any>(kv, key);
+    if (!s) continue;
+    const verses = Array.isArray(s.verses) ? s.verses.filter((x: any) => typeof x === 'string').slice(0, 20) : [];
+    const songs = Array.isArray(s.songs) ? s.songs.filter((x: any) => typeof x === 'string').slice(0, 20) : [];
+    if (verses.length || songs.length) ensure(day).shares.push({ by: mem, byName: str(s.byName, 40), verses, songs, updatedAt: Number(s.updatedAt ?? 0) || 0 });
   }
   // Drop days outside the window (e.g. done-only days beyond the cap).
   for (const day of Object.keys(byDay)) if (!keep.has(day)) delete byDay[day];
@@ -1294,6 +1304,24 @@ async function handleCircle(req: Request, env: Env): Promise<Response> {
       const text = str(body.text, 2000).trim();
       if (text) await kvPutJson(kv, key, { by: memberId, byName: str(body.displayName, 40), text, updatedAt: Date.now() });
       else await kv.delete(key);
+      return json({ snapshot: await buildSnapshot(kv, code) });
+    }
+
+    case 'shareToDay': {
+      // Broadcast a verse or song into today's window (each member writes only
+      // their own share key; toggled with remove).
+      const code = normCode(body.code);
+      const day = str(body.day, 10).trim();
+      const kind = body.kind === 'song' ? 'songs' : 'verses';
+      const value = str(body.value, 80).trim();
+      if (!memberId || !/^\d{4}-\d{2}-\d{2}$/.test(day) || !value) return json({ error: 'Invalid request.' }, 400);
+      const key = `circle:${code}:daily:${day}:share:${memberId}`;
+      const existing = (await kvGetJson<any>(kv, key)) ?? { verses: [], songs: [] };
+      const list: string[] = Array.isArray(existing[kind]) ? existing[kind] : [];
+      const next = body.remove ? list.filter((x) => x !== value) : Array.from(new Set([...list, value])).slice(0, 20);
+      const rec = { verses: kind === 'verses' ? next : (existing.verses ?? []), songs: kind === 'songs' ? next : (existing.songs ?? []), byName: str(body.displayName, 40), updatedAt: Date.now() };
+      if ((rec.verses?.length ?? 0) === 0 && (rec.songs?.length ?? 0) === 0) await kv.delete(key);
+      else await kvPutJson(kv, key, rec);
       return json({ snapshot: await buildSnapshot(kv, code) });
     }
 

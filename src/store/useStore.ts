@@ -43,7 +43,7 @@ import {
   addNote as addJournalNoteReducer,
   removeNote as removeJournalNoteReducer,
 } from '@/utils/journal';
-import { emptyDoc, extractRefs, genId as genBlockId } from '@/utils/blocks';
+import { emptyDoc, extractRefs, genId as genBlockId, markdownToBlocks } from '@/utils/blocks';
 import { migrateDocs } from '@/utils/notesMigration';
 import { newMemberId, isValidMemberId } from '@/utils/identity';
 import { getExpoPushToken } from '@/notifications';
@@ -56,6 +56,7 @@ import {
   normalizeKey,
   translationName,
   verseId,
+  getVerse,
   type FetchedVerse,
 } from '@/data/bibleApi';
 import { versesDoneFrom, memorizedReferences, learningReferences } from '@/utils/circleProgress';
@@ -265,6 +266,12 @@ interface StoreState {
   shareCircleReflection: (code: string, day: string, text: string) => Promise<void>;
   /** Set the circle's shared reading plan (auto-advances by date); null clears it. */
   setCircleReadingPlan: (code: string, readingPlanId: string | null) => Promise<void>;
+  /** Broadcast (or remove) a verse/song into the day's "Our devotions" window. */
+  shareDailyItem: (code: string, day: string, kind: 'verse' | 'song', value: string, remove?: boolean) => Promise<void>;
+  /** Adopt a partner's reflection into your own notes (attributed). Returns the new doc id. */
+  adoptReflection: (text: string, byName: string, ref?: string) => string;
+  /** Adopt a partner's verse into your library (hydrated); optionally into today's journal. */
+  adoptVerse: (ref: string, toJournal?: boolean) => Promise<void>;
   addPrayer: (code: string, text: string) => Promise<void>;
   prayForRequest: (code: string, prayerId: string) => Promise<void>;
   answerPrayer: (code: string, prayerId: string, answerNote?: string) => Promise<void>;
@@ -1128,6 +1135,49 @@ export const useStore = create<StoreState>()(
           (c) => ({ ...c, meta: { ...c.meta, readingPlanId, readingPlanStartedAt: readingPlanId ? startedAt : null } }),
           () => circleApi.setCircleReadingPlan(s.settings.serverUrl, code, me, readingPlanId, startedAt),
         );
+      },
+
+      shareDailyItem: async (code, day, kind, value, remove = false) => {
+        const s = get();
+        const me = { memberId: s.profile.memberId, displayName: s.profile.displayName };
+        const field = kind === 'song' ? 'songs' : 'verses';
+        await optimisticCircle(set, get, code,
+          (c) => {
+            const daily = { ...(c.daily ?? {}) };
+            const prev = daily[day] ?? { day, doneByIds: [], reflections: [], shares: [] };
+            const shares = [...(prev.shares ?? [])];
+            let mine = shares.find((sh) => sh.by === me.memberId);
+            if (!mine) { mine = { by: me.memberId, byName: me.displayName, verses: [], songs: [], updatedAt: Date.now() }; shares.push(mine); }
+            const list = new Set(mine[field] ?? []);
+            if (remove) list.delete(value); else list.add(value);
+            const nextMine = { ...mine, [field]: Array.from(list), updatedAt: Date.now() };
+            daily[day] = { ...prev, shares: shares.map((sh) => (sh.by === me.memberId ? nextMine : sh)).filter((sh) => (sh.verses?.length ?? 0) + (sh.songs?.length ?? 0) > 0) };
+            return { ...c, daily };
+          },
+          () => circleApi.shareToDay(s.settings.serverUrl, code, me, day, kind, value, remove),
+        );
+      },
+
+      adoptReflection: (text, byName, ref) => {
+        const md = `${text}\n\n— ${byName || 'a partner'}`;
+        const doc = emptyDoc(ref ? 'verse' : 'note', {
+          title: ref ?? `From ${byName || 'a partner'}`,
+          blocks: markdownToBlocks(md),
+          anchorRef: ref,
+          tags: ['adopted'],
+        });
+        doc.refs = extractRefs(doc);
+        set((state) => ({ documents: { ...state.documents, [doc.id]: doc } }));
+        return doc.id;
+      },
+
+      adoptVerse: async (ref, toJournal = false) => {
+        const s = get();
+        let text = '';
+        try { text = (await getVerse(ref, 'kjv')).text; } catch { /* keep going with empty text */ }
+        const fetched: FetchedVerse = { reference: ref, text, translation: 'kjv', translationName: translationName('kjv'), offline: false };
+        get().addFetchedVerse(fetched);
+        if (toJournal) get().addJournalNote({ ref, text: `Adopted: ${ref}` });
       },
 
       addPrivateNote: (scope, text, ref) =>

@@ -392,6 +392,17 @@ export interface CircleDailyDay extends CircleDaily {
   doneByIds: string[];
   /** Shared reflections for the day (newest first). */
   reflections: DailyReflection[];
+  /** Per-member shared verses/songs for the day (the "Our devotions" window). */
+  shares?: DailyShare[];
+}
+
+/** A member's shared verses/songs for a day. */
+export interface DailyShare {
+  by: string;
+  byName: string;
+  verses: string[];
+  songs: string[];
+  updatedAt: number;
 }
 
 /** A lightweight reaction (amen/💡/❤️) on a prayer, note, or message. */
