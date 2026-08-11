@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, View, Text, TextInput, Pressable, FlatList } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { useTheme, spacing, font, radius } from '@/theme';
@@ -51,9 +51,10 @@ export function AttachSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end' }}>
       <Pressable style={{ flex: 1, backgroundColor: colors.overlay }} onPress={onClose} />
-      <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg, paddingBottom: spacing.xl, maxHeight: '75%', minHeight: 380 }}>
+      <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: spacing.lg, paddingBottom: spacing.xl, maxHeight: '80%', minHeight: 380 }}>
         {/* Things that become a card in the thread, not an attachment. */}
         {onPrayer || onChallenge ? (
           <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
@@ -114,6 +115,7 @@ export function AttachSheet({
         {tab === 'notes' ? <NotesPicker query={query} onPick={pick} /> : null}
         {tab === 'songs' ? <SongsPicker query={query} onPick={pick} /> : null}
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

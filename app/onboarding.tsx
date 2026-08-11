@@ -34,14 +34,14 @@ const STEPS: StepDef[] = [
   {
     mood: 'reading',
     speech: 'Here’s how we’ll learn.',
-    title: 'Learn it, then keep it',
-    body: 'Playful drills help a verse stick, and gentle spaced-repetition reviews bring it back just before you’d forget — so it stays with you for good.',
+    title: 'Read, study, sing, remember',
+    body: 'Read the Word, dig into a passage, sing it, write what He shows you, and hide verses in your heart. Anything you do can go into your daily log with one tap.',
   },
   {
     mood: 'excited',
     speech: 'What should I call you?',
     title: 'Your name',
-    body: 'This is how faith partners will see you when you grow together. You can change it anytime.',
+    body: 'This is how your covenant partner will see you. You can change it anytime.',
   },
   {
     mood: 'content',
@@ -52,8 +52,8 @@ const STEPS: StepDef[] = [
   {
     mood: 'love',
     speech: 'Better together.',
-    title: 'Grow together',
-    body: 'Invite a friend or small group to a circle — assign each other verses, pray together, and cheer one another on. Ready?',
+    title: 'Never alone',
+    body: 'Invite one person to walk with you. You’ll see each other’s days and everything on each other’s shelf — and the chat is where you talk, pray, and share what you’re reading. Ready?',
   },
 ];
 

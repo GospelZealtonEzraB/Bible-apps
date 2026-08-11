@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, Pressable, ActivityIndicator } from 'react-native';
+import { Modal, View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTheme, spacing, font, radius } from '@/theme';
 import { getVerse, isLatinTranslation } from '@/data/bibleApi';
@@ -33,23 +33,37 @@ export function VersePeek({ reference, onClose }: { reference: string | null; on
 
   return (
     <Modal visible={!!reference} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.lg }} onPress={onClose}>
+      <Pressable
+        style={{ flex: 1, backgroundColor: colors.overlay, justifyContent: 'center', padding: spacing.lg }}
+        onPress={onClose}
+      >
         <Pressable
           onPress={() => {}}
-          style={{ backgroundColor: colors.surface, borderRadius: radius.xl, padding: spacing.lg, gap: spacing.sm, borderWidth: 1, borderColor: colors.border }}
+          // A whole chapter can land here, so cap the height and let it scroll
+          // rather than growing past the screen.
+          style={{
+            maxHeight: '75%',
+            backgroundColor: colors.surface,
+            borderRadius: radius.xl,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+          }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: spacing.lg, paddingBottom: spacing.sm }}>
             <Text style={{ color: colors.primary, fontWeight: '800', fontSize: font.sizes.md }}>{reference}</Text>
             <Text style={{ color: colors.textFaint, fontSize: font.sizes.xs, fontWeight: '700' }}>KJV</Text>
           </View>
 
-          {loading ? <ActivityIndicator color={colors.primary} /> : null}
-          {error ? <Text style={{ color: colors.warning, fontSize: font.sizes.sm }}>{error}</Text> : null}
-          {text ? (
-            <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 26, fontFamily: font.serif }}>{text}</Text>
-          ) : null}
+          <ScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingBottom: spacing.sm }}>
+            {loading ? <ActivityIndicator color={colors.primary} /> : null}
+            {error ? <Text style={{ color: colors.warning, fontSize: font.sizes.sm }}>{error}</Text> : null}
+            {text ? (
+              <Text style={{ color: colors.text, fontSize: font.sizes.md, lineHeight: 26, fontFamily: font.serif }}>{text}</Text>
+            ) : null}
+          </ScrollView>
 
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.lg, marginTop: spacing.xs }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.lg, padding: spacing.lg, paddingTop: spacing.sm }}>
             {reference ? (
               <Pressable onPress={() => { const r = reference; onClose(); router.push(`/study/${encodeURIComponent(r)}`); }}>
                 <Text style={{ color: colors.textMuted, fontWeight: '700', fontSize: font.sizes.sm }}>Study</Text>

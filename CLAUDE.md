@@ -142,50 +142,51 @@ partners / small groups hold each other accountable). Warm, playful, reverent to
   `@resvg/resvg-js`).
 
 ## Current state (as of this writing)
-- Feature‑complete for a shared beta: memorization + drills + SRS + gamification; full Growing Together
-  (circles, challenges, shared verses/plans/notes/prayer, transparent progress); AI study; onboarding;
-  Ember mascot + celebrations; Versed rebrand; full CRUD; optimistic UI; crash‑proofing; cloud backup;
-  Play Store prep (privacy page, listing copy, graphics, submit config).
-- **Collaborative daily devotional + journaling (latest):** Tamil fixed (getbible/TAOVBSI); **ESV**
-  enabled (verse + chapter via the Worker `/esv`, Crossway attribution shown — needs `ESV_API_KEY`);
-  **every reference clickable** (`PeekableRef` + `VersePeekProvider` in `_layout.tsx`, plus a `RefText`
-  sweep); a private **daily journal** (`journal` slice, `src/utils/journal.ts`, `app/journal.tsx`,
-  reader "Journal this today"); and a **circle "Today, together"** shared devotional
-  (`DailyTogetherCard`, API v9, auto-advancing shared reading plan `planPortionForDate`) with a
-  **circle journal timeline** (the "Our journal" drill-in).
-- **Worship & Teaching (P5 — latest):** **one Songbook** (`/songbook`; `/hymns`, `/hymns/[id]`,
-  `/hymns/verse/[ref]`, `/songs` are now redirects) merging three tiers via `src/data/songbook.ts` —
-  bundled `HYMNS` + the family's **own songs** (`songs` slice) + **chord overlays** (`songChords`) on
-  lyrics-only hymns; **in-app song editor** (`/songbook/new`, `src/utils/songbookParse.ts` — the TS twin
-  of `scripts/songbook.mjs`, kept in lockstep by a shared test suite) so Tamil/family songs no longer
-  need a repo checkout; ★ favourites; **deep-link playback** (Spotify · YT Music · YouTube — never
-  hosted audio); **"Sing this today"** credits the walk's `worship` movement + shares to the day.
-  **Sermons deepened:** the Worker `/ai` `sermon` task is now **map-reduce over ≤4 chunks** (cap 14k →
-  36k chars; the final chunk always runs to the end) returning `{title, summary, outline, keyPoints,
-  application, references}`; `src/utils/teaching.ts` coerces it (tolerates the old `{summary,
-  references}` shape) and composes a **`sermon` Doc** — saved teachings are just Notes filtered by type
-  (`/notes?type=sermon`). Library gained a **Worship & Teaching** shelf; Abide's `worship`/`teaching`
-  movements now surface favourites and saved teachings.
-- **Product refinement (deep pillars — earlier):** the sprawl is being consolidated per the approved
-  plan (owner decisions: private/family · passwordless accounts later · devotion+journaling anchor ·
-  1:1 covenant partner · "two walks, one window" devotion model, reflections shared-first).
-  Shipped: **Notes pillar** (block editor `BlockEditor`/`RichText`, `documents`+`folders` slices,
-  `app/notes/*`, legacy note silos migrated via `notesMigration`); **Deep Study** (`/study` `context`
-  = real Wikipedia summaries cited, `ask` = grounded Q&A → save to Notes; `validateReferences` guard);
-  **parallel translations** in the reader ("Compare"); **Tamil multi-source resolver**
-  (`TAMIL_CANDIDATES`); **"Our devotions" window** (per-member daily shares, adopt→Doc/library,
-  anchored discuss); **Bible-lover chat** (`AttachSheet` tray: Bible/my-verses/notes/songs → rich
-  message cards, 15s polling); **daily walk engine** (`dailyWalk.ts`, `walk` slice, ONE "days with
-  God" streak, tracked Abide checkmarks, Today de-gimmicked — quests/badges/stat-tiles → WalkHero;
-  all 6 drills on the verse screen).
-- **Pending on the user:** **redeploy the Worker** (`cd server && npx wrangler deploy` — activates
-  **API v10** + `/esv` + deep-study actions; the songs Vectorize binding is commented out so deploy
-  succeeds) and one **`eas update`**; **set `ESV_API_KEY`** for ESV. Tamil is online-only (resolver
-  self-heals across getbible/bolls). Remaining pillars: P0 accounts (needs D1 + email provisioning),
-  full partner-space collapse, the 5-tab IA merge. **A bundled PD devotional is deferred** — this
-  sandbox can only reach GitHub by exact URL (repo search is blocked), so no dataset can be sourced;
-  it needs a source URL or an open-network session. All tests green (272), tsc clean, exports bundle,
-  worker bundles.
+**The Great Simplification landed.** The app had grown sprawling — three journaling surfaces, five
+note silos, a devotional layer, a habit engine, personal + shared reading plans, starter packs, a
+7-tile circle hub and a gamification stack. All of it is gone. What remains:
+
+**The model — four nouns.**
+1. **Assets**: verses (SM-2 + 6 drills), **notes** (block docs; three types: `note` · `study` ·
+   `sermon`), **topics** (plain tags over verses — no writing), the **songbook**, saved teachings.
+2. **The daily log** (`log` slice, `src/utils/log.ts`): a dated pointer to anything you did with
+   God. Adding the same asset twice in a day is a no-op; free lines never dedupe; any entry can be
+   marked `private`. **The log replaced the journal, the walk engine, the shared devotional and all
+   three streaks.**
+3. **Messages** — plus prayer/challenge cards and the pinned covenant, all inside the chat.
+4. **Privacy: one rule.** Everything is visible to your partner unless marked private.
+
+**The surfaces — 5 tabs: Today · Read · Chat · Library · Settings.**
+- **Today** is minimal: today's log entries, a "N due → Practice" banner, one line of partner
+  presence, and "add a line". `/log` is the full history.
+- **Library** = verses · Notes · Topics · Songbook · Teachings · **Practice** (Review+Quiz merged).
+- **Chat IS the partnership** (`app/circle/[code]/discussion.tsx`, WhatsApp-benchmarked): inverted
+  list, composer above the keyboard, grouped message runs, day separators, timestamps,
+  jump-to-latest; prayer + challenge cards in the stream; covenant pinned; header → the partner's
+  log and shelf. `app/(tabs)/chat.tsx` shows `PartnerSetup` until someone joins.
+- `src/components/AssetActions.tsx` — the one row (**＋ Add to my log** · **Share** → chat) that
+  appears under every asset. `src/components/Sheet.tsx` — the one bottom sheet: capped height,
+  scrolls internally, keyboard-aware (fixes modals overflowing off-screen).
+
+**Deleted**: Abide + `dailyWalk`, journal + Personal Space, reading plans (personal + shared),
+starter packs, "living it out"/applications, the shared devotional + circle journal, XP/levels/
+badges/quests/streaks/JourneyMap/Celebration/cheers/duels/leaderboard/weekly-recap/activity-feed,
+the Add tab, the circle hub + member page, folders, `circlePrefs`.
+
+**Nothing written was lost** — `src/utils/notesMigration.ts` carries the journal, per-verse notes,
+topic reflections and applications into Notes on hydration *and* on backup import, with
+deterministic ids so it's idempotent.
+
+**Server: API v11.** Added `pushLog` / `pushShelf` (single-writer-per-key, private items filtered
+client-side before sending). Removed: setDaily · completeDaily · shareReflection · shareToDay ·
+setCircleReadingPlan · createPlan/updatePlan/deletePlan · saveNote/deleteNote · submitDuel · cheer ·
+setGoal · addVerse/removeVerse. Kept: create · join · get · sync · leave · postMessage ·
+deleteMessage · react · all prayer actions · assign/submit/reviewChallenge · deleteChallenge ·
+setCovenant · renameCircle · backupPush/backupPull.
+
+**Pending on the user:** **redeploy the Worker** (`cd server && npx wrangler deploy` — activates
+**API v11**, `/esv`, deep-study actions) and one **`eas update`**; **set `ESV_API_KEY`** for ESV.
+Tamil is online-only. All gates green: tsc clean, **247 tests**, iOS export, worker bundles.
 
 ## Likely next work (roadmap)
 - Screenshots for the Play listing; wire the `eas submit` service account.
