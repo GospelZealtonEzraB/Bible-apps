@@ -24,9 +24,9 @@ export default function PartnershipSettingsScreen() {
   const setCircleCovenant = useStore((s) => s.setCircleCovenant);
   const leaveCircle = useStore((s) => s.leaveCircle);
 
-  const [name, setName] = useState(circle?.meta.name ?? '');
-  const [cadence, setCadence] = useState(circle?.meta.covenant?.cadenceLabel ?? '');
-  const [goal, setGoal] = useState(circle?.meta.covenant?.goalText ?? '');
+  const [name, setName] = useState(circle?.meta?.name ?? '');
+  const [cadence, setCadence] = useState(circle?.meta?.covenant?.cadenceLabel ?? '');
+  const [goal, setGoal] = useState(circle?.meta?.covenant?.goalText ?? '');
 
   if (!circle) {
     return (
@@ -59,7 +59,7 @@ export default function PartnershipSettingsScreen() {
 
   return (
     <Screen>
-      <Header title="Partnership" subtitle={circle.meta.name} back />
+      <Header title="Partnership" subtitle={circle.meta?.name} back />
 
       <Card style={{ gap: spacing.sm }}>
         <SectionTitle>Invite code</SectionTitle>
@@ -99,7 +99,7 @@ export default function PartnershipSettingsScreen() {
         <Button
           title="Rename"
           variant="secondary"
-          disabled={!name.trim() || name.trim() === circle.meta.name}
+          disabled={!name.trim() || name.trim() === (circle.meta?.name ?? '')}
           onPress={() => void setCircleName(code, name.trim()).catch(() => {})}
         />
       </Card>

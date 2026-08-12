@@ -69,6 +69,17 @@ partners / small groups hold each other accountable). Warm, playful, reverent to
 - Pure logic → `src/utils` or `src/data` with a `__tests__` unit test. UI stays thin.
 
 ## Hard‑won learnings / gotchas (do not relearn these)
+- **A tab must never `Redirect`/`replace` to a route outside the tab navigator.** The Chat tab used
+  to render `<Redirect href="/circle/{code}/discussion" />`; `Redirect` calls `router.replace` inside
+  a `useFocusEffect`, so focusing the tab tore down `(tabs)` from inside its own focus effect — the
+  app crashed on opening Chat. **Render the surface inline instead**: the thread lives in
+  `src/components/Conversation.tsx`, the Chat tab renders `<Conversation code={…} />` directly (tab
+  bar stays visible, as in any messaging app), and `app/circle/[code]/discussion.tsx` is a thin
+  wrapper for the anchored-thread deep link (`showBack`). Same rule for post-action navigation:
+  PartnerSetup no longer navigates after create/join — the tab re-renders on its own.
+- **A `<Stack.Screen name>` for a deleted route silently `console.warn`s** ("No route named … exists
+  in nested children") and the route's options are lost. When a route is renamed, update
+  `app/_layout.tsx` too (`review` → `practice` was missed in the simplification).
 - **Never navigate before the router is mounted.** The onboarding gate must wait on
   `useRootNavigationState()?.key` *and* `hydrated` before `router.replace`. Doing it too early throws
   "navigate before mounting the Root Layout" → instant crash. (`_layout.tsx`.)

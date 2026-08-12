@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { Screen, Header } from '@/components/layout';
@@ -16,7 +15,6 @@ import { useStore, useProfile } from '@/store/useStore';
  */
 export default function PartnerSetupScreen() {
   const { colors } = useTheme();
-  const router = useRouter();
   const profile = useProfile();
   const setDisplayName = useStore((s) => s.setDisplayName);
   const createCircle = useStore((s) => s.createCircle);
@@ -32,8 +30,9 @@ export default function PartnerSetupScreen() {
   const onCreate = async () => {
     setCreating(true);
     try {
-      const code = await createCircle();
-      router.replace(`/circle/${code}/discussion`);
+      // No navigation: the Chat tab renders the conversation as soon as the
+      // partnership exists.
+      await createCircle();
     } catch (e) {
       Alert.alert('Couldn’t start it', e instanceof Error ? e.message : 'Please try again.');
     } finally {
@@ -48,7 +47,6 @@ export default function PartnerSetupScreen() {
     try {
       await joinCircle(code);
       setJoinCode('');
-      router.replace(`/circle/${code}/discussion`);
     } catch (e) {
       Alert.alert('Couldn’t join', e instanceof Error ? e.message : 'Check the code and try again.');
     } finally {

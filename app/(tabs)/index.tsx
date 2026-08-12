@@ -41,7 +41,7 @@ export default function TodayScreen() {
   // Keep the partner's presence fresh when this screen comes forward.
   useFocusEffect(
     React.useCallback(() => {
-      for (const c of circles) void syncCircle(c.meta.code).catch(() => {});
+      for (const c of circles) void syncCircle(c.meta?.code ?? '').catch(() => {});
     }, [circles.length]), // eslint-disable-line react-hooks/exhaustive-deps
   );
 
